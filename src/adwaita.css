@@ -272,7 +272,7 @@ button {
 }
 
 .post-row:hover {
-  background: var(--hover-overlay);
+  background-color: var(--hover-overlay);
 }
 
 .post-row-main {
@@ -580,6 +580,10 @@ button {
   font-size: 13.5px;
 }
 
+.scroll-sentinel {
+  height: 0;
+}
+
 .login-screen {
   height: 100vh;
   display: flex;
@@ -749,7 +753,8 @@ button {
 }
 
 .compose-visibility-select {
-  padding: 4px 8px;
+  height: 32px;
+  padding: 0 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: var(--window-bg);
@@ -776,6 +781,7 @@ button {
 }
 
 .upload-thumb {
+  position: relative;
   width: 72px;
   height: 72px;
   border-radius: 8px;
