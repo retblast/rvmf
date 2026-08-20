@@ -905,6 +905,23 @@ button {
   background: var(--hover-overlay);
 }
 
+.settings-text-input {
+  width: 120px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--window-bg);
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: right;
+  outline: none;
+}
+
+.settings-text-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg-subtle);
+}
+
 /* ---- theme toggle ---- */
 
 .theme-toggle {

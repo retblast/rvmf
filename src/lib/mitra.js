@@ -51,12 +51,31 @@ function saveAppCredentials(instanceUrl, creds) {
   localStorage.setItem(APP_STORAGE_PREFIX + instanceUrl, JSON.stringify(creds))
 }
 
+const CLIENT_NAME_KEY = 'mitra-client-name'
+
+export function getClientName() {
+  try {
+    return localStorage.getItem(CLIENT_NAME_KEY) || 'Mitra'
+  } catch {
+    return 'Mitra'
+  }
+}
+
+export function setClientName(name) {
+  const trimmed = (name || 'Mitra').trim() || 'Mitra'
+  localStorage.setItem(CLIENT_NAME_KEY, trimmed)
+}
+
+export function clearAppCredentials(instanceUrl) {
+  localStorage.removeItem(APP_STORAGE_PREFIX + instanceUrl)
+}
+
 async function registerApp(instanceUrl, redirectUri) {
   const app = await apiFetch(instanceUrl, '/api/v1/apps', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      client_name: 'Mitra Adwaita Frontend',
+      client_name: getClientName(),
       redirect_uris: redirectUri,
       scopes: 'read write',
     }),

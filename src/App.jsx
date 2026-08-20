@@ -2220,6 +2220,7 @@ export default function App() {
     }
   })
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [clientName, setClientNameState] = useState(() => mitra.getClientName())
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
 
@@ -2233,6 +2234,15 @@ export default function App() {
       }
       return next
     })
+  }
+
+  function handleClientNameChange(name) {
+    setClientNameState(name)
+    mitra.setClientName(name)
+    if (session) {
+      mitra.clearAppCredentials(session.instanceUrl)
+      logout()
+    }
   }
 
   const [themeMode, setThemeMode] = useState(() => {
@@ -2840,6 +2850,16 @@ export default function App() {
                         Dark
                       </button>
                     </div>
+                  </div>
+                  <div className="settings-menu-row">
+                    <span>Sent from</span>
+                    <input
+                      type="text"
+                      className="settings-text-input"
+                      value={clientName}
+                      onChange={(e) => handleClientNameChange(e.target.value)}
+                      maxLength={32}
+                    />
                   </div>
                 </div>
               </>
