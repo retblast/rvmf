@@ -1667,6 +1667,13 @@ textarea:focus-visible {
   padding: 8px 12px 0;
 }
 
+.profile-top-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-left: 4px;
+}
+
 .profile-info {
   display: flex;
   align-items: flex-end;
@@ -1761,4 +1768,31 @@ textarea:focus-visible {
 
 .profile-back {
   margin-bottom: 8px;
+}
+
+.profile-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 8px;
+  vertical-align: middle;
+}
+
+.profile-badge.mutual {
+  background: var(--accent-bg-subtle);
+  color: var(--accent);
+}
+
+.profile-badge.follows-you {
+  background: var(--hover-overlay);
+  color: var(--text-secondary);
+}
+
+.notif-text .post-name.clickable {
+  cursor: pointer;
+}
+
+.notif-text .post-name.clickable:hover {
+  text-decoration: underline;
 }

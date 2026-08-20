@@ -1737,9 +1737,9 @@ const NotificationRow = memo(function NotificationRow({
       </div>
       <div className="notif-body">
         <div className="notif-header">
-          <Avatar name={name} src={account.avatar} size={22} />
+          <Avatar name={name} src={account.avatar} size={22} onClick={() => onOpenProfile?.(account)} />
           <span className="notif-text">
-            <span className="post-name">{name}</span> {notificationVerb(notification.type, notification)}
+            <span className="post-name clickable" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(account) }}>{name}</span> {notificationVerb(notification.type, notification)}
           </span>
           <span className="post-time">{formatRelativeTime(notification.created_at)}</span>
         </div>
@@ -2084,12 +2084,19 @@ function ProfileView({ accountId, instanceUrl, token, onOpenThread, onComposeRep
         )}
         <div className="profile-top-bar">
           <button className="icon-btn" onClick={onClose}><ArrowLeft size={16} /></button>
+          <span className="profile-top-label">Back to timeline</span>
         </div>
         <div className="profile-info">
           <Avatar name={displayName} src={account.avatar} large />
           <div className="profile-names">
             <span className="profile-display-name">{displayName}</span>
             <span className="profile-handle">@{account.acct || account.username}</span>
+            {!isOwn && relationship?.following && relationship?.followed_by && (
+              <span className="profile-badge mutual">Mutual</span>
+            )}
+            {!isOwn && !relationship?.following && relationship?.followed_by && (
+              <span className="profile-badge follows-you">Follows you</span>
+            )}
           </div>
           {!isOwn && (
             <button
