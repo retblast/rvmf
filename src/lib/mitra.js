@@ -173,9 +173,10 @@ export function fetchHomeTimeline(instanceUrl, token, { max_id } = {}) {
   })
 }
 
-export function fetchPublicTimeline(instanceUrl, token, local) {
+export function fetchPublicTimeline(instanceUrl, token, local, { max_id } = {}) {
   const params = new URLSearchParams({ limit: '30' })
   if (local) params.set('local', 'true')
+  if (max_id) params.set('max_id', max_id)
   return apiFetch(instanceUrl, `/api/v1/timelines/public?${params.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
   })

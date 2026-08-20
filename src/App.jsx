@@ -2290,6 +2290,9 @@ export default function App() {
   const [exploreTimelines, setExploreTimelines] = useState({ federated: null, local: null })
   const [exploreLoading, setExploreLoading] = useState(false)
   const [exploreError, setExploreError] = useState('')
+  const [exploreHasMore, setExploreHasMore] = useState({ federated: true, local: true })
+  const [exploreLoadingMore, setExploreLoadingMore] = useState(false)
+  const exploreSentinelRef = useRef(null)
   const [hoverPreviewsEnabled, setHoverPreviewsEnabled] = useState(() => {
     try {
       return localStorage.getItem('mitra-hover-previews') !== 'false'
@@ -2427,6 +2430,7 @@ export default function App() {
       if (!session) return
       setExploreLoading(true)
       setExploreError('')
+      setExploreHasMore((prev) => ({ ...prev, [feed]: true }))
       try {
         const items = await mitra.fetchPublicTimeline(
           session.instanceUrl,
@@ -2443,11 +2447,52 @@ export default function App() {
     [session]
   )
 
+  const loadMoreExplore = useCallback(async () => {
+    if (!session || exploreLoadingMore || !exploreHasMore[exploreFeed]) return
+    const items = exploreTimelines[exploreFeed]
+    if (!items || items.length === 0) return
+    setExploreLoadingMore(true)
+    try {
+      const lastId = items[items.length - 1]?.id
+      if (!lastId) return
+      const more = await mitra.fetchPublicTimeline(
+        session.instanceUrl,
+        session.token,
+        exploreFeed === 'local',
+        { max_id: lastId }
+      )
+      setExploreTimelines((prev) => ({
+        ...prev,
+        [exploreFeed]: [...(prev[exploreFeed] || []), ...more],
+      }))
+      if (more.length < 30) setExploreHasMore((prev) => ({ ...prev, [exploreFeed]: false }))
+    } catch {
+      // silently fail
+    } finally {
+      setExploreLoadingMore(false)
+    }
+  }, [session, exploreLoadingMore, exploreHasMore, exploreFeed, exploreTimelines])
+
   useEffect(() => {
     if (view === 'explore' && exploreTimelines[exploreFeed] === null) {
       loadExplore(exploreFeed)
     }
   }, [view, exploreFeed, exploreTimelines, loadExplore])
+
+  // Explore infinite scroll observer
+  useEffect(() => {
+    if (view !== 'explore') return
+    const sentinel = exploreSentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMoreExplore()
+      },
+      { rootMargin: '200px' }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [view, loadMoreExplore, exploreTimelines[exploreFeed]?.length])
 
   function updateExplorePost(updated) {
     setExploreTimelines((prev) => ({
@@ -2490,6 +2535,7 @@ export default function App() {
     if (view === 'notifications') {
       loadNotifications()
     } else if (view === 'explore') {
+      setExploreHasMore((prev) => ({ ...prev, [exploreFeed]: true }))
       loadExplore(exploreFeed)
     } else {
       loadTimeline()
@@ -2828,6 +2874,10 @@ export default function App() {
                 />
               ))}
             </div>
+          )}
+          {exploreLoadingMore && <div className="empty-state">Loading…</div>}
+          {exploreHasMore[exploreFeed] && !exploreLoadingMore && exploreTimelines[exploreFeed]?.length > 0 && (
+            <div ref={exploreSentinelRef} className="scroll-sentinel" />
           )}
         </>
       )}
