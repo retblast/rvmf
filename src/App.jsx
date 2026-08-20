@@ -1350,7 +1350,7 @@ function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted, ma
   )
   const account = status?.account || {}
   const name = account.display_name || account.username || 'Unknown'
-  const visibility = status?.visibility || 'public'
+  const [visibility, setVisibility] = useState(status?.visibility || 'public')
 
   async function submit() {
     if (!text.trim() && mediaIds.length === 0) {
@@ -1440,7 +1440,6 @@ function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted, ma
         <CharCounter current={text.length} max={maxCharacters} />
       </div>
       <MediaUploadStrip uploads={uploads} onRemove={removeUpload} />
-      <div className="compose-visibility">Replying as: {visibilityLabel(visibility)}</div>
       <div className="dialog-actions">
         <input
           ref={fileInputRef}
@@ -1470,6 +1469,16 @@ function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted, ma
         >
           <Eye size={16} />
         </button>
+        <select
+          className="compose-visibility-select"
+          value={visibility}
+          onChange={(e) => setVisibility(e.target.value)}
+        >
+          <option value="public">{visibilityLabel('public')}</option>
+          <option value="unlisted">{visibilityLabel('unlisted')}</option>
+          <option value="private">{visibilityLabel('private')}</option>
+          <option value="direct">{visibilityLabel('direct')}</option>
+        </select>
         <div style={{ flex: 1 }} />
         <button className="pill-btn" onClick={onClose} type="button">
           Cancel
