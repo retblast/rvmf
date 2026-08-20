@@ -122,6 +122,27 @@ function buildReplyTree(descendants, rootId) {
   return attach(rootId)
 }
 
+// Find a node by status id anywhere in the tree
+function findNode(nodes, statusId) {
+  if (!nodes) return null
+  for (const node of nodes) {
+    if (node.status.id === statusId) return node
+    const found = findNode(node.children, statusId)
+    if (found) return found
+  }
+  return null
+}
+
+// Insert a reply as a child of the node with the given status id (immutably)
+function insertIntoTree(nodes, parentId, newReply) {
+  return nodes.map((node) => {
+    if (node.status.id === parentId) {
+      return { ...node, children: [...node.children, newReply] }
+    }
+    return { ...node, children: insertIntoTree(node.children, parentId, newReply) }
+  })
+}
+
 // Replaces one status object at whatever depth it's found in an already-
 // built reply tree, leaving everything else untouched — used after a
 // favourite/boost so the UI reflects it without a refetch.
@@ -663,6 +684,7 @@ function ThreadReply({
   onQuote,
   compact = false,
   highlightedId,
+  focusedReplyId,
   onHighlightParent,
   currentAccountId,
   onDelete,
@@ -721,8 +743,9 @@ function ThreadReply({
   return (
     <>
       <div
-        className={`reply-row${highlightedId === status.id ? ' highlighted' : ''}`}
+        className={`reply-row${highlightedId === status.id ? ' highlighted' : ''}${focusedReplyId === status.id ? ' focused-reply' : ''}`}
         style={{ '--reply-depth': depth }}
+        data-status-id={status.id}
       >
         <Avatar name={name} src={account.avatar} onClick={() => onOpenProfile?.(account)} />
         <div
@@ -846,6 +869,7 @@ function ThreadReply({
                 statusById={statusById}
                 onQuote={onQuote}
                 highlightedId={highlightedId}
+                focusedReplyId={focusedReplyId}
                 onHighlightParent={onHighlightParent}
                 currentAccountId={currentAccountId}
                 onDelete={onDelete}
@@ -1610,6 +1634,7 @@ function ThreadPanelContent({
                 statusById={statusById}
                 onQuote={onQuote}
                 highlightedId={highlightedId}
+                focusedReplyId={focusedReplyId}
                 onHighlightParent={setHighlightedId}
                 currentAccountId={currentAccountId}
                 onDelete={onDelete}
@@ -1671,6 +1696,7 @@ function ThreadPanelContent({
               statusById={statusById}
               onQuote={onQuote}
               highlightedId={highlightedId}
+              focusedReplyId={focusedReplyId}
               onHighlightParent={setHighlightedId}
               currentAccountId={currentAccountId}
               onDelete={onDelete}
@@ -2582,17 +2608,22 @@ export default function App() {
     return () => clearInterval(interval)
   }, [view, tier, session])
 
-  // After a reply posts successfully, drop it into that parent's already-
-  // loaded tree (if loaded) as a new leaf so it shows up immediately
-  // without a refetch, then swap the panel from compose to viewing.
+  // After a reply posts successfully, insert it into the correct position in
+  // the already-loaded tree so it shows up immediately, then swap the panel
+  // back to thread view and trigger an immediate refresh.
   function handleReplyPosted(parentId, reply) {
+    const newReply = { status: reply, children: [] }
     setReplyStates((prev) => {
-      const current = prev[parentId]
-      if (!current?.items) return prev
-      return {
-        ...prev,
-        [parentId]: { ...current, items: [...current.items, { status: reply, children: [] }] },
+      // Find which root key contains parentId in its tree
+      let rootKey = prev[parentId] ? parentId : null
+      if (!rootKey) {
+        for (const key of Object.keys(prev)) {
+          if (findNode(prev[key].items, parentId)) { rootKey = key; break }
+        }
       }
+      if (!rootKey || !prev[rootKey]?.items) return prev
+      const updated = insertIntoTree(prev[rootKey].items, parentId, newReply)
+      return { ...prev, [rootKey]: { ...prev[rootKey], items: updated } }
     })
     setSidePanel((prev) => {
       if (prev?.threadRoot) {
@@ -2602,6 +2633,21 @@ export default function App() {
     })
     setFocusedReplyId(reply.id)
     setTimeout(() => setFocusedReplyId(null), 2000)
+    // Trigger an immediate context refresh so nested replies appear quickly
+    setTimeout(() => {
+      const rootId = sidePanel?.threadRoot?.id || sidePanel?.status?.id
+      if (rootId && session) {
+        mitra.fetchContext(session.instanceUrl, session.token, rootId)
+          .then((context) => {
+            const tree = buildReplyTree(context.descendants, rootId)
+            setReplyStates((prev2) => ({
+              ...prev2,
+              [rootId]: { loading: false, error: '', items: tree, ancestors: context.ancestors },
+            }))
+          })
+          .catch(() => {})
+      }
+    }, 1500)
   }
 
   function closeSidePanel() {
