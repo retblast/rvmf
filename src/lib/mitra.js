@@ -356,10 +356,12 @@ export function fetchAccount(instanceUrl, accountId) {
 export function fetchAccountStatuses(instanceUrl, token, accountId, { onlyMedia = false, excludeReplies = false, excludeReblogs = false, pinned = false, max_id } = {}) {
   const params = new URLSearchParams({ limit: '20' })
   if (onlyMedia) params.set('only_media', 'true')
-  if (excludeReplies) params.set('exclude_replies', 'true')
   if (excludeReblogs) params.set('exclude_reblogs', 'true')
   if (pinned) params.set('pinned', 'true')
   if (max_id) params.set('max_id', max_id)
+  // For replies: Mastodon includes replies by default when the param is absent,
+  // but some servers (Mitra) default to excluding them. Send the param explicitly.
+  params.set('exclude_replies', excludeReplies ? 'true' : 'false')
   return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/statuses?${params.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
