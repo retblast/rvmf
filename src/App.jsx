@@ -269,23 +269,33 @@ function hostOf(url) {
 // Some instance admins disable inline embedding of remote media as a
 // moderation measure (quarantining unruly remote instances) — the image
 // just shows up as a bare link in the post text instead of an attachment.
-// But when that link points at the *same* instance we're logged into,
-// there's no moderation reason for it to be hidden from us specifically;
-// it's just how the admin's settings render locally-hosted media inline.
 // Pull those links out of the text and treat them as attachments again,
-// client-side — but still behind the same content-warning blur as
-// genuinely sensitive media, both because we don't know *why* an admin
-// disabled inline images and because that's a reasonable default either
-// way.
-function extractQuarantinedImages(text, instanceUrl) {
+// client-side when:
+//   1. The link points at the *same* instance we're logged into — there's
+//      no moderation reason for it to be hidden from us specifically; or
+//   2. The link's host matches the poster's domain — instance owners may
+//      disable inline embedding for a whole remote instance, so the
+//      poster's own images get suppressed; recovering them here lets the
+//      user see what was posted.
+// In both cases the recovered image is still marked sensitive so it goes
+// through the normal CW/blur flow.
+function extractQuarantinedImages(text, instanceUrl, posterAcct) {
   const instanceHost = hostOf(instanceUrl)
-  if (!instanceHost) return { cleanedText: text, quarantinedUrls: [] }
+  if (!instanceHost) return { cleanedText: text, quarantinedUrls: [], posterRecoveryUrls: [] }
+
+  const posterHost = posterAcct ? hostOf('https://' + posterAcct.split('@')[1]) : ''
 
   const quarantinedUrls = []
+  const posterRecoveryUrls = []
   const cleanedText = text
     .replace(IMAGE_URL_RE, (match) => {
-      if (hostOf(match) === instanceHost) {
+      const linkHost = hostOf(match)
+      if (linkHost === instanceHost) {
         quarantinedUrls.push(match)
+        return ''
+      }
+      if (posterHost && linkHost === posterHost) {
+        posterRecoveryUrls.push(match)
         return ''
       }
       return match
@@ -294,18 +304,31 @@ function extractQuarantinedImages(text, instanceUrl) {
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 
-  return { cleanedText, quarantinedUrls }
+  return { cleanedText, quarantinedUrls, posterRecoveryUrls }
 }
 
 // Combines mention-linking and quarantined-image extraction into what a
 // post/reply actually needs to render: text nodes plus a merged attachment
 // list (real attachments + any quarantined images recovered from the text).
 function processStatusContent(status, instanceUrl) {
-  const { cleanedText, quarantinedUrls } = extractQuarantinedImages(
+  const { cleanedText, quarantinedUrls, posterRecoveryUrls } = extractQuarantinedImages(
     htmlToPlainText(status.content),
-    instanceUrl
+    instanceUrl,
+    status.account?.acct
   )
   const textNodes = renderRichText(cleanedText, status.mentions, status.emojis)
+
+  // Poster-domain images are recovered as normal attachments — the poster
+  // clearly intended them to be shown; only local-instance ones are truly
+  // quarantined (CW blurred).
+  const posterAttachments = posterRecoveryUrls.map((url, i) => ({
+    id: `poster-recovered-${status.id}-${i}`,
+    type: 'image',
+    url,
+    preview_url: url,
+    description: '',
+  }))
+
   const quarantinedAttachments = quarantinedUrls.map((url, i) => ({
     id: `quarantined-${status.id}-${i}`,
     type: 'image',
@@ -313,7 +336,12 @@ function processStatusContent(status, instanceUrl) {
     preview_url: url,
     description: '',
   }))
-  const attachments = [...(status.media_attachments || []), ...quarantinedAttachments]
+
+  const attachments = [
+    ...(status.media_attachments || []),
+    ...posterAttachments,
+    ...quarantinedAttachments,
+  ]
   const hasQuarantined = quarantinedAttachments.length > 0
   const sensitive = status.sensitive || hasQuarantined
   const spoilerText = status.sensitive
