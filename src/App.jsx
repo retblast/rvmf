@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Rss,
@@ -10,7 +10,6 @@ import {
   Repeat2,
   Star,
   MoreHorizontal,
-  Coins,
   RotateCw,
   LogOut,
   X,
@@ -640,6 +639,10 @@ function ThreadReply({
   compact = false,
   highlightedId,
   onHighlightParent,
+  currentAccountId,
+  onDelete,
+  onMute,
+  onBlock,
 }) {
   const [busy, setBusy] = useState(false)
   const { openPickerId, setOpenPickerId } = useContext(PickerContext)
@@ -775,12 +778,17 @@ function ThreadReply({
                     onClose={() => setShowPicker(false)}
                   />
                 )}
-                <button className="action-btn monero" aria-label="Send Monero tip">
-                  <Coins size={15} />
-                </button>
               </>
             )}
-            <PostOptionsMenu status={status} instanceUrl={instanceUrl} />
+            <PostOptionsMenu
+              status={status}
+              instanceUrl={instanceUrl}
+              token={token}
+              isOwn={status.account?.id === currentAccountId}
+              onDelete={onDelete}
+              onMute={onMute}
+              onBlock={onBlock}
+            />
           </div>
         </div>
       </div>
@@ -802,6 +810,10 @@ function ThreadReply({
                 onQuote={onQuote}
                 highlightedId={highlightedId}
                 onHighlightParent={onHighlightParent}
+                currentAccountId={currentAccountId}
+                onDelete={onDelete}
+                onMute={onMute}
+                onBlock={onBlock}
               />
             ))}
           </div>
@@ -1046,7 +1058,7 @@ function PollCard({ poll, instanceUrl, token, onUpdated }) {
   )
 }
 
-function PostOptionsMenu({ status, instanceUrl }) {
+function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, onBlock }) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const ref = useRef(null)
@@ -1071,6 +1083,21 @@ function PostOptionsMenu({ status, instanceUrl }) {
     })
   }
 
+  function handleMute() {
+    onMute?.(status.account?.id)
+    setOpen(false)
+  }
+
+  function handleBlock() {
+    onBlock?.(status.account?.id)
+    setOpen(false)
+  }
+
+  function handleDelete() {
+    onDelete?.(status.id)
+    setOpen(false)
+  }
+
   return (
     <div className="boost-dropdown-wrap" ref={ref}>
       <button className="action-btn" aria-label="More options" style={{ marginLeft: 'auto' }} onClick={() => setOpen(!open)}>
@@ -1084,6 +1111,24 @@ function PostOptionsMenu({ status, instanceUrl }) {
               <Link size={15} />
               {copied ? 'Copied!' : 'Copy link'}
             </button>
+            {isOwn && (
+              <button className="boost-dropdown-item destructive" onClick={handleDelete}>
+                <X size={15} />
+                Delete
+              </button>
+            )}
+            {!isOwn && (
+              <>
+                <button className="boost-dropdown-item" onClick={handleMute}>
+                  <Eye size={15} />
+                  Mute
+                </button>
+                <button className="boost-dropdown-item" onClick={handleBlock}>
+                  <UserPlus size={15} />
+                  Block
+                </button>
+              </>
+            )}
           </div>
         </>
       )}
@@ -1091,7 +1136,7 @@ function PostOptionsMenu({ status, instanceUrl }) {
   )
 }
 
-function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeReply, onOpenLightbox, onQuote, statusById, depth, highlightedId, onHighlightParent }) {
+const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeReply, onOpenLightbox, onQuote, statusById, depth, highlightedId, onHighlightParent, currentAccountId, onDelete, onMute, onBlock }) {
   const [busy, setBusy] = useState(false)
   const { openPickerId, setOpenPickerId } = useContext(PickerContext)
   const isBoost = Boolean(post.reblog)
@@ -1229,16 +1274,21 @@ function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeRe
                 onClose={() => setShowPicker(false)}
               />
             )}
-            <button className="action-btn monero" aria-label="Send Monero tip">
-              <Coins size={15} />
-            </button>
-            <PostOptionsMenu status={status} instanceUrl={instanceUrl} />
+            <PostOptionsMenu
+              status={status}
+              instanceUrl={instanceUrl}
+              token={token}
+              isOwn={status.account?.id === currentAccountId}
+              onDelete={onDelete}
+              onMute={onMute}
+              onBlock={onBlock}
+            />
           </div>
         </div>
       </div>
     </div>
   )
-}
+})
 
 function visibilityLabel(v) {
   switch (v) {
@@ -1259,6 +1309,8 @@ function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted }) 
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [spoilerText, setSpoilerText] = useState('')
+  const [showCW, setShowCW] = useState(false)
   const fileInputRef = useRef(null)
   const { uploads, addFiles, removeUpload, mediaIds, isUploading } = useMediaUploads(
     instanceUrl,
@@ -1266,13 +1318,15 @@ function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted }) 
   )
   const account = status?.account || {}
   const name = account.display_name || account.username || 'Unknown'
-  // Replies inherit the visibility of the post they're replying to — same
-  // type of post as the OP — rather than always defaulting to public.
   const visibility = status?.visibility || 'public'
 
   async function submit() {
     if (!text.trim() && mediaIds.length === 0) {
       setError('Write something or attach a file first.')
+      return
+    }
+    if (text.length > MAX_CHARS) {
+      setError(`Post is ${text.length - MAX_CHARS} character${text.length - MAX_CHARS !== 1 ? 's' : ''} over the limit.`)
       return
     }
     if (isUploading) {
@@ -1286,6 +1340,7 @@ function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted }) 
         inReplyToId: status.id,
         visibility,
         mediaIds,
+        spoilerText: showCW ? spoilerText : undefined,
       })
       onPosted(status.id, reply)
       onClose()
@@ -1314,31 +1369,44 @@ function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted }) 
         </div>
       )}
       {error && <div className="banner banner-error">{error}</div>}
-      <textarea
-        className="compose-textarea"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-            e.preventDefault()
-            submit()
-          }
-        }}
-        onPaste={(e) => {
-          const items = Array.from(e.clipboardData?.items || [])
-          const imageFiles = items
-            .filter((item) => item.type.startsWith('image/'))
-            .map((item) => item.getAsFile())
-            .filter(Boolean)
-          if (imageFiles.length > 0) {
-            e.preventDefault()
-            addFiles(imageFiles)
-          }
-        }}
-        placeholder={`Reply to ${name}…`}
-        rows={6}
-        autoFocus
-      />
+      {showCW && (
+        <input
+          className="compose-cw-input"
+          type="text"
+          value={spoilerText}
+          onChange={(e) => setSpoilerText(e.target.value)}
+          placeholder="Content warning…"
+          autoFocus
+        />
+      )}
+      <div className="compose-textarea-wrap">
+        <textarea
+          className="compose-textarea"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+              e.preventDefault()
+              submit()
+            }
+          }}
+          onPaste={(e) => {
+            const items = Array.from(e.clipboardData?.items || [])
+            const imageFiles = items
+              .filter((item) => item.type.startsWith('image/'))
+              .map((item) => item.getAsFile())
+              .filter(Boolean)
+            if (imageFiles.length > 0) {
+              e.preventDefault()
+              addFiles(imageFiles)
+            }
+          }}
+          placeholder={`Reply to ${name}…`}
+          rows={6}
+          autoFocus
+        />
+        <CharCounter current={text.length} max={MAX_CHARS} />
+      </div>
       <MediaUploadStrip uploads={uploads} onRemove={removeUpload} />
       <div className="compose-visibility">Replying as: {visibilityLabel(visibility)}</div>
       <div className="dialog-actions">
@@ -1361,6 +1429,14 @@ function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted }) 
           disabled={uploads.length >= 4}
         >
           <ImagePlus size={16} />
+        </button>
+        <button
+          className={`icon-btn${showCW ? ' active' : ''}`}
+          type="button"
+          aria-label="Content warning"
+          onClick={() => setShowCW((v) => !v)}
+        >
+          <Eye size={16} />
         </button>
         <div style={{ flex: 1 }} />
         <button className="pill-btn" onClick={onClose} type="button">
@@ -1392,6 +1468,10 @@ function ThreadPanelContent({
   onReplyPosted,
   backLabel,
   onQuote,
+  currentAccountId,
+  onDelete,
+  onMute,
+  onBlock,
 }) {
   const status = panel?.status
   const state = status ? replyStates[status.id] : null
@@ -1463,6 +1543,10 @@ function ThreadPanelContent({
                 onQuote={onQuote}
                 highlightedId={highlightedId}
                 onHighlightParent={setHighlightedId}
+                currentAccountId={currentAccountId}
+                onDelete={onDelete}
+                onMute={onMute}
+                onBlock={onBlock}
               />
             </motion.div>
           ))}
@@ -1488,6 +1572,10 @@ function ThreadPanelContent({
             depth={state.ancestors.length}
             highlightedId={highlightedId}
             onHighlightParent={setHighlightedId}
+            currentAccountId={currentAccountId}
+            onDelete={onDelete}
+            onMute={onMute}
+            onBlock={onBlock}
           />
         </motion.div>
       )}
@@ -1514,6 +1602,10 @@ function ThreadPanelContent({
               onQuote={onQuote}
               highlightedId={highlightedId}
               onHighlightParent={setHighlightedId}
+              currentAccountId={currentAccountId}
+              onDelete={onDelete}
+              onMute={onMute}
+              onBlock={onBlock}
             />
           </motion.div>
         ))}
@@ -1592,7 +1684,7 @@ function notificationIcon(type) {
   }
 }
 
-function NotificationRow({
+const NotificationRow = memo(function NotificationRow({
   notification,
   instanceUrl,
   token,
@@ -1601,6 +1693,12 @@ function NotificationRow({
   onComposeReply,
   onOpenLightbox,
   onRespondFollowRequest,
+  statusById,
+  onQuote,
+  currentAccountId,
+  onDelete,
+  onMute,
+  onBlock,
 }) {
   const account = notification.account || {}
   const name = account.display_name || account.username || 'Unknown'
@@ -1671,19 +1769,37 @@ function NotificationRow({
               onOpenThread={onOpenThread}
               onComposeReply={onComposeReply}
               onOpenLightbox={onOpenLightbox}
+              statusById={statusById}
+              onQuote={onQuote}
               compact
+              currentAccountId={currentAccountId}
+              onDelete={onDelete}
+              onMute={onMute}
+              onBlock={onBlock}
             />
           </div>
         )}
       </div>
     </div>
   )
+})
+
+const MAX_CHARS = 500
+
+function CharCounter({ current, max }) {
+  const remaining = max - current
+  if (current === 0) return null
+  const cls = remaining < 0 ? 'over' : remaining < 50 ? 'low' : ''
+  return <span className={`char-counter ${cls}`}>{remaining}</span>
 }
 
 function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [visibility, setVisibility] = useState('public')
+  const [spoilerText, setSpoilerText] = useState('')
+  const [showCW, setShowCW] = useState(false)
   const fileInputRef = useRef(null)
   const { uploads, addFiles, removeUpload, mediaIds, isUploading } = useMediaUploads(
     instanceUrl,
@@ -1695,6 +1811,10 @@ function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus }) {
       setError('Write something or attach a file first.')
       return
     }
+    if (text.length > MAX_CHARS) {
+      setError(`Post is ${text.length - MAX_CHARS} character${text.length - MAX_CHARS !== 1 ? 's' : ''} over the limit.`)
+      return
+    }
     if (isUploading) {
       setError('Still uploading — hang on a sec.')
       return
@@ -1704,7 +1824,9 @@ function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus }) {
     try {
       const status = await mitra.postStatus(instanceUrl, token, text.trim(), {
         mediaIds,
+        visibility,
         quoteId: quoteStatus?.id,
+        spoilerText: showCW ? spoilerText : undefined,
       })
       onPosted(status)
       onClose()
@@ -1725,31 +1847,44 @@ function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus }) {
           </button>
         </div>
         {error && <div className="banner banner-error">{error}</div>}
-        <textarea
-          className="compose-textarea"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-              e.preventDefault()
-              submit()
-            }
-          }}
-          onPaste={(e) => {
-            const items = Array.from(e.clipboardData?.items || [])
-            const imageFiles = items
-              .filter((item) => item.type.startsWith('image/'))
-              .map((item) => item.getAsFile())
-              .filter(Boolean)
-            if (imageFiles.length > 0) {
-              e.preventDefault()
-              addFiles(imageFiles)
-            }
-          }}
-          placeholder="What's on your mind?"
-          rows={5}
-          autoFocus
-        />
+        {showCW && (
+          <input
+            className="compose-cw-input"
+            type="text"
+            value={spoilerText}
+            onChange={(e) => setSpoilerText(e.target.value)}
+            placeholder="Content warning…"
+            autoFocus
+          />
+        )}
+        <div className="compose-textarea-wrap">
+          <textarea
+            className="compose-textarea"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault()
+                submit()
+              }
+            }}
+            onPaste={(e) => {
+              const items = Array.from(e.clipboardData?.items || [])
+              const imageFiles = items
+                .filter((item) => item.type.startsWith('image/'))
+                .map((item) => item.getAsFile())
+                .filter(Boolean)
+              if (imageFiles.length > 0) {
+                e.preventDefault()
+                addFiles(imageFiles)
+              }
+            }}
+            placeholder="What's on your mind?"
+            rows={5}
+            autoFocus
+          />
+          <CharCounter current={text.length} max={MAX_CHARS} />
+        </div>
         {quoteStatus && (
           <div className="compose-quote-preview">
             <QuoteCard status={quoteStatus} instanceUrl={instanceUrl} onOpenThread={() => {}} />
@@ -1777,6 +1912,24 @@ function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus }) {
           >
             <ImagePlus size={16} />
           </button>
+          <button
+            className={`icon-btn${showCW ? ' active' : ''}`}
+            type="button"
+            aria-label="Content warning"
+            onClick={() => setShowCW((v) => !v)}
+          >
+            <Eye size={16} />
+          </button>
+          <select
+            className="compose-visibility-select"
+            value={visibility}
+            onChange={(e) => setVisibility(e.target.value)}
+          >
+            <option value="public">{visibilityLabel('public')}</option>
+            <option value="unlisted">{visibilityLabel('unlisted')}</option>
+            <option value="private">{visibilityLabel('private')}</option>
+            <option value="direct">{visibilityLabel('direct')}</option>
+          </select>
           <div style={{ flex: 1 }} />
           <button className="pill-btn" onClick={onClose} type="button">
             Cancel
@@ -1809,11 +1962,16 @@ function useLayoutTier() {
   const [width, setWidth] = useState(() => window.innerWidth)
 
   useEffect(() => {
+    let raf = null
     function onResize() {
-      setWidth(window.innerWidth)
+      if (raf) cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => setWidth(window.innerWidth))
     }
     window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      if (raf) cancelAnimationFrame(raf)
+    }
   }, [])
 
   if (width >= WIDE_BREAKPOINT) return 'wide'
@@ -1839,7 +1997,6 @@ export default function App() {
   const [notifications, setNotifications] = useState([])
   const [notificationsLoading, setNotificationsLoading] = useState(false)
   const [notificationsError, setNotificationsError] = useState('')
-  const [notificationsLoaded, setNotificationsLoaded] = useState(false)
   const [exploreFeed, setExploreFeed] = useState('federated') // 'federated' | 'local'
   const [exploreTimelines, setExploreTimelines] = useState({ federated: null, local: null })
   const [exploreLoading, setExploreLoading] = useState(false)
@@ -1943,7 +2100,6 @@ export default function App() {
     try {
       const items = await mitra.fetchNotifications(session.instanceUrl, session.token)
       setNotifications(items)
-      setNotificationsLoaded(true)
     } catch (err) {
       setNotificationsError(err.message || 'Failed to load notifications.')
     } finally {
@@ -1952,10 +2108,10 @@ export default function App() {
   }, [session])
 
   useEffect(() => {
-    if ((view === 'notifications' || tier === 'wide') && !notificationsLoaded) {
+    if (view === 'notifications' || tier === 'wide') {
       loadNotifications()
     }
-  }, [view, tier, notificationsLoaded, loadNotifications])
+  }, [view, tier, loadNotifications])
 
   // Wide tier shows notifications as a permanent column, not a tab — if
   // the window shrinks below wide while "Notifications" is the active
@@ -2003,6 +2159,32 @@ export default function App() {
 
   async function respondFollowRequest(accountId, action) {
     await mitra.respondFollowRequest(session.instanceUrl, session.token, accountId, action)
+  }
+
+  async function handleDeleteStatus(statusId) {
+    try {
+      await mitra.deleteStatus(session.instanceUrl, session.token, statusId)
+      setTimeline((prev) => prev.filter((p) => p.id !== statusId))
+      if (sidePanel?.status?.id === statusId) setSidePanel(null)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  async function handleMuteAccount(accountId) {
+    try {
+      await mitra.muteAccount(session.instanceUrl, session.token, accountId)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  async function handleBlockAccount(accountId) {
+    try {
+      await mitra.blockAccount(session.instanceUrl, session.token, accountId)
+    } catch (err) {
+      console.error(err)
+    }
   }
 
   function handleRefresh() {
@@ -2187,6 +2369,10 @@ export default function App() {
               onComposeReply={handleComposeReply}
               onOpenLightbox={setLightboxAttachment}
               onRespondFollowRequest={respondFollowRequest}
+              currentAccountId={session.account?.id}
+              onDelete={handleDeleteStatus}
+              onMute={handleMuteAccount}
+              onBlock={handleBlockAccount}
             />
           ))}
         </div>
@@ -2219,6 +2405,10 @@ export default function App() {
                   onComposeReply={handleComposeReply}
                   onOpenLightbox={setLightboxAttachment}
                   onQuote={handleQuote}
+                  currentAccountId={session.account?.id}
+                  onDelete={handleDeleteStatus}
+                  onMute={handleMuteAccount}
+                  onBlock={handleBlockAccount}
                 />
               ))}
             </div>
@@ -2273,6 +2463,10 @@ export default function App() {
                   onComposeReply={handleComposeReply}
                   onOpenLightbox={setLightboxAttachment}
                   onQuote={handleQuote}
+                  currentAccountId={session.account?.id}
+                  onDelete={handleDeleteStatus}
+                  onMute={handleMuteAccount}
+                  onBlock={handleBlockAccount}
                 />
               ))}
             </div>
@@ -2301,6 +2495,10 @@ export default function App() {
     token: session.token,
     onReplyPosted: handleReplyPosted,
     onQuote: handleQuote,
+    currentAccountId: session.account?.id,
+    onDelete: handleDeleteStatus,
+    onMute: handleMuteAccount,
+    onBlock: handleBlockAccount,
   }
 
   return (

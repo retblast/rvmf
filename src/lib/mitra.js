@@ -179,11 +179,15 @@ export function respondFollowRequest(instanceUrl, token, accountId, action) {
 }
 
 export function postStatus(instanceUrl, token, text, options = {}) {
-  const { inReplyToId, visibility = 'public', mediaIds, quoteId } = options
+  const { inReplyToId, visibility = 'public', mediaIds, quoteId, spoilerText } = options
   const body = { status: text, visibility }
   if (inReplyToId) body.in_reply_to_id = inReplyToId
   if (quoteId) body.quote_id = quoteId
   if (mediaIds && mediaIds.length > 0) body.media_ids = mediaIds
+  if (spoilerText) {
+    body.sensitive = true
+    body.spoiler_text = spoilerText
+  }
   return apiFetch(instanceUrl, '/api/v1/statuses', {
     method: 'POST',
     headers: {
@@ -293,5 +297,26 @@ export function votePoll(instanceUrl, token, pollId, choices) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ choices }),
+  })
+}
+
+export function deleteStatus(instanceUrl, token, id) {
+  return apiFetch(instanceUrl, `/api/v1/statuses/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function muteAccount(instanceUrl, token, accountId) {
+  return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/mute`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function blockAccount(instanceUrl, token, accountId) {
+  return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/block`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
   })
 }
