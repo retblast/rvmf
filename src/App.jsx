@@ -1713,28 +1713,28 @@ function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted, ma
         >
           <Eye size={16} />
         </button>
-        <div style={{ position: 'relative' }}>
-          <button
-            className={`icon-btn${showEmojiPicker ? ' active' : ''}`}
-            type="button"
-            aria-label="Emoji"
-            onClick={() => setShowEmojiPicker((v) => !v)}
+          <div style={{ position: 'relative', flex: '0 0 auto' }}>
+            <button
+              className={`icon-btn${showEmojiPicker ? ' active' : ''}`}
+              type="button"
+              aria-label="Emoji"
+              onClick={() => setShowEmojiPicker((v) => !v)}
+            >
+              <Smile size={16} />
+            </button>
+            {showEmojiPicker && (
+              <EmojiPicker
+                customEmojis={customEmojis}
+                onSelect={(ch) => { insertAtCaret(text, setText, textareaRef, ch); setShowEmojiPicker(false) }}
+                onClose={() => setShowEmojiPicker(false)}
+              />
+            )}
+          </div>
+          <select
+            className="compose-visibility-select"
+            value={visibility}
+            onChange={(e) => setVisibility(e.target.value)}
           >
-            <Smile size={16} />
-          </button>
-          {showEmojiPicker && (
-            <EmojiPicker
-              customEmojis={customEmojis}
-              onSelect={(ch) => { insertAtCaret(text, setText, textareaRef, ch); setShowEmojiPicker(false) }}
-              onClose={() => setShowEmojiPicker(false)}
-            />
-          )}
-        </div>
-        <select
-          className="compose-visibility-select"
-          value={visibility}
-          onChange={(e) => setVisibility(e.target.value)}
-        >
           <option value="public">{visibilityLabel('public')}</option>
           <option value="unlisted">{visibilityLabel('unlisted')}</option>
           <option value="private">{visibilityLabel('private')}</option>
@@ -1766,6 +1766,7 @@ function ThreadPanelContent({
   onOpenProfile,
   onUpdateReply,
   onClose,
+  onCancelCompose,
   instanceUrl,
   token,
   onReplyPosted,
@@ -1780,6 +1781,7 @@ function ThreadPanelContent({
 }) {
   const status = panel?.status
   const state = status ? replyStates[status.id] : null
+  const composingStatusId = panel?.composingStatusId || null
 
   const statusById = useMemo(() => {
     const map = new Map()
@@ -1794,6 +1796,8 @@ function ThreadPanelContent({
     if (state?.items) collect(state.items)
     return map
   }, [status, state])
+
+  const composingStatus = composingStatusId ? (statusById.get(composingStatusId) || null) : null
 
   const [highlightedId, setHighlightedId] = useState(null)
 
@@ -1810,7 +1814,10 @@ function ThreadPanelContent({
         instanceUrl={instanceUrl}
         token={token}
         onClose={onClose}
-        onPosted={onReplyPosted}
+        onPosted={(rootId, reply) => {
+          onReplyPosted(rootId, reply)
+          onClose()
+        }}
         maxCharacters={maxCharacters}
       />
     )
@@ -1820,17 +1827,27 @@ function ThreadPanelContent({
     <motion.div key={status?.id || 'empty'}>
       <div className="thread-panel-header">
         <span className="dialog-title">
-          {backLabel && (
-            <button className="icon-btn thread-back-btn" aria-label={backLabel} onClick={onClose}>
-              <ArrowLeft size={16} />
-            </button>
+          {composingStatus ? 'Reply' : (
+            <>
+              {backLabel && (
+                <button className="icon-btn thread-back-btn" aria-label={backLabel} onClick={onClose}>
+                  <ArrowLeft size={16} />
+                </button>
+              )}
+              {state?.ancestors?.length > 0 ? 'Thread' : 'Replies'}
+            </>
           )}
-          {state?.ancestors?.length > 0 ? 'Thread' : 'Replies'}
         </span>
-        {!backLabel && (
-          <button className="icon-btn" aria-label="Close replies" onClick={onClose}>
+        {composingStatus ? (
+          <button className="icon-btn" aria-label="Cancel reply" onClick={onCancelCompose}>
             <X size={16} />
           </button>
+        ) : (
+          !backLabel && (
+            <button className="icon-btn" aria-label="Close replies" onClick={onClose}>
+              <X size={16} />
+            </button>
+          )
         )}
       </div>
       {state?.ancestors?.length > 0 && (
@@ -1893,6 +1910,18 @@ function ThreadPanelContent({
             onBlock={onBlock}
           />
         </motion.div>
+      )}
+      {composingStatus && (
+        <div className="inline-reply-composer">
+          <ReplyComposerFields
+            status={composingStatus}
+            instanceUrl={instanceUrl}
+            token={token}
+            onClose={onCancelCompose}
+            onPosted={onReplyPosted}
+            maxCharacters={maxCharacters}
+          />
+        </div>
       )}
       <motion.div
         className="thread-panel-replies"
@@ -2251,7 +2280,7 @@ function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus, max
           >
             <Eye size={16} />
           </button>
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative', flex: '0 0 auto' }}>
             <button
               className={`icon-btn${showEmojiPicker ? ' active' : ''}`}
               type="button"
@@ -2278,7 +2307,7 @@ function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus, max
             <option value="private">{visibilityLabel('private')}</option>
             <option value="direct">{visibilityLabel('direct')}</option>
           </select>
-          <div style={{ flex: 1 }} />
+          <div style={{ flex: 1, minWidth: 0 }} />
           <button className="pill-btn" onClick={onClose} type="button">
             Cancel
           </button>
@@ -2864,11 +2893,20 @@ export default function App() {
 
   // Opens the reply-compose slide-out for `status`.
   function handleComposeReply(status) {
-    setSidePanel((prev) => ({
-      mode: 'compose',
-      status,
-      threadRoot: prev?.mode === 'thread' ? prev.status : null,
-    }))
+    setSidePanel((prev) => {
+      if (prev?.mode === 'thread') {
+        return { ...prev, composingStatusId: status.id }
+      }
+      return { mode: 'compose', status, threadRoot: null }
+    })
+  }
+
+  function handleCancelCompose() {
+    setSidePanel((prev) => {
+      if (!prev || !prev.composingStatusId) return prev
+      const { composingStatusId, ...rest } = prev
+      return rest
+    })
   }
 
   // Opens the profile view for an account.
@@ -3166,6 +3204,7 @@ export default function App() {
     instanceUrl: session.instanceUrl,
     token: session.token,
     onReplyPosted: handleReplyPosted,
+    onCancelCompose: handleCancelCompose,
     onQuote: handleQuote,
     currentAccountId: session.account?.id,
     onDelete: handleDeleteStatus,
