@@ -2079,12 +2079,11 @@ function ProfileView({ accountId, instanceUrl, token, onOpenThread, onComposeRep
   return (
     <div className="timeline-wrap">
       <div className="profile-view">
-        {account.header && account.header !== '' && (
-          <img className="profile-header-img" src={account.header} alt="" />
-        )}
-        <div className="profile-top-bar">
-          <button className="icon-btn" onClick={onClose}><ArrowLeft size={16} /></button>
-          <span className="profile-top-label">Back to timeline</span>
+        <div className="profile-header-wrap">
+          {account.header && account.header !== '' && (
+            <img className="profile-header-img" src={account.header} alt="" />
+          )}
+          <button className="icon-btn profile-back-btn" onClick={onClose}><ArrowLeft size={16} /></button>
         </div>
         <div className="profile-info">
           <Avatar name={displayName} src={account.avatar} large />
