@@ -1415,7 +1415,6 @@ function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted, ma
         spoilerText: showCW ? spoilerText : undefined,
       })
       onPosted(status.id, reply)
-      onClose()
     } catch (err) {
       setError(err.message || 'Something went wrong.')
     } finally {
