@@ -1587,6 +1587,8 @@ button {
   border-left: 1px solid var(--border);
   background: var(--view-bg);
   transition: width 240ms ease;
+  position: relative;
+  z-index: 51;
 }
 
 .thread-panel.open {
