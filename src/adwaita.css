@@ -651,7 +651,7 @@ button {
 }
 
 .dialog-card {
-  width: 420px;
+  width: 480px;
   max-width: calc(100vw - 32px);
   background: var(--view-bg);
   border: 1px solid var(--border);
