@@ -26,6 +26,8 @@ import {
   ChevronRight,
   Smile,
   Link,
+  User,
+  Image as ImageIcon,
 } from 'lucide-react'
 import { useMitraSession } from './useMitraSession'
 import * as mitra from './lib/mitra'
@@ -323,10 +325,10 @@ function processStatusContent(status, instanceUrl) {
   return { textNodes, attachments, sensitive, spoilerText }
 }
 
-function Avatar({ name, src, large, size }) {
+function Avatar({ name, src, large, size, onClick }) {
   const style = size ? { width: size, height: size } : undefined
   if (src) {
-    return <img className={`avatar${large ? ' lg' : ''}`} style={style} src={src} alt="" />
+    return <img className={`avatar${large ? ' lg' : ''}${onClick ? ' clickable' : ''}`} style={style} src={src} alt="" onClick={onClick} />
   }
   const initials = (name || '?')
     .split(' ')
@@ -335,7 +337,7 @@ function Avatar({ name, src, large, size }) {
     .slice(0, 2)
     .toUpperCase()
   return (
-    <div className={`avatar${large ? ' lg' : ''}`} style={style}>
+    <div className={`avatar${large ? ' lg' : ''}${onClick ? ' clickable' : ''}`} style={style} onClick={onClick}>
       {initials}
     </div>
   )
@@ -634,6 +636,7 @@ function ThreadReply({
   onOpenThread,
   onComposeReply,
   onOpenLightbox,
+  onOpenProfile,
   statusById,
   onQuote,
   compact = false,
@@ -698,7 +701,7 @@ function ThreadReply({
         className={`reply-row${highlightedId === status.id ? ' highlighted' : ''}`}
         style={{ '--reply-depth': depth }}
       >
-        <Avatar name={name} src={account.avatar} />
+        <Avatar name={name} src={account.avatar} onClick={() => onOpenProfile?.(account)} />
         <div
           className="reply-body"
           onClick={(e) => {
@@ -707,8 +710,8 @@ function ThreadReply({
           }}
         >
           <div className="post-meta">
-            <span className="post-name">{name}</span>
-            <span className="post-handle">@{account.acct || account.username}</span>
+            <span className="post-name" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(account) }}>{name}</span>
+            <span className="post-handle" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(account) }}>@{account.acct || account.username}</span>
             {parentStatus && (
               <button
                 className="post-parent-link"
@@ -806,6 +809,7 @@ function ThreadReply({
                 onOpenThread={onOpenThread}
                 onComposeReply={onComposeReply}
                 onOpenLightbox={onOpenLightbox}
+                onOpenProfile={onOpenProfile}
                 statusById={statusById}
                 onQuote={onQuote}
                 highlightedId={highlightedId}
@@ -1136,7 +1140,7 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
   )
 }
 
-const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeReply, onOpenLightbox, onQuote, statusById, depth, highlightedId, onHighlightParent, currentAccountId, onDelete, onMute, onBlock }) {
+const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onQuote, statusById, depth, highlightedId, onHighlightParent, currentAccountId, onDelete, onMute, onBlock }) {
   const [busy, setBusy] = useState(false)
   const { openPickerId, setOpenPickerId } = useContext(PickerContext)
   const isBoost = Boolean(post.reblog)
@@ -1196,7 +1200,7 @@ const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOp
         </div>
       )}
       <div className="post-row-main">
-        <Avatar name={displayName} src={account.avatar} />
+        <Avatar name={displayName} src={account.avatar} onClick={() => onOpenProfile?.(account)} />
         <div
           className="post-body"
           onClick={(e) => {
@@ -1205,8 +1209,8 @@ const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOp
           }}
         >
           <div className="post-meta">
-            <span className="post-name">{displayName}</span>
-            <span className="post-handle">@{account.acct || account.username}</span>
+            <span className="post-name" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(account) }}>{displayName}</span>
+            <span className="post-handle" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(account) }}>@{account.acct || account.username}</span>
             {parentStatus && (
               <button
                 className="post-parent-link"
@@ -1461,6 +1465,7 @@ function ThreadPanelContent({
   onOpenThread,
   onComposeReply,
   onOpenLightbox,
+  onOpenProfile,
   onUpdateReply,
   onClose,
   instanceUrl,
@@ -1541,6 +1546,7 @@ function ThreadPanelContent({
                 onOpenThread={onOpenThread}
                 onComposeReply={onComposeReply}
                 onOpenLightbox={onOpenLightbox}
+                onOpenProfile={onOpenProfile}
                 statusById={statusById}
                 onQuote={onQuote}
                 highlightedId={highlightedId}
@@ -1569,6 +1575,7 @@ function ThreadPanelContent({
             onOpenThread={onOpenThread}
             onComposeReply={onComposeReply}
             onOpenLightbox={onOpenLightbox}
+            onOpenProfile={onOpenProfile}
             onQuote={onQuote}
             statusById={statusById}
             depth={state.ancestors?.length || 0}
@@ -1600,6 +1607,7 @@ function ThreadPanelContent({
               onOpenThread={onOpenThread}
               onComposeReply={onComposeReply}
               onOpenLightbox={onOpenLightbox}
+              onOpenProfile={onOpenProfile}
               statusById={statusById}
               onQuote={onQuote}
               highlightedId={highlightedId}
@@ -1694,6 +1702,7 @@ const NotificationRow = memo(function NotificationRow({
   onOpenThread,
   onComposeReply,
   onOpenLightbox,
+  onOpenProfile,
   onRespondFollowRequest,
   statusById,
   onQuote,
@@ -1771,6 +1780,7 @@ const NotificationRow = memo(function NotificationRow({
               onOpenThread={onOpenThread}
               onComposeReply={onComposeReply}
               onOpenLightbox={onOpenLightbox}
+              onOpenProfile={onOpenProfile}
               statusById={statusById}
               onQuote={onQuote}
               compact
@@ -1948,6 +1958,192 @@ function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus, max
   )
 }
 
+function ProfileView({ accountId, instanceUrl, token, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onUpdate, onQuote, currentAccountId, onDelete, onMute, onBlock, onClose }) {
+  const [account, setAccount] = useState(null)
+  const [statuses, setStatuses] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [tab, setTab] = useState('posts')
+  const [relationship, setRelationship] = useState(null)
+  const [followBusy, setFollowBusy] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+
+  useEffect(() => {
+    setAccount(null)
+    setStatuses([])
+    setLoading(true)
+    setError('')
+    setTab('posts')
+    setRelationship(null)
+    setHasMore(true)
+
+    mitra.fetchAccount(instanceUrl, accountId)
+      .then((acct) => {
+        setAccount(acct)
+        return mitra.fetchAccountStatuses(instanceUrl, token, acct.id)
+      })
+      .then((list) => {
+        setStatuses(list)
+        if (list.length < 20) setHasMore(false)
+      })
+      .catch((err) => setError(err.message || 'Failed to load profile.'))
+      .finally(() => setLoading(false))
+  }, [accountId, instanceUrl, token])
+
+  useEffect(() => {
+    if (!account || account.id === currentAccountId) return
+    mitra.fetchRelationships(instanceUrl, token, [account.id])
+      .then((rels) => setRelationship(rels?.[0] || null))
+      .catch(() => {})
+  }, [account, instanceUrl, token, currentAccountId])
+
+  const isOwn = account?.id === currentAccountId
+
+  async function toggleFollow() {
+    if (!account || followBusy) return
+    setFollowBusy(true)
+    try {
+      const result = relationship?.following
+        ? await mitra.unfollowAccount(instanceUrl, token, account.id)
+        : await mitra.followAccount(instanceUrl, token, account.id)
+      setRelationship(result)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setFollowBusy(false)
+    }
+  }
+
+  async function loadMore() {
+    if (!account || loadingMore || !hasMore) return
+    setLoadingMore(true)
+    try {
+      const lastId = statuses[statuses.length - 1]?.id
+      if (!lastId) return
+      const params = tab === 'media' ? { onlyMedia: true, max_id: lastId } : { max_id: lastId }
+      const more = await mitra.fetchAccountStatuses(instanceUrl, token, account.id, params)
+      setStatuses((prev) => [...prev, ...more])
+      if (more.length < 20) setHasMore(false)
+    } catch {
+      // silent
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  function switchTab(newTab) {
+    if (newTab === tab) return
+    setTab(newTab)
+    setStatuses([])
+    setHasMore(true)
+    setLoading(true)
+    const params = newTab === 'media' ? { onlyMedia: true } : {}
+    mitra.fetchAccountStatuses(instanceUrl, token, accountId, params)
+      .then((list) => { setStatuses(list); if (list.length < 20) setHasMore(false) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }
+
+  const sentinelRef = useRef(null)
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) loadMore() }, { rootMargin: '200px' })
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [account, tab, statuses.length, loadingMore, hasMore])
+
+  if (loading && !account) {
+    return (
+      <div className="timeline-wrap">
+        <div className="empty-state">Loading…</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="timeline-wrap">
+        <button className="icon-btn profile-back" onClick={onClose}><ArrowLeft size={16} /></button>
+        <div className="banner banner-error">{error}</div>
+      </div>
+    )
+  }
+
+  if (!account) return null
+
+  const displayName = account.display_name || account.username || 'Unknown'
+  const bio = account.note ? processStatusContent({ content: account.note }, instanceUrl).textNodes : null
+
+  return (
+    <div className="timeline-wrap">
+      <div className="profile-view">
+        {account.header && account.header !== '' && (
+          <img className="profile-header-img" src={account.header} alt="" />
+        )}
+        <div className="profile-top-bar">
+          <button className="icon-btn" onClick={onClose}><ArrowLeft size={16} /></button>
+        </div>
+        <div className="profile-info">
+          <Avatar name={displayName} src={account.avatar} large />
+          <div className="profile-names">
+            <span className="profile-display-name">{displayName}</span>
+            <span className="profile-handle">@{account.acct || account.username}</span>
+          </div>
+          {!isOwn && (
+            <button
+              className={`pill-btn ${relationship?.following ? '' : 'suggested'}`}
+              onClick={toggleFollow}
+              disabled={followBusy}
+            >
+              {followBusy ? '…' : relationship?.following ? 'Following' : 'Follow'}
+            </button>
+          )}
+        </div>
+        {bio && <div className="profile-bio">{bio}</div>}
+        <div className="profile-stats">
+          <span><strong>{account.statuses_count}</strong> posts</span>
+          <span><strong>{account.following_count}</strong> following</span>
+          <span><strong>{account.followers_count}</strong> followers</span>
+        </div>
+        <div className="profile-tabs">
+          <button className={`profile-tab${tab === 'posts' ? ' active' : ''}`} onClick={() => switchTab('posts')}>Posts</button>
+          <button className={`profile-tab${tab === 'media' ? ' active' : ''}`} onClick={() => switchTab('media')}>Media</button>
+        </div>
+        {loading && statuses.length === 0 ? (
+          <div className="empty-state">Loading…</div>
+        ) : statuses.length === 0 ? (
+          <div className="empty-state">No posts yet.</div>
+        ) : (
+          <div className="timeline-list">
+            {statuses.map((post) => (
+              <PostRow
+                key={post.id}
+                post={post}
+                instanceUrl={instanceUrl}
+                token={token}
+                onUpdate={onUpdate}
+                onOpenThread={onOpenThread}
+                onComposeReply={onComposeReply}
+                onOpenLightbox={onOpenLightbox}
+                onOpenProfile={onOpenProfile}
+                onQuote={onQuote}
+                currentAccountId={currentAccountId}
+                onDelete={onDelete}
+                onMute={onMute}
+                onBlock={onBlock}
+              />
+            ))}
+          </div>
+        )}
+        {hasMore && statuses.length > 0 && <div ref={sentinelRef} className="scroll-sentinel" />}
+        {loadingMore && <div className="empty-state">Loading…</div>}
+      </div>
+    </div>
+  )
+}
+
 // Three layout tiers based on window width. Wide: notifications get a
 // permanent left column and the thread panel gets a permanent right
 // column — a real 3-pane layout, nothing slides. Medium: today's
@@ -1993,6 +2189,7 @@ export default function App() {
   const replyStatesRef = useRef(replyStates)
   replyStatesRef.current = replyStates
   const [sidePanel, setSidePanel] = useState(null)
+  const [profileAccountId, setProfileAccountId] = useState(null)
   const [lightboxAttachment, setLightboxAttachment] = useState(null)
   const [notifications, setNotifications] = useState([])
   const [notificationsLoading, setNotificationsLoading] = useState(false)
@@ -2259,6 +2456,14 @@ export default function App() {
     setSidePanel({ mode: 'compose', status })
   }
 
+  // Opens the profile view for an account.
+  function handleOpenProfile(account) {
+    if (!account?.id) return
+    setSidePanel(null)
+    setProfileAccountId(account.id)
+    setView('home')
+  }
+
   function handleQuote(status) {
     setQuoteStatus(status)
     setComposing(true)
@@ -2368,6 +2573,7 @@ export default function App() {
               onOpenThread={handleOpenThread}
               onComposeReply={handleComposeReply}
               onOpenLightbox={setLightboxAttachment}
+              onOpenProfile={handleOpenProfile}
               onRespondFollowRequest={respondFollowRequest}
               currentAccountId={session.account?.id}
               onDelete={handleDeleteStatus}
@@ -2380,7 +2586,24 @@ export default function App() {
     </>
   )
 
-  const timelineContent = (
+  const timelineContent = profileAccountId ? (
+    <ProfileView
+      accountId={profileAccountId}
+      instanceUrl={session.instanceUrl}
+      token={session.token}
+      onOpenThread={handleOpenThread}
+      onComposeReply={handleComposeReply}
+      onOpenLightbox={setLightboxAttachment}
+      onOpenProfile={handleOpenProfile}
+      onUpdate={updatePost}
+      onQuote={handleQuote}
+      currentAccountId={session.account?.id}
+      onDelete={handleDeleteStatus}
+      onMute={handleMuteAccount}
+      onBlock={handleBlockAccount}
+      onClose={() => setProfileAccountId(null)}
+    />
+  ) : (
     <div className="timeline-wrap">
       {view === 'home' && (
         <>
@@ -2404,6 +2627,7 @@ export default function App() {
                   onOpenThread={handleOpenThread}
                   onComposeReply={handleComposeReply}
                   onOpenLightbox={setLightboxAttachment}
+                  onOpenProfile={handleOpenProfile}
                   onQuote={handleQuote}
                   currentAccountId={session.account?.id}
                   onDelete={handleDeleteStatus}
@@ -2462,6 +2686,7 @@ export default function App() {
                   onOpenThread={handleOpenThread}
                   onComposeReply={handleComposeReply}
                   onOpenLightbox={setLightboxAttachment}
+                  onOpenProfile={handleOpenProfile}
                   onQuote={handleQuote}
                   currentAccountId={session.account?.id}
                   onDelete={handleDeleteStatus}
@@ -2489,6 +2714,7 @@ export default function App() {
     onOpenThread: handleOpenThread,
     onComposeReply: handleComposeReply,
     onOpenLightbox: setLightboxAttachment,
+    onOpenProfile: handleOpenProfile,
     onUpdateReply: updateReplyInPanel,
     onClose: closeSidePanel,
     instanceUrl: session.instanceUrl,

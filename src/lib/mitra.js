@@ -328,3 +328,37 @@ export function blockAccount(instanceUrl, token, accountId) {
     headers: { Authorization: `Bearer ${token}` },
   })
 }
+
+export function fetchAccount(instanceUrl, accountId) {
+  return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}`)
+}
+
+export function fetchAccountStatuses(instanceUrl, token, accountId, { onlyMedia = false, max_id } = {}) {
+  const params = new URLSearchParams({ limit: '20' })
+  if (onlyMedia) params.set('only_media', 'true')
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/statuses?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function fetchRelationships(instanceUrl, token, accountIds) {
+  const params = accountIds.map((id) => `id[]=${id}`).join('&')
+  return apiFetch(instanceUrl, `/api/v1/accounts/relationships?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function followAccount(instanceUrl, token, accountId) {
+  return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/follow`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function unfollowAccount(instanceUrl, token, accountId) {
+  return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/unfollow`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
