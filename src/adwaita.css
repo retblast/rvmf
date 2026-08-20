@@ -1687,7 +1687,6 @@ textarea:focus-visible {
   align-items: flex-end;
   gap: 12px;
   padding: 0 16px;
-  margin-top: -40px;
   flex-wrap: wrap;
   position: relative;
   z-index: 1;
