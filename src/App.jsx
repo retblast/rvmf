@@ -318,18 +318,11 @@ function processStatusContent(status, instanceUrl) {
   )
   const textNodes = renderRichText(cleanedText, status.mentions, status.emojis)
 
-  // Poster-domain images are recovered as normal attachments — the poster
-  // clearly intended them to be shown; only local-instance ones are truly
-  // quarantined (CW blurred).
-  const posterAttachments = posterRecoveryUrls.map((url, i) => ({
-    id: `poster-recovered-${status.id}-${i}`,
-    type: 'image',
-    url,
-    preview_url: url,
-    description: '',
-  }))
-
-  const quarantinedAttachments = quarantinedUrls.map((url, i) => ({
+  // Both local-instance and poster-domain recovered images are shown behind
+  // the CW blur — the admin disabled inline embedding for a reason, and
+  // we don't know why, so blur is the safe default.
+  const allRecovered = [...quarantinedUrls, ...posterRecoveryUrls]
+  const quarantinedAttachments = allRecovered.map((url, i) => ({
     id: `quarantined-${status.id}-${i}`,
     type: 'image',
     url,
@@ -339,7 +332,6 @@ function processStatusContent(status, instanceUrl) {
 
   const attachments = [
     ...(status.media_attachments || []),
-    ...posterAttachments,
     ...quarantinedAttachments,
   ]
   const hasQuarantined = quarantinedAttachments.length > 0
@@ -347,7 +339,7 @@ function processStatusContent(status, instanceUrl) {
   const spoilerText = status.sensitive
     ? status.spoiler_text
     : hasQuarantined
-      ? "Image hidden by this instance's media settings — shown here since it's hosted locally"
+      ? "Image hidden by this instance's media settings"
       : status.spoiler_text
 
   return { textNodes, attachments, sensitive, spoilerText }
