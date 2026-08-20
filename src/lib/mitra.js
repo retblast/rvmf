@@ -1,0 +1,297 @@
+const APP_STORAGE_PREFIX = 'mitra-app:'
+const PENDING_LOGIN_KEY = 'mitra-pending-login'
+
+export function normalizeInstanceUrl(input) {
+  let url = input.trim()
+  if (!/^https?:\/\//i.test(url)) {
+    url = `https://${url}`
+  }
+  return url.replace(/\/+$/, '')
+}
+
+function getRedirectUri() {
+  return `${window.location.origin}${window.location.pathname}`
+}
+
+async function apiFetch(instanceUrl, path, options = {}) {
+  let res
+  try {
+    res = await fetch(`${instanceUrl}${path}`, options)
+  } catch {
+    throw new Error(
+      "Couldn't reach that instance. Check the address, and that it allows requests from this origin (CORS)."
+    )
+  }
+
+  if (!res.ok) {
+    let detail = res.statusText
+    try {
+      const body = await res.json()
+      detail = body.error_description || body.error || detail
+    } catch {
+      // response wasn't JSON, keep statusText
+    }
+    throw new Error(`${detail} (${res.status})`)
+  }
+
+  if (res.status === 204) return null
+  return res.json()
+}
+
+function loadAppCredentials(instanceUrl) {
+  try {
+    const raw = localStorage.getItem(APP_STORAGE_PREFIX + instanceUrl)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function saveAppCredentials(instanceUrl, creds) {
+  localStorage.setItem(APP_STORAGE_PREFIX + instanceUrl, JSON.stringify(creds))
+}
+
+async function registerApp(instanceUrl, redirectUri) {
+  const app = await apiFetch(instanceUrl, '/api/v1/apps', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_name: 'Mitra Adwaita Frontend',
+      redirect_uris: redirectUri,
+      scopes: 'read write',
+    }),
+  })
+  return { clientId: app.client_id, clientSecret: app.client_secret, redirectUri }
+}
+
+async function getOrRegisterApp(instanceUrl, redirectUri) {
+  const cached = loadAppCredentials(instanceUrl)
+  if (cached && cached.redirectUri === redirectUri) return cached
+  const creds = await registerApp(instanceUrl, redirectUri)
+  saveAppCredentials(instanceUrl, creds)
+  return creds
+}
+
+/**
+ * Step 1: register (or reuse) an app registration, then navigate the
+ * browser to the instance's own hosted login page. The instance handles
+ * the username/password entirely on its own origin — this app never sees
+ * either.
+ */
+export async function beginLogin(rawInstanceUrl) {
+  const instanceUrl = normalizeInstanceUrl(rawInstanceUrl)
+  const redirectUri = getRedirectUri()
+  const appCreds = await getOrRegisterApp(instanceUrl, redirectUri)
+
+  sessionStorage.setItem(
+    PENDING_LOGIN_KEY,
+    JSON.stringify({ instanceUrl, clientId: appCreds.clientId, clientSecret: appCreds.clientSecret })
+  )
+
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: appCreds.clientId,
+    redirect_uri: redirectUri,
+    scope: 'read write',
+  })
+  window.location.href = `${instanceUrl}/oauth/authorize?${params.toString()}`
+}
+
+export function getPendingLogin() {
+  try {
+    const raw = sessionStorage.getItem(PENDING_LOGIN_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+export function clearPendingLogin() {
+  sessionStorage.removeItem(PENDING_LOGIN_KEY)
+}
+
+/**
+ * Step 2: called after the instance redirects back here with ?code=...
+ * Exchanges the code for an access token.
+ */
+export async function completeLogin(code) {
+  const pending = getPendingLogin()
+  if (!pending) {
+    throw new Error('No login was in progress. Please start again.')
+  }
+  const { instanceUrl, clientId, clientSecret } = pending
+
+  const tokenRes = await apiFetch(instanceUrl, '/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: getRedirectUri(),
+    }).toString(),
+  })
+
+  const token = tokenRes.access_token
+  const account = await apiFetch(instanceUrl, '/api/v1/accounts/verify_credentials', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  clearPendingLogin()
+  return { instanceUrl, token, account }
+}
+
+export function fetchHomeTimeline(instanceUrl, token, { max_id } = {}) {
+  const params = new URLSearchParams({ limit: '10' })
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/timelines/home?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function fetchPublicTimeline(instanceUrl, token, local) {
+  const params = new URLSearchParams({ limit: '30' })
+  if (local) params.set('local', 'true')
+  return apiFetch(instanceUrl, `/api/v1/timelines/public?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function fetchContext(instanceUrl, token, statusId) {
+  return apiFetch(instanceUrl, `/api/v1/statuses/${statusId}/context`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function fetchNotifications(instanceUrl, token) {
+  return apiFetch(instanceUrl, '/api/v1/notifications?limit=30', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function respondFollowRequest(instanceUrl, token, accountId, action) {
+  // action: 'authorize' | 'reject'
+  return apiFetch(instanceUrl, `/api/v1/follow_requests/${accountId}/${action}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function postStatus(instanceUrl, token, text, options = {}) {
+  const { inReplyToId, visibility = 'public', mediaIds, quoteId } = options
+  const body = { status: text, visibility }
+  if (inReplyToId) body.in_reply_to_id = inReplyToId
+  if (quoteId) body.quote_id = quoteId
+  if (mediaIds && mediaIds.length > 0) body.media_ids = mediaIds
+  return apiFetch(instanceUrl, '/api/v1/statuses', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+}
+
+/**
+ * Uploads a file as a media attachment, for use in a later postStatus()
+ * call via mediaIds. Uses the v2 endpoint, which can respond 202 while
+ * still processing (video/audio transcoding) rather than handing back a
+ * ready attachment immediately — in that case this polls the v1 status
+ * endpoint briefly until it's ready.
+ */
+export async function uploadMedia(instanceUrl, token, file, description) {
+  const form = new FormData()
+  form.append('file', file)
+  if (description) form.append('description', description)
+
+  let res
+  try {
+    res = await fetch(`${instanceUrl}/api/v2/media`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    })
+  } catch {
+    throw new Error("Couldn't reach the instance to upload this file.")
+  }
+
+  if (!res.ok && res.status !== 202) {
+    let detail = res.statusText
+    try {
+      const body = await res.json()
+      detail = body.error || detail
+    } catch {
+      // response wasn't JSON, keep statusText
+    }
+    throw new Error(`Upload failed: ${detail} (${res.status})`)
+  }
+
+  let attachment = await res.json()
+
+  if (res.status === 202) {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 1200))
+      const pollRes = await fetch(`${instanceUrl}/api/v1/media/${attachment.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (pollRes.status === 200) {
+        attachment = await pollRes.json()
+        break
+      }
+      // still processing (202/206) — keep polling until attempts run out
+    }
+  }
+
+  if (res.status === 202) {
+    throw new Error('Upload is still processing. Please try again shortly.')
+  }
+
+  return attachment
+}
+
+export function setFavourited(instanceUrl, token, id, favourited) {
+  const action = favourited ? 'unfavourite' : 'favourite'
+  return apiFetch(instanceUrl, `/api/v1/statuses/${id}/${action}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function setReblogged(instanceUrl, token, id, reblogged) {
+  const action = reblogged ? 'unreblog' : 'reblog'
+  return apiFetch(instanceUrl, `/api/v1/statuses/${id}/${action}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function addReaction(instanceUrl, token, statusId, emoji) {
+  return apiFetch(instanceUrl, `/api/v1/pleroma/statuses/${statusId}/reactions/${encodeURIComponent(emoji)}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function removeReaction(instanceUrl, token, statusId, emoji) {
+  return apiFetch(instanceUrl, `/api/v1/pleroma/statuses/${statusId}/reactions/${encodeURIComponent(emoji)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function fetchCustomEmojis(instanceUrl) {
+  return apiFetch(instanceUrl, '/api/v1/custom_emojis')
+}
+
+export function votePoll(instanceUrl, token, pollId, choices) {
+  return apiFetch(instanceUrl, `/api/v1/polls/${pollId}/votes`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ choices }),
+  })
+}

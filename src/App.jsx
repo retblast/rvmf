@@ -1,0 +1,2462 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
+import {
+  Rss,
+  Home,
+  Bell,
+  Compass,
+  Plus,
+  MessageCircle,
+  Repeat2,
+  Star,
+  MoreHorizontal,
+  Coins,
+  RotateCw,
+  LogOut,
+  X,
+  Music,
+  Paperclip,
+  Eye,
+  UserPlus,
+  AtSign,
+  Globe,
+  ImagePlus,
+  ArrowLeft,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  Smile,
+  Link,
+} from 'lucide-react'
+import { useMitraSession } from './useMitraSession'
+import * as mitra from './lib/mitra'
+import LoginView from './LoginView'
+
+const EASE = [0.32, 0.72, 0, 1]
+
+// A handful of cross-cutting display preferences that MediaItem needs deep
+// in the tree (timeline post, nested reply, notification preview, panel —
+// four+ levels of prop drilling for something this minor isn't worth it).
+// Persisted so it survives a reload.
+const AppSettingsContext = createContext({ hoverPreviewsEnabled: true })
+const PickerContext = createContext({ openPickerId: null, setOpenPickerId: () => {} })
+
+// Panel-opening choreography: the focal post slides in from the direction
+// of the timeline; ancestors stagger into place converging upward toward
+// it (closest ancestor first, since it's nearest the anchor); replies
+// stagger into place converging downward (closest reply first). Everything
+// arranges itself around the post you actually clicked.
+const focalVariants = {
+  hidden: { opacity: 0, x: -18 },
+  visible: { opacity: 1, x: 0, transition: { duration: 0.32, ease: EASE } },
+}
+const ancestorItemVariants = {
+  hidden: { opacity: 0, y: -14 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: EASE } },
+}
+const descendantItemVariants = {
+  hidden: { opacity: 0, y: 14 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: EASE } },
+}
+const staggerUpVariants = {
+  hidden: {},
+  visible: { transition: { delayChildren: 0.1, staggerChildren: 0.05, staggerDirection: -1 } },
+}
+const staggerDownVariants = {
+  hidden: {},
+  visible: { transition: { delayChildren: 0.1, staggerChildren: 0.05 } },
+}
+
+function formatRelativeTime(iso) {
+  const diffSec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (diffSec < 60) return `${Math.max(diffSec, 0)}s`
+  const min = Math.floor(diffSec / 60)
+  if (min < 60) return `${min}m`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr}h`
+  const day = Math.floor(hr / 24)
+  if (day < 7) return `${day}d`
+  return new Date(iso).toLocaleDateString()
+}
+
+// .textContent alone collapses block-level structure entirely — Mastodon-
+// API content is typically `<p>...</p><p>...</p>`, and .textContent runs
+// those together with no space at all ("...outimage.jpg" instead of
+// "...out\nimage.jpg"). Insert real line breaks at block boundaries first
+// so paragraphs, explicit <br>s, and list items don't run into each other
+// or into a following link.
+function htmlToPlainText(html) {
+  const doc = new DOMParser().parseFromString(html || '', 'text/html')
+  doc.querySelectorAll('p.quote-inline, .quote-inline').forEach((el) => el.remove())
+  doc.querySelectorAll('img.custom-emoji').forEach((img) => {
+    const alt = img.getAttribute('alt') || img.getAttribute('title') || ':emoji:'
+    img.replaceWith(alt)
+  })
+  doc.querySelectorAll('br').forEach((br) => br.replaceWith('\n'))
+  doc.querySelectorAll('p, div, li').forEach((el) => {
+    el.insertAdjacentText('afterend', '\n')
+  })
+  const text = doc.body.textContent || ''
+  return text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+// `/context` returns every descendant of a status in one flat call — every
+// depth, not just direct replies. Build that into an actual tree once, up
+// front, so the whole thread can render fully expanded without any further
+// per-node fetches: this is what "all known replies" actually means.
+function buildReplyTree(descendants, rootId) {
+  const byParent = new Map()
+  descendants.forEach((s) => {
+    const list = byParent.get(s.in_reply_to_id) || []
+    list.push(s)
+    byParent.set(s.in_reply_to_id, list)
+  })
+  function attach(parentId) {
+    return (byParent.get(parentId) || []).map((child) => ({
+      status: child,
+      children: attach(child.id),
+    }))
+  }
+  return attach(rootId)
+}
+
+// Replaces one status object at whatever depth it's found in an already-
+// built reply tree, leaving everything else untouched — used after a
+// favourite/boost so the UI reflects it without a refetch.
+function updateTreeNode(nodes, updated) {
+  return nodes.map((node) => {
+    if (node.status.id === updated.id) {
+      return { ...node, status: updated }
+    }
+    if (node.children.length > 0) {
+      return { ...node, children: updateTreeNode(node.children, updated) }
+    }
+    return node
+  })
+}
+
+// Turns "@handle" substrings AND bare URLs in plain text into real links,
+// in a single pass. Mentions are matched against the status's `mentions`
+// array; URLs are matched generically since Mastodon-API content often
+// contains links that aren't attachments at all (someone just pasted a
+// pixiv/booru/whatever URL). This was the actual bug behind links "not
+// being detected" — only @mentions were ever linkified before; bare URLs
+// were left as flat, unclickable text. Works on plain text (not the
+// original HTML) on purpose — no dangerouslySetInnerHTML anywhere, just
+// safe React nodes built from a regex split.
+const URL_RE_SOURCE = 'https?://[^\\s<>"]+'
+
+function shortenUrlForDisplay(url) {
+  try {
+    const u = new URL(url)
+    let display = u.host + u.pathname + u.search
+    if (display.length > 32) display = `${display.slice(0, 32)}…`
+    return display
+  } catch {
+    return url.length > 32 ? `${url.slice(0, 32)}…` : url
+  }
+}
+
+function renderRichText(text, mentions, emojis) {
+  const needles = []
+  ;(mentions || []).forEach((m) => {
+    if (m.acct) needles.push(m.acct)
+    if (m.username && m.username !== m.acct) needles.push(m.username)
+  })
+
+  const emojiMap = new Map()
+  ;(emojis || []).forEach((e) => emojiMap.set(e.shortcode, e))
+
+  const patternParts = []
+  if (needles.length > 0) {
+    const escaped = [...new Set(needles)]
+      .sort((a, b) => b.length - a.length)
+      .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    patternParts.push(`@(?:${escaped.join('|')})\\b`)
+  }
+  patternParts.push(':[a-zA-Z0-9_+-]+:')
+  patternParts.push('#[\\w]+')
+  patternParts.push(URL_RE_SOURCE)
+  const pattern = new RegExp(`(${patternParts.join('|')})`, 'g')
+
+  const parts = []
+  let lastIndex = 0
+  let match
+  let key = 0
+  while ((match = pattern.exec(text)) !== null) {
+    const token = match[0]
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index))
+    }
+
+    if (token.startsWith('@')) {
+      const handle = token.slice(1)
+      const mention = mentions.find((m) => m.acct === handle || m.username === handle)
+      parts.push(
+        <a
+          key={`m-${key++}`}
+          className="mention-link"
+          href={mention?.url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+        >
+          @{handle}
+        </a>
+      )
+    } else if (token.startsWith(':') && token.endsWith(':')) {
+      const shortcode = token.slice(1, -1)
+      const emoji = emojiMap.get(shortcode)
+      if (emoji) {
+        parts.push(
+          <img
+            key={`e-${key++}`}
+            className="custom-emoji"
+            src={emoji.url}
+            alt={token}
+            title={token}
+          />
+        )
+      } else {
+        parts.push(token)
+      }
+    } else if (token.startsWith('#')) {
+      parts.push(
+        <button
+          key={`h-${key++}`}
+          className="hashtag-link"
+          onClick={(e) => {
+            e.stopPropagation()
+            alert('not yet wired up :P')
+          }}
+        >
+          {token}
+        </button>
+      )
+    } else {
+      parts.push(
+        <a
+          key={`u-${key++}`}
+          className="mention-link"
+          href={token}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {shortenUrlForDisplay(token)}
+        </a>
+      )
+    }
+    lastIndex = pattern.lastIndex
+  }
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex))
+  }
+  return parts
+}
+
+const IMAGE_URL_RE = /https?:\/\/[^\s<>"]+?\.(?:jpe?g|png|gif|webp|avif)(?:\?[^\s<>"]*)?/gi
+
+function hostOf(url) {
+  try {
+    return new URL(url).host
+  } catch {
+    return ''
+  }
+}
+
+// Some instance admins disable inline embedding of remote media as a
+// moderation measure (quarantining unruly remote instances) — the image
+// just shows up as a bare link in the post text instead of an attachment.
+// But when that link points at the *same* instance we're logged into,
+// there's no moderation reason for it to be hidden from us specifically;
+// it's just how the admin's settings render locally-hosted media inline.
+// Pull those links out of the text and treat them as attachments again,
+// client-side — but still behind the same content-warning blur as
+// genuinely sensitive media, both because we don't know *why* an admin
+// disabled inline images and because that's a reasonable default either
+// way.
+function extractQuarantinedImages(text, instanceUrl) {
+  const instanceHost = hostOf(instanceUrl)
+  if (!instanceHost) return { cleanedText: text, quarantinedUrls: [] }
+
+  const quarantinedUrls = []
+  const cleanedText = text
+    .replace(IMAGE_URL_RE, (match) => {
+      if (hostOf(match) === instanceHost) {
+        quarantinedUrls.push(match)
+        return ''
+      }
+      return match
+    })
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+
+  return { cleanedText, quarantinedUrls }
+}
+
+// Combines mention-linking and quarantined-image extraction into what a
+// post/reply actually needs to render: text nodes plus a merged attachment
+// list (real attachments + any quarantined images recovered from the text).
+function processStatusContent(status, instanceUrl) {
+  const { cleanedText, quarantinedUrls } = extractQuarantinedImages(
+    htmlToPlainText(status.content),
+    instanceUrl
+  )
+  const textNodes = renderRichText(cleanedText, status.mentions, status.emojis)
+  const quarantinedAttachments = quarantinedUrls.map((url, i) => ({
+    id: `quarantined-${status.id}-${i}`,
+    type: 'image',
+    url,
+    preview_url: url,
+    description: '',
+  }))
+  const attachments = [...(status.media_attachments || []), ...quarantinedAttachments]
+  const hasQuarantined = quarantinedAttachments.length > 0
+  const sensitive = status.sensitive || hasQuarantined
+  const spoilerText = status.sensitive
+    ? status.spoiler_text
+    : hasQuarantined
+      ? "Image hidden by this instance's media settings — shown here since it's hosted locally"
+      : status.spoiler_text
+
+  return { textNodes, attachments, sensitive, spoilerText }
+}
+
+function Avatar({ name, src, large, size }) {
+  const style = size ? { width: size, height: size } : undefined
+  if (src) {
+    return <img className={`avatar${large ? ' lg' : ''}`} style={style} src={src} alt="" />
+  }
+  const initials = (name || '?')
+    .split(' ')
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+  return (
+    <div className={`avatar${large ? ' lg' : ''}`} style={style}>
+      {initials}
+    </div>
+  )
+}
+
+// A status as returned by the timeline can itself be a boost: in that case
+// `post.account` is whoever boosted it, and the actual post — content,
+// author, counts, your favourite/reblog state — lives in `post.reblog`.
+// Everything that isn't the "so-and-so boosted" line should read from here.
+function unwrapStatus(post) {
+  return post.reblog || post
+}
+
+// Positions a floating preview near the cursor, clamped so it never runs
+// off the edge of the viewport.
+function useCursorPreview(previewWidth = 320, previewHeight = 320) {
+  const [pos, setPos] = useState(null)
+
+  function track(e) {
+    const margin = 16
+    let x = e.clientX + 18
+    let y = e.clientY + 18
+    if (x + previewWidth + margin > window.innerWidth) x = e.clientX - previewWidth - 18
+    if (y + previewHeight + margin > window.innerHeight) y = e.clientY - previewHeight - 18
+    setPos({ x, y })
+  }
+  function clear() {
+    setPos(null)
+  }
+
+  return { pos, track, clear }
+}
+
+function MediaItem({ attachment, revealed, onOpenLightbox }) {
+  const { type, url, preview_url: previewUrl, description } = attachment
+  const { hoverPreviewsEnabled } = useContext(AppSettingsContext)
+  const { pos, track, clear } = useCursorPreview()
+  // Never preview on hover for content that's still behind the CW blur —
+  // that would leak exactly what the blur is meant to hide. Once revealed,
+  // ordinary hover behavior applies, gated by the settings toggle.
+  const hoverEnabled = revealed && hoverPreviewsEnabled
+
+  if (type === 'image') {
+    return (
+      <>
+        <button
+          type="button"
+          className="media-item media-image"
+          onClick={() => onOpenLightbox(attachment)}
+          onMouseMove={hoverEnabled ? track : undefined}
+          onMouseEnter={hoverEnabled ? track : undefined}
+          onMouseLeave={hoverEnabled ? clear : undefined}
+          aria-label={description || 'Open image'}
+        >
+          <img src={previewUrl || url} alt={description || ''} loading="lazy" />
+        </button>
+        {hoverEnabled && pos && (
+          <div className="media-hover-preview" style={{ left: pos.x, top: pos.y }}>
+            <img src={url} alt={description || ''} />
+          </div>
+        )}
+      </>
+    )
+  }
+
+  if (type === 'video' || type === 'gifv') {
+    // Mastodon-style "gifv": a short muted video, looped and autoplaying,
+    // standing in for a GIF without the file size.
+    return (
+      <>
+        <div
+          className="media-item media-video"
+          onMouseMove={hoverEnabled ? track : undefined}
+          onMouseEnter={hoverEnabled ? track : undefined}
+          onMouseLeave={hoverEnabled ? clear : undefined}
+        >
+          {type === 'video' ? (
+            <video controls preload="metadata" poster={previewUrl} src={url}>
+              Your browser can&apos;t play this video.
+            </video>
+          ) : (
+            <video autoPlay loop muted playsInline preload="metadata" poster={previewUrl} src={url} />
+          )}
+        </div>
+        {hoverEnabled && pos && previewUrl && (
+          <div className="media-hover-preview" style={{ left: pos.x, top: pos.y }}>
+            <img src={previewUrl} alt={description || ''} />
+          </div>
+        )}
+      </>
+    )
+  }
+
+  if (type === 'audio') {
+    return (
+      <div className="media-item media-audio">
+        <Music size={16} />
+        <audio controls preload="metadata" src={url} />
+      </div>
+    )
+  }
+
+  return (
+    <a className="media-item media-unknown" href={url} target="_blank" rel="noreferrer">
+      <Paperclip size={14} />
+      {description || 'Attachment'}
+    </a>
+  )
+}
+
+function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox }) {
+  const [revealed, setRevealed] = useState(!sensitive)
+
+  if (!attachments || attachments.length === 0) return null
+
+  const shown = attachments.slice(0, 4)
+
+  return (
+    <div className="media-wrap" onClick={(e) => e.stopPropagation()}>
+      <div className={`media-grid count-${shown.length}${revealed ? '' : ' blurred'}`}>
+        {shown.map((att, idx) => (
+          <MediaItem
+            key={att.id}
+            attachment={att}
+            revealed={revealed}
+            onOpenLightbox={() => onOpenLightbox({ attachment: att, attachments: shown, index: idx })}
+          />
+        ))}
+      </div>
+      {!revealed && (
+        <button type="button" className="media-cw-overlay" onClick={() => setRevealed(true)}>
+          <Eye size={18} />
+          <span>{spoilerText || 'Sensitive content'} — click to view</span>
+        </button>
+      )}
+    </div>
+  )
+}
+
+function MediaLightbox({ lightboxState, onClose }) {
+  const { attachment, attachments, index } = lightboxState || {}
+  if (!attachment) return null
+
+  const imageAttachments = (attachments || []).filter((a) => a.type === 'image')
+  const currentIdx = imageAttachments.findIndex((a) => a.id === attachment.id)
+  const hasPrev = currentIdx > 0
+  const hasNext = currentIdx < imageAttachments.length - 1
+
+  function goPrev() {
+    if (hasPrev) lightboxState.onNavigate({ attachment: imageAttachments[currentIdx - 1], attachments, index: currentIdx - 1 })
+  }
+  function goNext() {
+    if (hasNext) lightboxState.onNavigate({ attachment: imageAttachments[currentIdx + 1], attachments, index: currentIdx + 1 })
+  }
+
+  useEffect(() => {
+    function handleKey(e) {
+      if (e.key === 'Escape') onClose()
+      else if (e.key === 'ArrowLeft') goPrev()
+      else if (e.key === 'ArrowRight') goNext()
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [currentIdx, imageAttachments.length])
+
+  return (
+    <div className="dialog-overlay lightbox-overlay" onClick={onClose}>
+      <button className="icon-btn lightbox-close" onClick={onClose} aria-label="Close">
+        <X size={18} />
+      </button>
+      {hasPrev && (
+        <button className="icon-btn lightbox-prev" onClick={(e) => { e.stopPropagation(); goPrev() }} aria-label="Previous">
+          <ChevronLeft size={24} />
+        </button>
+      )}
+      {hasNext && (
+        <button className="icon-btn lightbox-next" onClick={(e) => { e.stopPropagation(); goNext() }} aria-label="Next">
+          <ChevronRight size={24} />
+        </button>
+      )}
+      <img
+        className="lightbox-image"
+        src={attachment.url}
+        alt={attachment.description || ''}
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>
+  )
+}
+
+// Manages a compose dialog's attached files: upload starts the moment a
+// file is picked (not at submit time), each tracked independently so one
+// slow/failed upload doesn't block the others. `mediaIds` only includes
+// ones that finished successfully — submit should wait for `isUploading`
+// to clear before posting.
+function useMediaUploads(instanceUrl, token) {
+  const [uploads, setUploads] = useState([])
+
+  useEffect(() => {
+    return () => {
+      uploads.forEach((u) => URL.revokeObjectURL(u.previewUrl))
+    }
+  }, [])
+
+  function addFiles(fileList) {
+    const remaining = Math.max(0, 4 - uploads.length)
+    Array.from(fileList)
+      .slice(0, remaining)
+      .forEach((file) => {
+        const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+        const previewUrl = URL.createObjectURL(file)
+        setUploads((prev) => [
+          ...prev,
+          { key, file, previewUrl, mediaId: null, uploading: true, error: '' },
+        ])
+        mitra
+          .uploadMedia(instanceUrl, token, file)
+          .then((attachment) => {
+            setUploads((prev) =>
+              prev.map((u) =>
+                u.key === key ? { ...u, uploading: false, mediaId: attachment.id } : u
+              )
+            )
+          })
+          .catch((err) => {
+            setUploads((prev) =>
+              prev.map((u) =>
+                u.key === key
+                  ? { ...u, uploading: false, error: err.message || 'Upload failed.' }
+                  : u
+              )
+            )
+          })
+      })
+  }
+
+  function removeUpload(key) {
+    setUploads((prev) => {
+      const target = prev.find((u) => u.key === key)
+      if (target) URL.revokeObjectURL(target.previewUrl)
+      return prev.filter((u) => u.key !== key)
+    })
+  }
+
+  const mediaIds = uploads.filter((u) => u.mediaId).map((u) => u.mediaId)
+  const isUploading = uploads.some((u) => u.uploading)
+
+  return { uploads, addFiles, removeUpload, mediaIds, isUploading }
+}
+
+function MediaUploadStrip({ uploads, onRemove }) {
+  if (uploads.length === 0) return null
+  return (
+    <div className="upload-strip">
+      {uploads.map((u) => (
+        <div className="upload-thumb" key={u.key}>
+          {u.file.type.startsWith('image/') ? (
+            <img src={u.previewUrl} alt="" />
+          ) : u.file.type.startsWith('video/') ? (
+            <video src={u.previewUrl} muted />
+          ) : (
+            <div className="upload-thumb-generic">
+              <Paperclip size={16} />
+            </div>
+          )}
+          {u.uploading && <div className="upload-thumb-status">Uploading…</div>}
+          {u.error && <div className="upload-thumb-status error">Failed</div>}
+          <button
+            type="button"
+            className="upload-thumb-remove"
+            onClick={() => onRemove(u.key)}
+            aria-label="Remove attachment"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// One reply, at any depth, with the exact same action row and interactivity
+// as a normal post row (reply/boost/favourite/monero/more, all functional)
+// — not a stripped-down version. Its own already-loaded children render
+// directly beneath it — no per-node fetch or click-to-expand, since the
+// whole subtree came from one /context call at the moment the thread was
+// opened. Clicking a reply's body re-opens the panel focused on it
+// specifically (fresh ancestors, in case there's more context above what's
+// already showing), same handler as everywhere else in the app.
+function ThreadReply({
+  node,
+  depth = 0,
+  instanceUrl,
+  token,
+  onUpdate,
+  onOpenThread,
+  onComposeReply,
+  onOpenLightbox,
+  statusById,
+  onQuote,
+  compact = false,
+  highlightedId,
+  onHighlightParent,
+}) {
+  const [busy, setBusy] = useState(false)
+  const { openPickerId, setOpenPickerId } = useContext(PickerContext)
+  const showPicker = openPickerId === node.status.id
+  const setShowPicker = (open) => setOpenPickerId(open ? node.status.id : null)
+  const status = node.status
+  const account = status.account || {}
+  const name = account.display_name || account.username || 'Unknown'
+  const content = processStatusContent(status, instanceUrl)
+  const parentStatus = statusById?.get(status.in_reply_to_id) || null
+
+  async function toggleReaction(statusId, emoji, alreadyReacted) {
+    try {
+      const updated = alreadyReacted
+        ? await mitra.removeReaction(instanceUrl, token, statusId, emoji)
+        : await mitra.addReaction(instanceUrl, token, statusId, emoji)
+      onUpdate(updated)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  async function toggleFavourite() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const updated = await mitra.setFavourited(instanceUrl, token, status.id, status.favourited)
+      onUpdate(updated)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function toggleReblog() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const updated = await mitra.setReblogged(instanceUrl, token, status.id, status.reblogged)
+      const inner = updated.reblog ? { ...updated.reblog, reblogged: updated.reblogged } : updated
+      onUpdate(inner)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <div
+        className={`reply-row${highlightedId === status.id ? ' highlighted' : ''}`}
+        style={{ '--reply-depth': depth }}
+      >
+        <Avatar name={name} src={account.avatar} />
+        <div
+          className="reply-body"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenThread(status)
+          }}
+        >
+          <div className="post-meta">
+            <span className="post-name">{name}</span>
+            <span className="post-handle">@{account.acct || account.username}</span>
+            {parentStatus && (
+              <button
+                className="post-parent-link"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onOpenThread(parentStatus)
+                }}
+                onMouseEnter={() => onHighlightParent?.(parentStatus.id)}
+                onMouseLeave={() => onHighlightParent?.(null)}
+              >
+                parent
+              </button>
+            )}
+            <span className="post-time">{formatRelativeTime(status.created_at)}</span>
+          </div>
+          <p className="post-text">{content.textNodes}</p>
+          <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
+          <MediaGrid
+            attachments={content.attachments}
+            sensitive={content.sensitive}
+            spoilerText={content.spoilerText}
+            onOpenLightbox={onOpenLightbox}
+          />
+          <ReactionChips
+            reactions={status.pleroma?.emoji_reactions}
+            statusId={status.id}
+            instanceUrl={instanceUrl}
+            token={token}
+            onReact={toggleReaction}
+          />
+          <div className="post-actions" onClick={(e) => e.stopPropagation()}>
+            <button className="action-btn" aria-label="Reply" onClick={() => onComposeReply(status)}>
+              <MessageCircle size={15} />
+              {!compact && status.replies_count > 0 && <span>{status.replies_count}</span>}
+            </button>
+            <BoostDropdown
+              reblogged={status.reblogged}
+              reblogsCount={compact ? 0 : status.reblogs_count}
+              busy={busy}
+              onBoost={toggleReblog}
+              onQuote={() => onQuote(status)}
+            />
+            <button
+              className={`action-btn${status.favourited ? ' favorited' : ''}`}
+              aria-label="Favorite"
+              onClick={toggleFavourite}
+              disabled={busy}
+            >
+              <Star size={15} fill={status.favourited ? 'currentColor' : 'none'} />
+              {!compact && <span>{status.favourites_count}</span>}
+            </button>
+            {!compact && (
+              <>
+                <button
+                  className="action-btn"
+                  aria-label="React"
+                  onClick={() => setShowPicker(!showPicker)}
+                >
+                  <Smile size={15} />
+                </button>
+                {showPicker && (
+                  <ReactionPicker
+                    status={status}
+                    instanceUrl={instanceUrl}
+                    token={token}
+                    onReact={toggleReaction}
+                    onClose={() => setShowPicker(false)}
+                  />
+                )}
+                <button className="action-btn monero" aria-label="Send Monero tip">
+                  <Coins size={15} />
+                </button>
+              </>
+            )}
+            <PostOptionsMenu status={status} instanceUrl={instanceUrl} />
+          </div>
+        </div>
+      </div>
+      {node.children.length > 0 && (
+        <div className="inline-replies-wrap">
+          <div className="inline-replies-track" onClick={(e) => e.stopPropagation()}>
+            {node.children.map((child) => (
+              <ThreadReply
+                key={child.status.id}
+                node={child}
+                depth={depth + 1}
+                instanceUrl={instanceUrl}
+                token={token}
+                onUpdate={onUpdate}
+                onOpenThread={onOpenThread}
+                onComposeReply={onComposeReply}
+                onOpenLightbox={onOpenLightbox}
+                statusById={statusById}
+                onQuote={onQuote}
+                highlightedId={highlightedId}
+                onHighlightParent={onHighlightParent}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+const COMMON_EMOJI = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥', '💯', '🤔', '👏', '💀']
+
+function ReactionChips({ reactions, statusId, instanceUrl, token, onReact }) {
+  if (!reactions || reactions.length === 0) return null
+  return (
+    <div className="reaction-chips">
+      {reactions.map((r) => (
+        <button
+          key={r.name}
+          className={`reaction-chip${r.me ? ' reacted' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onReact(statusId, r.name, r.me)
+          }}
+        >
+          {r.url ? (
+            <img className="reaction-emoji-img" src={r.url} alt={r.name} />
+          ) : (
+            <span className="reaction-emoji-text">{r.name}</span>
+          )}
+          <span className="reaction-count">{r.count}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ReactionPicker({ status, instanceUrl, token, onReact, onClose }) {
+  const [instanceEmoji, setInstanceEmoji] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    mitra.fetchCustomEmojis(instanceUrl).then((emojis) => {
+      if (!cancelled) setInstanceEmoji(emojis || [])
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [instanceUrl])
+  const seen = new Set()
+  const customEmoji = []
+  ;(status.emojis || []).forEach((e) => {
+    if (!seen.has(e.shortcode)) { seen.add(e.shortcode); customEmoji.push(e) }
+  })
+  instanceEmoji.forEach((e) => {
+    if (!seen.has(e.shortcode)) { seen.add(e.shortcode); customEmoji.push(e) }
+  })
+  return (
+    <div className="reaction-picker" onClick={(e) => e.stopPropagation()}>
+      <div className="reaction-picker-section">
+        {COMMON_EMOJI.map((emoji) => (
+          <button key={emoji} className="reaction-picker-item" onClick={() => { onReact(status.id, emoji, false); onClose() }}>
+            {emoji}
+          </button>
+        ))}
+      </div>
+      {customEmoji.length > 0 && (
+        <>
+          <div className="reaction-picker-divider" />
+          <div className="reaction-picker-section">
+            {customEmoji.map((e) => (
+              <button key={e.shortcode} className="reaction-picker-item" onClick={() => { onReact(status.id, `:${e.shortcode}:`, false); onClose() }}>
+                <img src={e.url} alt={e.shortcode} className="reaction-picker-custom-emoji" />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  return (
+    <div className="boost-dropdown-wrap" ref={ref}>
+      <button
+        className={`action-btn boost-trigger${reblogged ? ' boosted' : ''}`}
+        aria-label="Boost or quote"
+        onClick={() => setOpen(!open)}
+        disabled={busy}
+      >
+        <Repeat2 size={15} />
+        {reblogsCount > 0 && <span>{reblogsCount}</span>}
+      </button>
+      {open && (
+        <>
+          <div className="boost-dropdown-backdrop" onClick={() => setOpen(false)} />
+          <div className="boost-dropdown">
+            <button
+              className={`boost-dropdown-item${reblogged ? ' boosted' : ''}`}
+              onClick={() => { onBoost(); setOpen(false) }}
+            >
+              <Repeat2 size={15} />
+              {reblogged ? 'Unboost' : 'Boost'}
+            </button>
+            <button
+              className="boost-dropdown-item"
+              onClick={() => { onQuote(); setOpen(false) }}
+            >
+              <MessageCircle size={15} />
+              Quote
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function QuoteCard({ status, instanceUrl, onOpenThread }) {
+  if (!status) return null
+  const account = status.account || {}
+  const name = account.display_name || account.username || 'Unknown'
+  const content = processStatusContent(status, instanceUrl)
+  return (
+    <div className="quote-card" onClick={(e) => { e.stopPropagation(); onOpenThread(status) }}>
+      <div className="quote-card-meta">
+        <Avatar name={name} src={account.avatar} size={16} />
+        <span className="quote-card-name">{name}</span>
+        <span className="quote-card-handle">@{account.acct || account.username}</span>
+      </div>
+      <p className="quote-card-text">{content.textNodes}</p>
+      {content.attachments.length > 0 && content.attachments[0].type === 'image' && (
+        <img className="quote-card-image" src={content.attachments[0].preview_url || content.attachments[0].url} alt="" />
+      )}
+    </div>
+  )
+}
+
+function PollCard({ poll, instanceUrl, token, onUpdated }) {
+  const [selected, setSelected] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  if (!poll) return null
+
+  const { id, options, expired, multiple, votes_count, voters_count, voted, own_votes, expires_at } = poll
+  const showResults = expired || voted
+
+  function toggleOption(idx) {
+    if (showResults || busy) return
+    if (multiple) {
+      setSelected((prev) =>
+        prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
+      )
+    } else {
+      setSelected([idx])
+    }
+  }
+
+  async function submitVote() {
+    if (selected.length === 0) return
+    setBusy(true)
+    setError('')
+    try {
+      const updated = await mitra.votePoll(instanceUrl, token, id, selected)
+      onUpdated(updated)
+    } catch (err) {
+      setError(err.message || 'Vote failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function timeLeft() {
+    if (!expires_at || expired) return null
+    const ms = new Date(expires_at) - Date.now()
+    if (ms <= 0) return null
+    const mins = Math.floor(ms / 60000)
+    if (mins < 60) return `${mins}m left`
+    const hrs = Math.floor(mins / 60)
+    if (hrs < 24) return `${hrs}h ${mins % 60}m left`
+    const days = Math.floor(hrs / 24)
+    return `${days}d left`
+  }
+
+  return (
+    <div className="poll-card">
+      {showResults ? (
+        options.map((opt, i) => {
+          const pct = votes_count > 0 ? Math.round((opt.votes_count / votes_count) * 100) : 0
+          const chosen = own_votes?.includes(i)
+          return (
+            <div key={i} className={`poll-option${chosen ? ' chosen' : ''}`}>
+              <div className="poll-option-header">
+                <span className="poll-option-text">{htmlToPlainText(opt.title)}</span>
+                <span className="poll-option-pct">{pct}%</span>
+              </div>
+              <div className="poll-option-bar">
+                <div className="poll-option-fill" style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          )
+        })
+      ) : (
+        options.map((opt, i) => (
+          <label key={i} className={`poll-option-pick${selected.includes(i) ? ' selected' : ''}`}>
+            <span className={`poll-radio${multiple ? ' checkbox' : ''}`}>
+              {selected.includes(i) && <span className="poll-radio-dot" />}
+            </span>
+            <span className="poll-option-text">{htmlToPlainText(opt.title)}</span>
+          </label>
+        ))
+      )}
+      {error && <div className="banner banner-error">{error}</div>}
+      <div className="poll-footer">
+        <span className="poll-meta">
+          {votes_count} vote{votes_count !== 1 ? 's' : ''}
+          {voters_count != null && voters_count !== votes_count && ` · ${voters_count} voter${voters_count !== 1 ? 's' : ''}`}
+          {timeLeft() && <> · {timeLeft()}</>}
+          {expired && <span className="poll-expired"> · Ended</span>}
+        </span>
+        {!showResults && (
+          <button
+            className="pill-btn suggested"
+            onClick={submitVote}
+            disabled={busy || selected.length === 0}
+          >
+            {busy ? 'Voting…' : 'Vote'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PostOptionsMenu({ status, instanceUrl }) {
+  const [open, setOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  function copyLink() {
+    const acct = status.account?.acct || status.account?.username || 'unknown'
+    const url = status.url || `https://${instanceUrl}/@${acct}/${status.id}`
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => { setCopied(false); setOpen(false) }, 900)
+    }).catch(() => {
+      setOpen(false)
+    })
+  }
+
+  return (
+    <div className="boost-dropdown-wrap" ref={ref}>
+      <button className="action-btn" aria-label="More options" style={{ marginLeft: 'auto' }} onClick={() => setOpen(!open)}>
+        <MoreHorizontal size={15} />
+      </button>
+      {open && (
+        <>
+          <div className="boost-dropdown-backdrop" onClick={() => setOpen(false)} />
+          <div className="boost-dropdown">
+            <button className="boost-dropdown-item" onClick={copyLink}>
+              <Link size={15} />
+              {copied ? 'Copied!' : 'Copy link'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeReply, onOpenLightbox, onQuote, statusById, depth, highlightedId, onHighlightParent }) {
+  const [busy, setBusy] = useState(false)
+  const { openPickerId, setOpenPickerId } = useContext(PickerContext)
+  const isBoost = Boolean(post.reblog)
+  const status = unwrapStatus(post)
+  const showPicker = openPickerId === status.id
+  const setShowPicker = (open) => setOpenPickerId(open ? status.id : null)
+  const account = status.account || {}
+  const displayName = account.display_name || account.username || 'Unknown'
+  const booster = isBoost ? post.account : null
+  const content = processStatusContent(status, instanceUrl)
+  const parentStatus = statusById?.get(status.in_reply_to_id) || null
+
+  async function toggleReaction(statusId, emoji, alreadyReacted) {
+    try {
+      const updated = alreadyReacted
+        ? await mitra.removeReaction(instanceUrl, token, statusId, emoji)
+        : await mitra.addReaction(instanceUrl, token, statusId, emoji)
+      onUpdate(isBoost ? { ...post, reblog: updated } : updated)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  async function toggleFavourite() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const updated = await mitra.setFavourited(instanceUrl, token, status.id, status.favourited)
+      onUpdate(isBoost ? { ...post, reblog: updated } : updated)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function toggleReblog() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const updated = await mitra.setReblogged(instanceUrl, token, status.id, status.reblogged)
+      const inner = updated.reblog ? { ...updated.reblog, reblogged: updated.reblogged } : updated
+      onUpdate(isBoost ? { ...post, reblog: inner } : inner)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className={`post-row${highlightedId === status.id ? ' highlighted' : ''}`} style={depth != null ? { '--reply-depth': depth } : undefined}>
+      {booster && (
+        <div className="repost-indicator">
+          <Repeat2 size={13} />
+          {booster.display_name || booster.username} boosted
+        </div>
+      )}
+      <div className="post-row-main">
+        <Avatar name={displayName} src={account.avatar} />
+        <div
+          className="post-body"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenThread(status)
+          }}
+        >
+          <div className="post-meta">
+            <span className="post-name">{displayName}</span>
+            <span className="post-handle">@{account.acct || account.username}</span>
+            {parentStatus && (
+              <button
+                className="post-parent-link"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onOpenThread(parentStatus)
+                }}
+                onMouseEnter={() => onHighlightParent?.(parentStatus.id)}
+                onMouseLeave={() => onHighlightParent?.(null)}
+              >
+                parent
+              </button>
+            )}
+            <span className="post-time">{formatRelativeTime(status.created_at)}</span>
+          </div>
+          <p className="post-text">{content.textNodes}</p>
+          <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
+          <MediaGrid
+            attachments={content.attachments}
+            sensitive={content.sensitive}
+            spoilerText={content.spoilerText}
+            onOpenLightbox={onOpenLightbox}
+          />
+          <ReactionChips
+            reactions={status.pleroma?.emoji_reactions}
+            statusId={status.id}
+            instanceUrl={instanceUrl}
+            token={token}
+            onReact={toggleReaction}
+          />
+          <div className="post-actions" onClick={(e) => e.stopPropagation()}>
+            <button className="action-btn" aria-label="Reply" onClick={() => onComposeReply(status)}>
+              <MessageCircle size={15} />
+              {status.replies_count > 0 && <span>{status.replies_count}</span>}
+            </button>
+            <BoostDropdown
+              reblogged={status.reblogged}
+              reblogsCount={status.reblogs_count}
+              busy={busy}
+              onBoost={toggleReblog}
+              onQuote={() => onQuote(status)}
+            />
+            <button
+              className={`action-btn${status.favourited ? ' favorited' : ''}`}
+              aria-label="Favorite"
+              onClick={toggleFavourite}
+              disabled={busy}
+            >
+              <Star size={15} fill={status.favourited ? 'currentColor' : 'none'} />
+              <span>{status.favourites_count}</span>
+            </button>
+            <button
+              className="action-btn"
+              aria-label="React"
+              onClick={() => setShowPicker(!showPicker)}
+            >
+              <Smile size={15} />
+            </button>
+            {showPicker && (
+              <ReactionPicker
+                status={status}
+                instanceUrl={instanceUrl}
+                token={token}
+                onReact={toggleReaction}
+                onClose={() => setShowPicker(false)}
+              />
+            )}
+            <button className="action-btn monero" aria-label="Send Monero tip">
+              <Coins size={15} />
+            </button>
+            <PostOptionsMenu status={status} instanceUrl={instanceUrl} />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function visibilityLabel(v) {
+  switch (v) {
+    case 'public':
+      return 'Public'
+    case 'unlisted':
+      return 'Unlisted'
+    case 'private':
+      return 'Followers only'
+    case 'direct':
+      return 'Direct message'
+    default:
+      return v
+  }
+}
+
+function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted }) {
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const fileInputRef = useRef(null)
+  const { uploads, addFiles, removeUpload, mediaIds, isUploading } = useMediaUploads(
+    instanceUrl,
+    token
+  )
+  const account = status?.account || {}
+  const name = account.display_name || account.username || 'Unknown'
+  // Replies inherit the visibility of the post they're replying to — same
+  // type of post as the OP — rather than always defaulting to public.
+  const visibility = status?.visibility || 'public'
+
+  async function submit() {
+    if (!text.trim() && mediaIds.length === 0) {
+      setError('Write something or attach a file first.')
+      return
+    }
+    if (isUploading) {
+      setError('Still uploading — hang on a sec.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const reply = await mitra.postStatus(instanceUrl, token, text.trim(), {
+        inReplyToId: status.id,
+        visibility,
+        mediaIds,
+      })
+      onPosted(status.id, reply)
+      onClose()
+    } catch (err) {
+      setError(err.message || 'Something went wrong.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <div className="thread-panel-header">
+        <span className="dialog-title">Reply</span>
+        <button className="icon-btn" aria-label="Cancel" onClick={onClose}>
+          <X size={16} />
+        </button>
+      </div>
+      {status && (
+        <div className="thread-panel-preview">
+          <div className="post-meta">
+            <span className="post-name">{name}</span>
+            <span className="post-handle">@{account.acct || account.username}</span>
+          </div>
+          <p className="post-text">{processStatusContent(status, instanceUrl).textNodes}</p>
+        </div>
+      )}
+      {error && <div className="banner banner-error">{error}</div>}
+      <textarea
+        className="compose-textarea"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault()
+            submit()
+          }
+        }}
+        onPaste={(e) => {
+          const items = Array.from(e.clipboardData?.items || [])
+          const imageFiles = items
+            .filter((item) => item.type.startsWith('image/'))
+            .map((item) => item.getAsFile())
+            .filter(Boolean)
+          if (imageFiles.length > 0) {
+            e.preventDefault()
+            addFiles(imageFiles)
+          }
+        }}
+        placeholder={`Reply to ${name}…`}
+        rows={6}
+        autoFocus
+      />
+      <MediaUploadStrip uploads={uploads} onRemove={removeUpload} />
+      <div className="compose-visibility">Replying as: {visibilityLabel(visibility)}</div>
+      <div className="dialog-actions">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,video/*,audio/*"
+          multiple
+          hidden
+          onChange={(e) => {
+            addFiles(e.target.files)
+            e.target.value = ''
+          }}
+        />
+        <button
+          className="icon-btn"
+          type="button"
+          aria-label="Attach media"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploads.length >= 4}
+        >
+          <ImagePlus size={16} />
+        </button>
+        <div style={{ flex: 1 }} />
+        <button className="pill-btn" onClick={onClose} type="button">
+          Cancel
+        </button>
+        <button
+          className="pill-btn suggested"
+          onClick={submit}
+          disabled={busy || isUploading}
+          type="button"
+        >
+          {busy ? 'Posting…' : 'Reply'}
+        </button>
+      </div>
+    </>
+  )
+}
+
+function ThreadPanelContent({
+  panel,
+  replyStates,
+  onOpenThread,
+  onComposeReply,
+  onOpenLightbox,
+  onUpdateReply,
+  onClose,
+  instanceUrl,
+  token,
+  onReplyPosted,
+  backLabel,
+  onQuote,
+}) {
+  const status = panel?.status
+  const state = status ? replyStates[status.id] : null
+
+  const statusById = useMemo(() => {
+    const map = new Map()
+    if (status) map.set(status.id, status)
+    if (state?.ancestors) state.ancestors.forEach((a) => map.set(a.id, a))
+    function collect(nodes) {
+      for (const node of nodes) {
+        map.set(node.status.id, node.status)
+        if (node.children.length > 0) collect(node.children)
+      }
+    }
+    if (state?.items) collect(state.items)
+    return map
+  }, [status, state])
+
+  const [highlightedId, setHighlightedId] = useState(null)
+
+  if (panel?.mode === 'compose') {
+    return (
+      <ReplyComposerFields
+        status={status}
+        instanceUrl={instanceUrl}
+        token={token}
+        onClose={onClose}
+        onPosted={onReplyPosted}
+      />
+    )
+  }
+
+  return (
+    <motion.div key={status?.id || 'empty'}>
+      <div className="thread-panel-header">
+        <span className="dialog-title">
+          {backLabel && (
+            <button className="icon-btn thread-back-btn" aria-label={backLabel} onClick={onClose}>
+              <ArrowLeft size={16} />
+            </button>
+          )}
+          {state?.ancestors?.length > 0 ? 'Thread' : 'Replies'}
+        </span>
+        {!backLabel && (
+          <button className="icon-btn" aria-label="Close replies" onClick={onClose}>
+            <X size={16} />
+          </button>
+        )}
+      </div>
+      {state?.ancestors?.length > 0 && (
+        <motion.div
+          className="thread-ancestors"
+          variants={staggerUpVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          {state.ancestors.map((ancestor) => (
+            <motion.div key={ancestor.id} variants={ancestorItemVariants}>
+              <ThreadReply
+                node={{ status: ancestor, children: [] }}
+                depth={state.ancestors.indexOf(ancestor)}
+                instanceUrl={instanceUrl}
+                token={token}
+                onUpdate={onUpdateReply}
+                onOpenThread={onOpenThread}
+                onComposeReply={onComposeReply}
+                onOpenLightbox={onOpenLightbox}
+                statusById={statusById}
+                onQuote={onQuote}
+                highlightedId={highlightedId}
+                onHighlightParent={setHighlightedId}
+              />
+            </motion.div>
+          ))}
+        </motion.div>
+      )}
+      {status && (
+        <motion.div
+          className="thread-panel-focal"
+          variants={focalVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          <PostRow
+            post={status}
+            instanceUrl={instanceUrl}
+            token={token}
+            onUpdate={onUpdateReply}
+            onOpenThread={onOpenThread}
+            onComposeReply={onComposeReply}
+            onOpenLightbox={onOpenLightbox}
+            onQuote={onQuote}
+            statusById={statusById}
+            depth={state.ancestors.length}
+            highlightedId={highlightedId}
+            onHighlightParent={setHighlightedId}
+          />
+        </motion.div>
+      )}
+      <motion.div
+        className="thread-panel-replies"
+        variants={staggerDownVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {state?.loading && <div className="reply-loading">Loading replies…</div>}
+        {state?.error && <div className="banner banner-error">{state.error}</div>}
+        {state?.items?.map((node) => (
+          <motion.div key={node.status.id} variants={descendantItemVariants}>
+            <ThreadReply
+              node={node}
+              depth={state.ancestors.length + 1}
+              instanceUrl={instanceUrl}
+              token={token}
+              onUpdate={onUpdateReply}
+              onOpenThread={onOpenThread}
+              onComposeReply={onComposeReply}
+              onOpenLightbox={onOpenLightbox}
+              statusById={statusById}
+              onQuote={onQuote}
+              highlightedId={highlightedId}
+              onHighlightParent={setHighlightedId}
+            />
+          </motion.div>
+        ))}
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// The sliding-panel presentation: used at the "medium" window-width tier,
+// where there's room to push the timeline over but not enough for a
+// permanent third column. Wide tier renders ThreadPanelContent directly in
+// a permanent column instead; narrow tier renders it in place of the
+// timeline. Same content, three different chromes.
+function ThreadPanel(props) {
+  const { panel, onClose } = props
+  return (
+    <>
+      <div className={`thread-panel-backdrop${panel ? ' visible' : ''}`} onClick={onClose} />
+      <aside className={`thread-panel${panel ? ' open' : ''}`}>
+        <div className="thread-panel-inner scrollbar-thin">
+          <ThreadPanelContent {...props} />
+        </div>
+      </aside>
+    </>
+  )
+}
+
+function notificationVerb(type, notification) {
+  switch (type) {
+    case 'follow':
+      return 'followed you'
+    case 'follow_request':
+      return 'requested to follow you'
+    case 'reblog':
+      return 'boosted your post'
+    case 'favourite':
+      return 'favourited your post'
+    case 'mention':
+      return 'mentioned you'
+    case 'poll':
+      return "a poll you're in has ended"
+    case 'status':
+      return 'posted'
+    case 'update':
+      return 'edited a post'
+    case 'quote':
+      return 'quoted your post'
+    case 'pleroma:emoji_reaction': {
+      const emojiUrl = notification?.emoji_url
+      const emojiName = notification?.emoji || notification?.reaction?.content || '🧩'
+      const emoji = emojiUrl
+        ? <img src={emojiUrl} alt={emojiName} className="inline-custom-emoji" />
+        : emojiName
+      return <>reacted with {emoji} to your post</>
+    }
+    default:
+      return type.replace(/_/g, ' ')
+  }
+}
+
+function notificationIcon(type) {
+  switch (type) {
+    case 'follow':
+    case 'follow_request':
+      return UserPlus
+    case 'reblog':
+      return Repeat2
+    case 'favourite':
+      return Star
+    case 'mention':
+      return AtSign
+    case 'quote':
+      return MessageCircle
+    default:
+      return Bell
+  }
+}
+
+function NotificationRow({
+  notification,
+  instanceUrl,
+  token,
+  onUpdateStatus,
+  onOpenThread,
+  onComposeReply,
+  onOpenLightbox,
+  onRespondFollowRequest,
+}) {
+  const account = notification.account || {}
+  const name = account.display_name || account.username || 'Unknown'
+  const Icon = notificationIcon(notification.type)
+  const [responding, setResponding] = useState(false)
+  const [responded, setResponded] = useState(null)
+
+  async function respond(action) {
+    if (responding) return
+    setResponding(true)
+    try {
+      await onRespondFollowRequest(account.id, action)
+      setResponded(action)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setResponding(false)
+    }
+  }
+
+  return (
+    <div className="notif-row">
+      <div className="notif-icon">
+        <Icon size={14} />
+      </div>
+      <div className="notif-body">
+        <div className="notif-header">
+          <Avatar name={name} src={account.avatar} size={22} />
+          <span className="notif-text">
+            <span className="post-name">{name}</span> {notificationVerb(notification.type, notification)}
+          </span>
+          <span className="post-time">{formatRelativeTime(notification.created_at)}</span>
+        </div>
+
+        {notification.type === 'follow_request' && !responded && (
+          <div className="notif-actions">
+            <button
+              className="pill-btn suggested"
+              disabled={responding}
+              onClick={() => respond('authorize')}
+              type="button"
+            >
+              Accept
+            </button>
+            <button
+              className="pill-btn"
+              disabled={responding}
+              onClick={() => respond('reject')}
+              type="button"
+            >
+              Reject
+            </button>
+          </div>
+        )}
+        {responded && (
+          <div className="notif-responded">
+            {responded === 'authorize' ? 'Accepted.' : 'Rejected.'}
+          </div>
+        )}
+
+        {notification.status && (
+          <div className="notif-status-preview">
+            <ThreadReply
+              node={{ status: notification.status, children: [] }}
+              instanceUrl={instanceUrl}
+              token={token}
+              onUpdate={onUpdateStatus}
+              onOpenThread={onOpenThread}
+              onComposeReply={onComposeReply}
+              onOpenLightbox={onOpenLightbox}
+              compact
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus }) {
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const fileInputRef = useRef(null)
+  const { uploads, addFiles, removeUpload, mediaIds, isUploading } = useMediaUploads(
+    instanceUrl,
+    token
+  )
+
+  async function submit() {
+    if (!text.trim() && mediaIds.length === 0 && !quoteStatus) {
+      setError('Write something or attach a file first.')
+      return
+    }
+    if (isUploading) {
+      setError('Still uploading — hang on a sec.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const status = await mitra.postStatus(instanceUrl, token, text.trim(), {
+        mediaIds,
+        quoteId: quoteStatus?.id,
+      })
+      onPosted(status)
+      onClose()
+    } catch (err) {
+      setError(err.message || 'Something went wrong.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="dialog-overlay" onClick={onClose}>
+      <div className="dialog-card" onClick={(e) => e.stopPropagation()}>
+        <div className="dialog-header">
+          <span className="dialog-title">New post</span>
+          <button className="icon-btn" onClick={onClose} aria-label="Cancel">
+            <X size={16} />
+          </button>
+        </div>
+        {error && <div className="banner banner-error">{error}</div>}
+        <textarea
+          className="compose-textarea"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+              e.preventDefault()
+              submit()
+            }
+          }}
+          onPaste={(e) => {
+            const items = Array.from(e.clipboardData?.items || [])
+            const imageFiles = items
+              .filter((item) => item.type.startsWith('image/'))
+              .map((item) => item.getAsFile())
+              .filter(Boolean)
+            if (imageFiles.length > 0) {
+              e.preventDefault()
+              addFiles(imageFiles)
+            }
+          }}
+          placeholder="What's on your mind?"
+          rows={5}
+          autoFocus
+        />
+        {quoteStatus && (
+          <div className="compose-quote-preview">
+            <QuoteCard status={quoteStatus} instanceUrl={instanceUrl} onOpenThread={() => {}} />
+          </div>
+        )}
+        <MediaUploadStrip uploads={uploads} onRemove={removeUpload} />
+        <div className="dialog-actions">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,video/*,audio/*"
+            multiple
+            hidden
+            onChange={(e) => {
+              addFiles(e.target.files)
+              e.target.value = ''
+            }}
+          />
+          <button
+            className="icon-btn"
+            type="button"
+            aria-label="Attach media"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploads.length >= 4}
+          >
+            <ImagePlus size={16} />
+          </button>
+          <div style={{ flex: 1 }} />
+          <button className="pill-btn" onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button
+            className="pill-btn suggested"
+            onClick={submit}
+            disabled={busy || isUploading}
+            type="button"
+          >
+            {busy ? 'Posting…' : 'Post'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Three layout tiers based on window width. Wide: notifications get a
+// permanent left column and the thread panel gets a permanent right
+// column — a real 3-pane layout, nothing slides. Medium: today's
+// behavior — notifications is a header tab, thread panel slides in from
+// the right over/beside the timeline. Narrow: no room for a third column
+// at all, so an opened thread replaces the timeline in the same content
+// area instead, with a back button to return.
+const WIDE_BREAKPOINT = 1400
+const NARROW_BREAKPOINT = 900
+
+function useLayoutTier() {
+  const [width, setWidth] = useState(() => window.innerWidth)
+
+  useEffect(() => {
+    function onResize() {
+      setWidth(window.innerWidth)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  if (width >= WIDE_BREAKPOINT) return 'wide'
+  if (width >= NARROW_BREAKPOINT) return 'medium'
+  return 'narrow'
+}
+
+export default function App() {
+  const { session, beginLogin, logout, authError, completingLogin } = useMitraSession()
+  const tier = useLayoutTier()
+  const [view, setView] = useState('home')
+  const [timeline, setTimeline] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [composing, setComposing] = useState(false)
+  const [quoteStatus, setQuoteStatus] = useState(null)
+  const [openPickerId, setOpenPickerId] = useState(null)
+  const [replyStates, setReplyStates] = useState({})
+  const replyStatesRef = useRef(replyStates)
+  replyStatesRef.current = replyStates
+  const [sidePanel, setSidePanel] = useState(null)
+  const [lightboxAttachment, setLightboxAttachment] = useState(null)
+  const [notifications, setNotifications] = useState([])
+  const [notificationsLoading, setNotificationsLoading] = useState(false)
+  const [notificationsError, setNotificationsError] = useState('')
+  const [notificationsLoaded, setNotificationsLoaded] = useState(false)
+  const [exploreFeed, setExploreFeed] = useState('federated') // 'federated' | 'local'
+  const [exploreTimelines, setExploreTimelines] = useState({ federated: null, local: null })
+  const [exploreLoading, setExploreLoading] = useState(false)
+  const [exploreError, setExploreError] = useState('')
+  const [hoverPreviewsEnabled, setHoverPreviewsEnabled] = useState(() => {
+    try {
+      return localStorage.getItem('mitra-hover-previews') !== 'false'
+    } catch {
+      return true
+    }
+  })
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [hasMore, setHasMore] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+
+  function toggleHoverPreviews() {
+    setHoverPreviewsEnabled((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('mitra-hover-previews', String(next))
+      } catch {
+        // localStorage unavailable — setting just won't persist across reloads
+      }
+      return next
+    })
+  }
+
+  const [themeMode, setThemeMode] = useState(() => {
+    try {
+      return localStorage.getItem('mitra-theme-mode') || 'system'
+    } catch {
+      return 'system'
+    }
+  })
+
+  useEffect(() => {
+    const root = document.documentElement
+    if (themeMode === 'system') {
+      delete root.dataset.theme
+    } else {
+      root.dataset.theme = themeMode
+    }
+    try {
+      localStorage.setItem('mitra-theme-mode', themeMode)
+    } catch {}
+  }, [themeMode])
+
+  const loadTimeline = useCallback(async () => {
+    if (!session) return
+    setLoading(true)
+    setError('')
+    setHasMore(true)
+    try {
+      const statuses = await mitra.fetchHomeTimeline(session.instanceUrl, session.token)
+      setTimeline(statuses)
+    } catch (err) {
+      setError(err.message || 'Failed to load timeline.')
+    } finally {
+      setLoading(false)
+    }
+  }, [session])
+
+  const loadMoreTimeline = useCallback(async () => {
+    if (!session || loadingMore || !hasMore) return
+    setLoadingMore(true)
+    try {
+      const lastId = timeline[timeline.length - 1]?.id
+      if (!lastId) return
+      const statuses = await mitra.fetchHomeTimeline(session.instanceUrl, session.token, { max_id: lastId })
+      setTimeline((prev) => [...prev, ...statuses])
+      if (statuses.length < 10) setHasMore(false)
+    } catch {
+      // silently fail — user can scroll again to retry
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [session, loadingMore, hasMore, timeline])
+
+  useEffect(() => {
+    loadTimeline()
+  }, [loadTimeline])
+
+  useEffect(() => {
+    if (view !== 'home') return
+    const sentinel = document.querySelector('.scroll-sentinel')
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMoreTimeline()
+      },
+      { rootMargin: '200px' }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [view, loadMoreTimeline, timeline.length])
+
+  const loadNotifications = useCallback(async () => {
+    if (!session) return
+    setNotificationsLoading(true)
+    setNotificationsError('')
+    try {
+      const items = await mitra.fetchNotifications(session.instanceUrl, session.token)
+      setNotifications(items)
+      setNotificationsLoaded(true)
+    } catch (err) {
+      setNotificationsError(err.message || 'Failed to load notifications.')
+    } finally {
+      setNotificationsLoading(false)
+    }
+  }, [session])
+
+  useEffect(() => {
+    if ((view === 'notifications' || tier === 'wide') && !notificationsLoaded) {
+      loadNotifications()
+    }
+  }, [view, tier, notificationsLoaded, loadNotifications])
+
+  // Wide tier shows notifications as a permanent column, not a tab — if
+  // the window shrinks below wide while "Notifications" is the active
+  // tab-view, there'd be nothing in the main content area. Fall back to
+  // Home.
+  useEffect(() => {
+    if (tier === 'wide' && view === 'notifications') {
+      setView('home')
+    }
+  }, [tier, view])
+
+  const loadExplore = useCallback(
+    async (feed) => {
+      if (!session) return
+      setExploreLoading(true)
+      setExploreError('')
+      try {
+        const items = await mitra.fetchPublicTimeline(
+          session.instanceUrl,
+          session.token,
+          feed === 'local'
+        )
+        setExploreTimelines((prev) => ({ ...prev, [feed]: items }))
+      } catch (err) {
+        setExploreError(err.message || 'Failed to load timeline.')
+      } finally {
+        setExploreLoading(false)
+      }
+    },
+    [session]
+  )
+
+  useEffect(() => {
+    if (view === 'explore' && exploreTimelines[exploreFeed] === null) {
+      loadExplore(exploreFeed)
+    }
+  }, [view, exploreFeed, exploreTimelines, loadExplore])
+
+  function updateExplorePost(updated) {
+    setExploreTimelines((prev) => ({
+      ...prev,
+      [exploreFeed]: prev[exploreFeed]?.map((p) => (p.id === updated.id ? updated : p)) ?? null,
+    }))
+  }
+
+  async function respondFollowRequest(accountId, action) {
+    await mitra.respondFollowRequest(session.instanceUrl, session.token, accountId, action)
+  }
+
+  function handleRefresh() {
+    if (view === 'notifications') {
+      loadNotifications()
+    } else if (view === 'explore') {
+      loadExplore(exploreFeed)
+    } else {
+      loadTimeline()
+    }
+  }
+
+  function updatePost(updated) {
+    setTimeline((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+  }
+
+  function prependPost(post) {
+    setTimeline((prev) => [post, ...prev])
+  }
+
+  // Fetches the ENTIRE descendant tree for `status` (not just its direct
+  // children — /context returns every depth in one call) plus its
+  // ancestors, and always refetches on open rather than relying on a
+  // stale cache, so what's shown is actually current. Every thread opens
+  // through this, unconditionally — the OP, a notification's status, a
+  // reply, a reply to a reply, all the same path, all the same panel.
+  const ensureRepliesLoaded = useCallback(
+    (status) => {
+      setReplyStates((prev) => {
+        if (prev[status.id]?.items) return prev
+        return { ...prev, [status.id]: { ...(prev[status.id] || {}), loading: true, error: '' } }
+      })
+
+      if (replyStatesRef.current[status.id]?.items) return
+
+      mitra
+        .fetchContext(session.instanceUrl, session.token, status.id)
+        .then((context) => {
+          const tree = buildReplyTree(context.descendants, status.id)
+          setReplyStates((prev) => ({
+            ...prev,
+            [status.id]: { loading: false, error: '', items: tree, ancestors: context.ancestors },
+          }))
+        })
+        .catch((err) => {
+          setReplyStates((prev) => ({
+            ...prev,
+            [status.id]: {
+              ...(prev[status.id] || {}),
+              loading: false,
+              error: err.message || 'Failed to load replies.',
+            },
+          }))
+        })
+    },
+    [session]
+  )
+
+  // Opens the side panel for `status` — ancestors and the full reply tree —
+  // or closes it if that same status is already showing. This is the only
+  // way threads open anywhere in the app now: always the slide-out panel,
+  // never inline in the timeline.
+  function handleOpenThread(status) {
+    setSidePanel((prev) =>
+      prev?.mode === 'thread' && prev.status.id === status.id ? prev : { mode: 'thread', status }
+    )
+    ensureRepliesLoaded(status)
+  }
+
+  // Opens the reply-compose slide-out for `status`.
+  function handleComposeReply(status) {
+    setSidePanel({ mode: 'compose', status })
+  }
+
+  function handleQuote(status) {
+    setQuoteStatus(status)
+    setComposing(true)
+  }
+
+  // Auto-refresh the thread panel every 5 seconds (silent, no loading flash)
+  useEffect(() => {
+    if (sidePanel?.mode !== 'thread' || !sidePanel.status) return
+    const statusId = sidePanel.status.id
+    const interval = setInterval(() => {
+      mitra
+        .fetchContext(session.instanceUrl, session.token, statusId)
+        .then((context) => {
+          const tree = buildReplyTree(context.descendants, statusId)
+          setReplyStates((prev) => ({
+            ...prev,
+            [statusId]: { loading: false, error: '', items: tree, ancestors: context.ancestors },
+          }))
+        })
+        .catch(() => {})
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [sidePanel, session])
+
+  // Auto-refresh notifications every 5 seconds (silent)
+  useEffect(() => {
+    if (view !== 'notifications' && tier !== 'wide') return
+    if (!session) return
+    const interval = setInterval(() => {
+      mitra
+        .fetchNotifications(session.instanceUrl, session.token)
+        .then((items) => setNotifications(items))
+        .catch(() => {})
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [view, tier, session])
+
+  // After a reply posts successfully, drop it into that parent's already-
+  // loaded tree (if loaded) as a new leaf so it shows up immediately
+  // without a refetch, then swap the panel from compose to viewing.
+  function handleReplyPosted(parentId, reply) {
+    setReplyStates((prev) => {
+      const current = prev[parentId]
+      if (!current?.items) return prev
+      return {
+        ...prev,
+        [parentId]: { ...current, items: [...current.items, { status: reply, children: [] }] },
+      }
+    })
+    setSidePanel(null)
+  }
+
+  function closeSidePanel() {
+    setSidePanel(null)
+  }
+
+  // Favouriting/boosting a reply needs to update that exact node wherever
+  // it lives — inside the tree of whichever thread is currently open in
+  // the panel, or (for a notification's own status) the notifications
+  // list directly. Two different data shapes, so two small helpers rather
+  // than one that tries to cover both.
+  function updateReplyInPanel(updated) {
+    if (!sidePanel?.status) return
+    const rootId = sidePanel.status.id
+    if (updated.id === rootId) {
+      setSidePanel((prev) => (prev ? { ...prev, status: updated } : prev))
+    }
+    setReplyStates((prev) => {
+      const current = prev[rootId]
+      if (!current) return prev
+      const items = current.items ? updateTreeNode(current.items, updated) : current.items
+      const ancestors = current.ancestors
+        ? current.ancestors.map((a) => (a.id === updated.id ? updated : a))
+        : current.ancestors
+      return { ...prev, [rootId]: { ...current, items, ancestors } }
+    })
+  }
+
+  function updateNotificationStatus(updated) {
+    setNotifications((prev) =>
+      prev.map((n) => (n.status && n.status.id === updated.id ? { ...n, status: updated } : n))
+    )
+  }
+
+  if (!session) {
+    return (
+      <LoginView onBeginLogin={beginLogin} error={authError} completingLogin={completingLogin} />
+    )
+  }
+
+  const notificationsBody = (
+    <>
+      {notificationsError && <div className="banner banner-error">{notificationsError}</div>}
+      {notificationsLoading && notifications.length === 0 ? (
+        <div className="empty-state">Loading…</div>
+      ) : notifications.length === 0 ? (
+        <div className="empty-state">Nothing here yet.</div>
+      ) : (
+        <div className="timeline-list">
+          {notifications.map((n) => (
+            <NotificationRow
+              key={n.id}
+              notification={n}
+              instanceUrl={session.instanceUrl}
+              token={session.token}
+              onUpdateStatus={updateNotificationStatus}
+              onOpenThread={handleOpenThread}
+              onComposeReply={handleComposeReply}
+              onOpenLightbox={setLightboxAttachment}
+              onRespondFollowRequest={respondFollowRequest}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  )
+
+  const timelineContent = (
+    <div className="timeline-wrap">
+      {view === 'home' && (
+        <>
+          {error && <div className="banner banner-error">{error}</div>}
+          <div className="section-label">Home timeline</div>
+          {loading && timeline.length === 0 ? (
+            <div className="empty-state">Loading…</div>
+          ) : timeline.length === 0 ? (
+            <div className="empty-state">
+              No posts yet. Follow someone to see their posts here.
+            </div>
+          ) : (
+            <div className="timeline-list">
+              {timeline.map((post) => (
+                <PostRow
+                  key={post.id}
+                  post={post}
+                  instanceUrl={session.instanceUrl}
+                  token={session.token}
+                  onUpdate={updatePost}
+                  onOpenThread={handleOpenThread}
+                  onComposeReply={handleComposeReply}
+                  onOpenLightbox={setLightboxAttachment}
+                  onQuote={handleQuote}
+                />
+              ))}
+            </div>
+          )}
+          {loadingMore && <div className="empty-state">Loading…</div>}
+          {hasMore && !loadingMore && timeline.length > 0 && (
+            <div className="scroll-sentinel" />
+          )}
+        </>
+      )}
+
+      {view === 'explore' && (
+        <>
+          {exploreError && <div className="banner banner-error">{exploreError}</div>}
+          <div className="explore-header">
+            <div className="section-label" style={{ paddingBottom: 0 }}>
+              Explore
+            </div>
+            <div className="feed-toggle">
+              <button
+                className={`feed-toggle-btn${exploreFeed === 'federated' ? ' active' : ''}`}
+                onClick={() => setExploreFeed('federated')}
+                type="button"
+              >
+                <Globe size={13} />
+                Federated
+              </button>
+              <button
+                className={`feed-toggle-btn${exploreFeed === 'local' ? ' active' : ''}`}
+                onClick={() => setExploreFeed('local')}
+                type="button"
+              >
+                <Home size={13} />
+                Local
+              </button>
+            </div>
+          </div>
+          {exploreLoading && !exploreTimelines[exploreFeed] ? (
+            <div className="empty-state">Loading…</div>
+          ) : !exploreTimelines[exploreFeed] || exploreTimelines[exploreFeed].length === 0 ? (
+            <div className="empty-state">Nothing here yet.</div>
+          ) : (
+            <div className="timeline-list">
+              {exploreTimelines[exploreFeed].map((post) => (
+                <PostRow
+                  key={post.id}
+                  post={post}
+                  instanceUrl={session.instanceUrl}
+                  token={session.token}
+                  onUpdate={updateExplorePost}
+                  onOpenThread={handleOpenThread}
+                  onComposeReply={handleComposeReply}
+                  onOpenLightbox={setLightboxAttachment}
+                  onQuote={handleQuote}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {tier !== 'wide' && view === 'notifications' && (
+        <>
+          <div className="section-label">Notifications</div>
+          {notificationsBody}
+        </>
+      )}
+    </div>
+  )
+
+  const threadPanelProps = {
+    panel: sidePanel,
+    replyStates,
+    onOpenThread: handleOpenThread,
+    onComposeReply: handleComposeReply,
+    onOpenLightbox: setLightboxAttachment,
+    onUpdateReply: updateReplyInPanel,
+    onClose: closeSidePanel,
+    instanceUrl: session.instanceUrl,
+    token: session.token,
+    onReplyPosted: handleReplyPosted,
+    onQuote: handleQuote,
+  }
+
+  return (
+    <AppSettingsContext.Provider value={{ hoverPreviewsEnabled }}>
+    <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
+      <header className="headerbar">
+        <div className="headerbar-brand">
+          <Rss size={18} />
+          <div>
+            Mitra
+            <div className="headerbar-subtitle">
+              {session.instanceUrl.replace(/^https?:\/\//, '')}
+            </div>
+          </div>
+        </div>
+
+        <div className="view-switcher">
+          <button
+            className={`view-switcher-btn${view === 'home' ? ' active' : ''}`}
+            onClick={() => setView('home')}
+          >
+            <Home size={14} />
+            Home
+          </button>
+          {tier !== 'wide' && (
+            <button
+              className={`view-switcher-btn${view === 'notifications' ? ' active' : ''}`}
+              onClick={() => setView('notifications')}
+            >
+              <Bell size={14} />
+              Notifications
+            </button>
+          )}
+          <button
+            className={`view-switcher-btn${view === 'explore' ? ' active' : ''}`}
+            onClick={() => setView('explore')}
+          >
+            <Compass size={14} />
+            Explore
+          </button>
+        </div>
+
+        <div className="headerbar-actions">
+          <button className="icon-btn" aria-label="Refresh" onClick={handleRefresh}>
+            <RotateCw size={16} />
+          </button>
+          <div className="settings-menu-wrap">
+            <button
+              className="icon-btn"
+              aria-label="Settings"
+              onClick={() => setSettingsOpen((v) => !v)}
+            >
+              <Settings size={16} />
+            </button>
+            {settingsOpen && (
+              <>
+                <div className="settings-menu-backdrop" onClick={() => setSettingsOpen(false)} />
+                <div className="settings-menu">
+                  <label className="settings-menu-row">
+                    <span>Media hover previews</span>
+                    <input
+                      type="checkbox"
+                      checked={hoverPreviewsEnabled}
+                      onChange={toggleHoverPreviews}
+                    />
+                  </label>
+                  <div className="settings-menu-row">
+                    <span>Theme</span>
+                    <div className="theme-toggle">
+                      <button
+                        className={`theme-toggle-btn${themeMode === 'system' ? ' active' : ''}`}
+                        onClick={() => setThemeMode('system')}
+                      >
+                        System
+                      </button>
+                      <button
+                        className={`theme-toggle-btn${themeMode === 'light' ? ' active' : ''}`}
+                        onClick={() => setThemeMode('light')}
+                      >
+                        Light
+                      </button>
+                      <button
+                        className={`theme-toggle-btn${themeMode === 'dark' ? ' active' : ''}`}
+                        onClick={() => setThemeMode('dark')}
+                      >
+                        Dark
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+          <button className="suggested-btn" onClick={() => setComposing(true)}>
+            <Plus size={15} />
+            New post
+          </button>
+          <button className="icon-btn" aria-label="Log out" onClick={logout}>
+            <LogOut size={16} />
+          </button>
+          <Avatar
+            name={session.account.display_name || session.account.username}
+            src={session.account.avatar}
+          />
+        </div>
+      </header>
+
+      {tier === 'wide' ? (
+        <div className="app-shell">
+          <aside className="notif-column scrollbar-thin">
+            <div className="section-label">Notifications</div>
+            {notificationsBody}
+          </aside>
+          <div className="content-scroll scrollbar-thin">{timelineContent}</div>
+          <aside className="thread-column scrollbar-thin">
+            {sidePanel ? (
+              <ThreadPanelContent {...threadPanelProps} />
+            ) : (
+              <div className="thread-column-empty">Select a post to view its replies.</div>
+            )}
+          </aside>
+        </div>
+      ) : tier === 'medium' ? (
+        <div className={`main-layout${sidePanel ? ' panel-open' : ''}`}>
+          <div className="content-scroll scrollbar-thin">{timelineContent}</div>
+          <ThreadPanel {...threadPanelProps} />
+        </div>
+      ) : (
+        <div className="main-layout">
+          <div className="content-scroll scrollbar-thin">
+            {sidePanel ? (
+              <div className="timeline-wrap">
+                <ThreadPanelContent {...threadPanelProps} backLabel="Back to timeline" />
+              </div>
+            ) : (
+              timelineContent
+            )}
+          </div>
+        </div>
+      )}
+
+      <MediaLightbox
+        lightboxState={lightboxAttachment ? { ...lightboxAttachment, onNavigate: setLightboxAttachment } : null}
+        onClose={() => setLightboxAttachment(null)}
+      />
+
+      {composing && (
+        <ComposeDialog
+          instanceUrl={session.instanceUrl}
+          token={session.token}
+          onClose={() => { setComposing(false); setQuoteStatus(null) }}
+          onPosted={prependPost}
+          quoteStatus={quoteStatus}
+        />
+      )}
+    </PickerContext.Provider>
+    </AppSettingsContext.Provider>
+  )
+}
