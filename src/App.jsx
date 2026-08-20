@@ -1478,6 +1478,7 @@ function ThreadPanelContent({
   onMute,
   onBlock,
   maxCharacters,
+  focusedReplyId,
 }) {
   const status = panel?.status
   const state = status ? replyStates[status.id] : null
@@ -1497,6 +1498,12 @@ function ThreadPanelContent({
   }, [status, state])
 
   const [highlightedId, setHighlightedId] = useState(null)
+
+  useEffect(() => {
+    if (!focusedReplyId) return
+    const el = document.querySelector(`[data-status-id="${focusedReplyId}"]`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [focusedReplyId])
 
   if (panel?.mode === 'compose') {
     return (
@@ -1597,7 +1604,7 @@ function ThreadPanelContent({
         {state?.loading && <div className="reply-loading">Loading replies…</div>}
         {state?.error && <div className="banner banner-error">{state.error}</div>}
         {state?.items?.map((node) => (
-          <motion.div key={node.status.id} variants={descendantItemVariants}>
+          <motion.div key={node.status.id} variants={descendantItemVariants} data-status-id={node.status.id} className={focusedReplyId === node.status.id ? 'focused-reply' : undefined}>
             <ThreadReply
               node={node}
               depth={state.ancestors.length + 1}
@@ -2196,6 +2203,7 @@ export default function App() {
   replyStatesRef.current = replyStates
   const [sidePanel, setSidePanel] = useState(null)
   const [profileAccountId, setProfileAccountId] = useState(null)
+  const [focusedReplyId, setFocusedReplyId] = useState(null)
   const [lightboxAttachment, setLightboxAttachment] = useState(null)
   const [notifications, setNotifications] = useState([])
   const [notificationsLoading, setNotificationsLoading] = useState(false)
@@ -2459,7 +2467,11 @@ export default function App() {
 
   // Opens the reply-compose slide-out for `status`.
   function handleComposeReply(status) {
-    setSidePanel({ mode: 'compose', status })
+    setSidePanel((prev) => ({
+      mode: 'compose',
+      status,
+      threadRoot: prev?.mode === 'thread' ? prev.status : null,
+    }))
   }
 
   // Opens the profile view for an account.
@@ -2519,7 +2531,14 @@ export default function App() {
         [parentId]: { ...current, items: [...current.items, { status: reply, children: [] }] },
       }
     })
-    setSidePanel(null)
+    setSidePanel((prev) => {
+      if (prev?.threadRoot) {
+        return { mode: 'thread', status: prev.threadRoot }
+      }
+      return null
+    })
+    setFocusedReplyId(reply.id)
+    setTimeout(() => setFocusedReplyId(null), 2000)
   }
 
   function closeSidePanel() {
@@ -2732,6 +2751,7 @@ export default function App() {
     onMute: handleMuteAccount,
     onBlock: handleBlockAccount,
     maxCharacters: session.maxCharacters || 500,
+    focusedReplyId,
   }
 
   return (

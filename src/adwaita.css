@@ -1687,7 +1687,9 @@ textarea:focus-visible {
   align-items: flex-end;
   gap: 12px;
   padding: 0 16px;
+  margin-top: -40px;
   flex-wrap: wrap;
+  position: relative;
 }
 
 .profile-info .avatar.lg {
@@ -1803,4 +1805,13 @@ textarea:focus-visible {
 
 .notif-text .post-name.clickable:hover {
   text-decoration: underline;
+}
+
+.focused-reply {
+  animation: focus-glow 2s ease-out;
+}
+
+@keyframes focus-glow {
+  0% { background-color: var(--accent-bg-subtle); }
+  100% { background-color: transparent; }
 }
