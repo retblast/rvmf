@@ -1665,6 +1665,8 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   padding: 8px 12px 0;
+  position: relative;
+  z-index: 1;
 }
 
 .profile-top-label {
