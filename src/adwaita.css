@@ -325,6 +325,21 @@ button {
   margin-right: 6px;
 }
 
+.post-reply-context {
+  margin: 2px 0 2px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.post-reply-link {
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.post-reply-link:hover {
+  text-decoration: underline;
+}
+
 .post-text {
   margin: 4px 0 8px;
   font-size: 13.5px;

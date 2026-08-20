@@ -1210,6 +1210,9 @@ const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOp
   const booster = isBoost ? post.account : null
   const content = processStatusContent(status, instanceUrl)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
+  const replyToAccount = !parentStatus && status.in_reply_to_account_id
+    ? (status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
+    : null
 
   async function toggleReaction(statusId, emoji, alreadyReacted) {
     try {
@@ -1284,6 +1287,14 @@ const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOp
             )}
             <span className="post-time">{formatRelativeTime(status.created_at)}</span>
           </div>
+          {replyToAccount && (
+            <div className="post-reply-context">
+              In reply to{' '}
+              <span className="post-reply-link" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(replyToAccount) }}>
+                @{replyToAccount.acct || replyToAccount.username}
+              </span>
+            </div>
+          )}
           <p className="post-text">{content.textNodes}</p>
           <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
           <MediaGrid
