@@ -2054,6 +2054,16 @@ function ProfileView({ accountId, instanceUrl, token, onOpenThread, onComposeRep
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
 
+  function tabParams(t) {
+    switch (t) {
+      case 'posts': return { excludeReplies: true }
+      case 'posts_and_replies': return {}
+      case 'pinned': return { pinned: true }
+      case 'media': return { onlyMedia: true }
+      default: return {}
+    }
+  }
+
   useEffect(() => {
     setAccount(null)
     setStatuses([])
@@ -2066,7 +2076,7 @@ function ProfileView({ accountId, instanceUrl, token, onOpenThread, onComposeRep
     mitra.fetchAccount(instanceUrl, accountId)
       .then((acct) => {
         setAccount(acct)
-        return mitra.fetchAccountStatuses(instanceUrl, token, acct.id)
+        return mitra.fetchAccountStatuses(instanceUrl, token, acct.id, tabParams('posts'))
       })
       .then((list) => {
         setStatuses(list)
@@ -2106,8 +2116,7 @@ function ProfileView({ accountId, instanceUrl, token, onOpenThread, onComposeRep
     try {
       const lastId = statuses[statuses.length - 1]?.id
       if (!lastId) return
-      const params = tab === 'media' ? { onlyMedia: true, max_id: lastId } : { max_id: lastId }
-      const more = await mitra.fetchAccountStatuses(instanceUrl, token, account.id, params)
+      const more = await mitra.fetchAccountStatuses(instanceUrl, token, account.id, { ...tabParams(tab), max_id: lastId })
       setStatuses((prev) => [...prev, ...more])
       if (more.length < 20) setHasMore(false)
     } catch {
@@ -2123,8 +2132,7 @@ function ProfileView({ accountId, instanceUrl, token, onOpenThread, onComposeRep
     setStatuses([])
     setHasMore(true)
     setLoading(true)
-    const params = newTab === 'media' ? { onlyMedia: true } : {}
-    mitra.fetchAccountStatuses(instanceUrl, token, accountId, params)
+    mitra.fetchAccountStatuses(instanceUrl, token, accountId, tabParams(newTab))
       .then((list) => { setStatuses(list); if (list.length < 20) setHasMore(false) })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -2200,6 +2208,8 @@ function ProfileView({ accountId, instanceUrl, token, onOpenThread, onComposeRep
         </div>
         <div className="profile-tabs">
           <button className={`profile-tab${tab === 'posts' ? ' active' : ''}`} onClick={() => switchTab('posts')}>Posts</button>
+          <button className={`profile-tab${tab === 'posts_and_replies' ? ' active' : ''}`} onClick={() => switchTab('posts_and_replies')}>Posts & Replies</button>
+          <button className={`profile-tab${tab === 'pinned' ? ' active' : ''}`} onClick={() => switchTab('pinned')}>Pinned</button>
           <button className={`profile-tab${tab === 'media' ? ' active' : ''}`} onClick={() => switchTab('media')}>Media</button>
         </div>
         {loading && statuses.length === 0 ? (

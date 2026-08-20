@@ -353,9 +353,12 @@ export function fetchAccount(instanceUrl, accountId) {
   return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}`)
 }
 
-export function fetchAccountStatuses(instanceUrl, token, accountId, { onlyMedia = false, max_id } = {}) {
+export function fetchAccountStatuses(instanceUrl, token, accountId, { onlyMedia = false, excludeReplies = false, excludeReblogs = false, pinned = false, max_id } = {}) {
   const params = new URLSearchParams({ limit: '20' })
   if (onlyMedia) params.set('only_media', 'true')
+  if (excludeReplies) params.set('exclude_replies', 'true')
+  if (excludeReblogs) params.set('exclude_reblogs', 'true')
+  if (pinned) params.set('pinned', 'true')
   if (max_id) params.set('max_id', max_id)
   return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/statuses?${params.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
