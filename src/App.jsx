@@ -16,6 +16,7 @@ import {
   Music,
   Paperclip,
   Eye,
+  EyeOff,
   UserPlus,
   AtSign,
   Globe,
@@ -468,8 +469,9 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
   )
 }
 
-function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox }) {
-  const [revealed, setRevealed] = useState(!sensitive)
+function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox, forceHidden }) {
+  const [userRevealed, setUserRevealed] = useState(!sensitive)
+  const revealed = !forceHidden && userRevealed
 
   if (!attachments || attachments.length === 0) return null
 
@@ -488,7 +490,7 @@ function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox }) {
         ))}
       </div>
       {!revealed && (
-        <button type="button" className="media-cw-overlay" onClick={() => setRevealed(true)}>
+        <button type="button" className="media-cw-overlay" onClick={() => setUserRevealed(true)}>
           <Eye size={18} />
           <span>{spoilerText || 'Sensitive content'} — click to view</span>
         </button>
@@ -668,6 +670,7 @@ function ThreadReply({
   onBlock,
 }) {
   const [busy, setBusy] = useState(false)
+  const [mediaHidden, setMediaHidden] = useState(false)
   const { openPickerId, setOpenPickerId } = useContext(PickerContext)
   const showPicker = openPickerId === node.status.id
   const setShowPicker = (open) => setOpenPickerId(open ? node.status.id : null)
@@ -754,6 +757,7 @@ function ThreadReply({
             sensitive={content.sensitive}
             spoilerText={content.spoilerText}
             onOpenLightbox={onOpenLightbox}
+            forceHidden={mediaHidden}
           />
           <ReactionChips
             reactions={status.pleroma?.emoji_reactions}
@@ -802,6 +806,15 @@ function ThreadReply({
                   />
                 )}
               </>
+            )}
+            {content.attachments.length > 0 && (
+              <button
+                className="action-btn"
+                aria-label={mediaHidden ? 'Show media' : 'Hide media'}
+                onClick={() => setMediaHidden((v) => !v)}
+              >
+                {mediaHidden ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
             )}
             <PostOptionsMenu
               status={status}
@@ -1162,6 +1175,7 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
 
 const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onQuote, statusById, depth, highlightedId, onHighlightParent, currentAccountId, onDelete, onMute, onBlock }) {
   const [busy, setBusy] = useState(false)
+  const [mediaHidden, setMediaHidden] = useState(false)
   const { openPickerId, setOpenPickerId } = useContext(PickerContext)
   const isBoost = Boolean(post.reblog)
   const status = unwrapStatus(post)
@@ -1253,6 +1267,7 @@ const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOp
             sensitive={content.sensitive}
             spoilerText={content.spoilerText}
             onOpenLightbox={onOpenLightbox}
+            forceHidden={mediaHidden}
           />
           <ReactionChips
             reactions={status.pleroma?.emoji_reactions}
@@ -1297,6 +1312,15 @@ const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOp
                 onReact={toggleReaction}
                 onClose={() => setShowPicker(false)}
               />
+            )}
+            {content.attachments.length > 0 && (
+              <button
+                className="action-btn"
+                aria-label={mediaHidden ? 'Show media' : 'Hide media'}
+                onClick={() => setMediaHidden((v) => !v)}
+              >
+                {mediaHidden ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
             )}
             <PostOptionsMenu
               status={status}
