@@ -537,6 +537,8 @@ button {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-fg);
+  min-width: 100px;
+  text-align: center;
 }
 
 .pill-btn.suggested:hover {
