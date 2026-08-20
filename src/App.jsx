@@ -1305,7 +1305,7 @@ function visibilityLabel(v) {
   }
 }
 
-function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted }) {
+function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted, maxCharacters = 500 }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -1325,8 +1325,8 @@ function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted }) 
       setError('Write something or attach a file first.')
       return
     }
-    if (text.length > MAX_CHARS) {
-      setError(`Post is ${text.length - MAX_CHARS} character${text.length - MAX_CHARS !== 1 ? 's' : ''} over the limit.`)
+    if (text.length > maxCharacters) {
+      setError(`Post is ${text.length - maxCharacters} character${text.length - maxCharacters !== 1 ? 's' : ''} over the limit.`)
       return
     }
     if (isUploading) {
@@ -1405,7 +1405,7 @@ function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted }) 
           rows={6}
           autoFocus
         />
-        <CharCounter current={text.length} max={MAX_CHARS} />
+        <CharCounter current={text.length} max={maxCharacters} />
       </div>
       <MediaUploadStrip uploads={uploads} onRemove={removeUpload} />
       <div className="compose-visibility">Replying as: {visibilityLabel(visibility)}</div>
@@ -1472,6 +1472,7 @@ function ThreadPanelContent({
   onDelete,
   onMute,
   onBlock,
+  maxCharacters,
 }) {
   const status = panel?.status
   const state = status ? replyStates[status.id] : null
@@ -1500,6 +1501,7 @@ function ThreadPanelContent({
         token={token}
         onClose={onClose}
         onPosted={onReplyPosted}
+        maxCharacters={maxCharacters}
       />
     )
   }
@@ -1784,8 +1786,6 @@ const NotificationRow = memo(function NotificationRow({
   )
 })
 
-const MAX_CHARS = 500
-
 function CharCounter({ current, max }) {
   const remaining = max - current
   if (current === 0) return null
@@ -1793,7 +1793,7 @@ function CharCounter({ current, max }) {
   return <span className={`char-counter ${cls}`}>{remaining}</span>
 }
 
-function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus }) {
+function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus, maxCharacters = 500 }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -1811,8 +1811,8 @@ function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus }) {
       setError('Write something or attach a file first.')
       return
     }
-    if (text.length > MAX_CHARS) {
-      setError(`Post is ${text.length - MAX_CHARS} character${text.length - MAX_CHARS !== 1 ? 's' : ''} over the limit.`)
+    if (text.length > maxCharacters) {
+      setError(`Post is ${text.length - maxCharacters} character${text.length - maxCharacters !== 1 ? 's' : ''} over the limit.`)
       return
     }
     if (isUploading) {
@@ -1883,7 +1883,7 @@ function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus }) {
             rows={5}
             autoFocus
           />
-          <CharCounter current={text.length} max={MAX_CHARS} />
+          <CharCounter current={text.length} max={maxCharacters} />
         </div>
         {quoteStatus && (
           <div className="compose-quote-preview">
@@ -2499,6 +2499,7 @@ export default function App() {
     onDelete: handleDeleteStatus,
     onMute: handleMuteAccount,
     onBlock: handleBlockAccount,
+    maxCharacters: session.maxCharacters || 500,
   }
 
   return (
@@ -2652,6 +2653,7 @@ export default function App() {
           onClose={() => { setComposing(false); setQuoteStatus(null) }}
           onPosted={prependPost}
           quoteStatus={quoteStatus}
+          maxCharacters={session.maxCharacters || 500}
         />
       )}
     </PickerContext.Provider>

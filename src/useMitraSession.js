@@ -52,6 +52,23 @@ export function useMitraSession() {
       .finally(() => setCompletingLogin(false))
   }, [])
 
+  // If a restored session doesn't have maxCharacters yet (pre-existing
+  // login), fetch it once so the compose char limit is accurate.
+  useEffect(() => {
+    if (!session || session.maxCharacters) return
+    mitra
+      .fetchInstance(session.instanceUrl)
+      .then((instance) => {
+        const maxCharacters = instance?.configuration?.statuses?.max_characters || 500
+        setSession((prev) => {
+          const next = { ...prev, maxCharacters }
+          saveSession(next)
+          return next
+        })
+      })
+      .catch(() => {})
+  }, [session?.instanceUrl])
+
   const beginLogin = useCallback((instanceUrl) => {
     setAuthError('')
     return mitra.beginLogin(instanceUrl)

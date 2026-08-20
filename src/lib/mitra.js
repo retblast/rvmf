@@ -134,12 +134,16 @@ export async function completeLogin(code) {
   })
 
   const token = tokenRes.access_token
-  const account = await apiFetch(instanceUrl, '/api/v1/accounts/verify_credentials', {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  const [account, instance] = await Promise.all([
+    apiFetch(instanceUrl, '/api/v1/accounts/verify_credentials', {
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+    fetchInstance(instanceUrl).catch(() => null),
+  ])
 
   clearPendingLogin()
-  return { instanceUrl, token, account }
+  const maxCharacters = instance?.configuration?.statuses?.max_characters || 500
+  return { instanceUrl, token, account, maxCharacters }
 }
 
 export function fetchHomeTimeline(instanceUrl, token, { max_id } = {}) {
@@ -287,6 +291,10 @@ export function removeReaction(instanceUrl, token, statusId, emoji) {
 
 export function fetchCustomEmojis(instanceUrl) {
   return apiFetch(instanceUrl, '/api/v1/custom_emojis')
+}
+
+export function fetchInstance(instanceUrl) {
+  return apiFetch(instanceUrl, '/api/v2/instance')
 }
 
 export function votePoll(instanceUrl, token, pollId, choices) {
