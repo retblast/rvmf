@@ -1571,7 +1571,7 @@ function ThreadPanelContent({
             onOpenLightbox={onOpenLightbox}
             onQuote={onQuote}
             statusById={statusById}
-            depth={state.ancestors.length}
+            depth={state.ancestors?.length || 0}
             highlightedId={highlightedId}
             onHighlightParent={setHighlightedId}
             currentAccountId={currentAccountId}
@@ -1625,7 +1625,7 @@ function ThreadPanel(props) {
   const { panel, onClose } = props
   return (
     <>
-      <div className={`thread-panel-backdrop${panel ? ' visible' : ''}`} onClick={onClose} />
+      <div className="thread-panel-backdrop" onClick={onClose} />
       <aside className={`thread-panel${panel ? ' open' : ''}`}>
         <div className="thread-panel-inner scrollbar-thin">
           <ThreadPanelContent {...props} />

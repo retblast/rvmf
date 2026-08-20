@@ -1589,8 +1589,6 @@ button {
   border-left: 1px solid var(--border);
   background: var(--view-bg);
   transition: width 240ms ease;
-  position: relative;
-  z-index: 51;
 }
 
 .thread-panel.open {
@@ -1623,14 +1621,6 @@ button {
 
 .thread-panel-backdrop {
   display: none;
-}
-
-.thread-panel-backdrop.visible {
-  display: block;
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.3);
-  z-index: 50;
 }
 
 button:focus-visible,
