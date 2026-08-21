@@ -2972,8 +2972,8 @@ export default function App() {
       return { ...prev, [rootKey]: { ...prev[rootKey], items: updated } }
     })
     setSidePanel((prev) => {
-      if (prev?.threadRoot) {
-        return { mode: 'thread', status: prev.threadRoot }
+      if (prev?.mode === 'thread' && prev.status) {
+        return { mode: 'thread', status: prev.status }
       }
       return null
     })
