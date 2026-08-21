@@ -519,9 +519,13 @@ function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, ...rest 
   useEffect(() => {
     if (error && onError) onError()
   }, [error, onError])
-  const effectiveSrc = blobUrl || (src ? safeProxyUrl(src) : undefined)
-  if (!effectiveSrc) return null
-  return <img src={effectiveSrc} alt={alt || ''} className={className} style={style} loading={fetchClientMedia ? undefined : 'lazy'} {...rest} />
+  if (!src) return null
+  if (fetchClientMedia) {
+    if (error) return null
+    if (!blobUrl) return null
+    return <img src={blobUrl} alt={alt || ''} className={className} style={style} {...rest} />
+  }
+  return <img src={safeProxyUrl(src)} alt={alt || ''} className={className} style={style} loading="lazy" {...rest} />
 }
 
 function MediaItem({ attachment, revealed, onOpenLightbox }) {
@@ -575,12 +579,9 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
     fetchClientMedia && type === 'audio' ? resolveAtt : null
   )
 
-  const imgFallback = safeProxyUrl(previewUrl || url)
-  const effectiveImgSrc = imgBlob || imgFallback
-  const effectiveVidSrc = vidBlob || safeProxyUrl(url)
-  const effectiveAudSrc = audBlob || safeProxyUrl(url)
-
   if (type === 'image') {
+    const showImg = fetchClientMedia ? (imgBlob || imgError) : true
+    const imgSrc = imgBlob || safeProxyUrl(previewUrl || url)
     return (
       <>
         <button
@@ -592,13 +593,13 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
           onMouseLeave={hoverEnabled ? clear : undefined}
           aria-label={description || 'Open image'}
         >
-          <img src={effectiveImgSrc} alt={description || ''} loading={fetchClientMedia ? undefined : 'lazy'} />
+          {showImg && <img src={imgSrc} alt={description || ''} />}
           {imgLoading && <div className="media-loading-overlay"><div className="media-spinner" /></div>}
           {imgError && <div className="media-error-overlay"><span>Failed to load</span></div>}
         </button>
-        {hoverEnabled && pos && (
+        {hoverEnabled && pos && imgBlob && (
           <div className="media-hover-preview" style={{ left: pos.x, top: pos.y }}>
-            <img src={effectiveImgSrc} alt={description || ''} />
+            <img src={imgBlob} alt={description || ''} />
           </div>
         )}
       </>
@@ -606,6 +607,8 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
   }
 
   if (type === 'video' || type === 'gifv') {
+    const showVid = fetchClientMedia ? (vidBlob || vidError) : true
+    const vidSrc = vidBlob || safeProxyUrl(url)
     return (
       <>
         <div
@@ -614,13 +617,13 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
           onMouseEnter={hoverEnabled ? track : undefined}
           onMouseLeave={hoverEnabled ? clear : undefined}
         >
-          {type === 'video' ? (
-            <video controls preload="metadata" poster={safeProxyUrl(previewUrl)} src={effectiveVidSrc}>
+          {showVid && (type === 'video' ? (
+            <video controls preload="metadata" poster={safeProxyUrl(previewUrl)} src={vidSrc}>
               Your browser can&apos;t play this video.
             </video>
           ) : (
-            <video autoPlay loop muted playsInline preload="metadata" poster={safeProxyUrl(previewUrl)} src={effectiveVidSrc} />
-          )}
+            <video autoPlay loop muted playsInline preload="metadata" poster={safeProxyUrl(previewUrl)} src={vidSrc} />
+          ))}
           {vidLoading && <div className="media-loading-overlay"><div className="media-spinner" /></div>}
           {vidError && <div className="media-error-overlay"><span>Failed to load</span></div>}
         </div>
@@ -634,10 +637,12 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
   }
 
   if (type === 'audio') {
+    const showAud = fetchClientMedia ? (audBlob || audError) : true
+    const audSrc = audBlob || safeProxyUrl(url)
     return (
       <div className={`media-item media-audio${audLoading ? ' media-loading' : ''}${audError ? ' media-error' : ''}`}>
         <Music size={16} />
-        <audio controls preload="metadata" src={effectiveAudSrc} />
+        {showAud && <audio controls preload="metadata" src={audSrc} />}
         {audLoading && <div className="media-loading-overlay"><div className="media-spinner" /></div>}
         {audError && <div className="media-error-overlay"><span>Failed to load</span></div>}
       </div>
@@ -756,12 +761,18 @@ function MediaLightbox({ lightboxState, onClose }) {
           <ChevronRight size={24} />
         </button>
       )}
-      <img
-        className="lightbox-image"
-        src={effectiveSrc}
-        alt={attachment.description || ''}
-        onClick={(e) => e.stopPropagation()}
-      />
+      {blobUrl ? (
+        <img
+          className="lightbox-image"
+          src={blobUrl}
+          alt={attachment.description || ''}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : (
+        <div className="lightbox-image media-loading" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="media-spinner" />
+        </div>
+      )}
     </div>
   )
 }
