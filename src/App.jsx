@@ -352,10 +352,29 @@ function processStatusContent(status, instanceUrl) {
     description: '',
   }))
 
+  // For remote posts, the instance proxies media through its own domain.
+  // When that proxy breaks (404), we can try the original server directly
+  // by swapping the domain in the URL with the poster's home domain.
+  const instanceHost = hostOf(instanceUrl)
+  const acct = status.account?.acct || ''
+  const remoteHost = acct.includes('@') ? acct.split('@')[1] : ''
+
   const attachments = [
     ...(status.media_attachments || []),
     ...quarantinedAttachments,
-  ]
+  ].map((att) => {
+    if (!remoteHost || remoteHost === instanceHost) return att
+    if (att.remote_url) return att
+    try {
+      const u = new URL(att.url)
+      if (u.host === instanceHost) {
+        u.host = remoteHost
+        return { ...att, _remote_fallback: u.toString() }
+      }
+    } catch {}
+    return att
+  })
+
   const hasQuarantined = quarantinedAttachments.length > 0
   const sensitive = status.sensitive || hasQuarantined
   const spoilerText = status.sensitive
@@ -458,6 +477,7 @@ function useClientMedia(...urls) {
 
 function MediaItem({ attachment, revealed, onOpenLightbox }) {
   const { type, url, preview_url: previewUrl, remote_url: remoteUrl, description } = attachment
+  const remoteFallback = attachment._remote_fallback || null
   const { hoverPreviewsEnabled, fetchClientMedia } = useContext(AppSettingsContext)
   const { pos, track, clear } = useCursorPreview()
   const hoverEnabled = revealed && hoverPreviewsEnabled
@@ -465,15 +485,18 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
   const { blobUrl: imgBlob, loading: imgLoading, error: imgError } = useClientMedia(
     fetchClientMedia && type === 'image' ? (previewUrl || url) : null,
     fetchClientMedia && type === 'image' ? url : null,
-    fetchClientMedia && type === 'image' ? remoteUrl : null
+    fetchClientMedia && type === 'image' ? remoteUrl : null,
+    fetchClientMedia && type === 'image' ? remoteFallback : null
   )
   const { blobUrl: vidBlob, loading: vidLoading, error: vidError } = useClientMedia(
     fetchClientMedia && (type === 'video' || type === 'gifv') ? url : null,
-    fetchClientMedia && (type === 'video' || type === 'gifv') ? remoteUrl : null
+    fetchClientMedia && (type === 'video' || type === 'gifv') ? remoteUrl : null,
+    fetchClientMedia && (type === 'video' || type === 'gifv') ? remoteFallback : null
   )
   const { blobUrl: audBlob, loading: audLoading, error: audError } = useClientMedia(
     fetchClientMedia && type === 'audio' ? url : null,
-    fetchClientMedia && type === 'audio' ? remoteUrl : null
+    fetchClientMedia && type === 'audio' ? remoteUrl : null,
+    fetchClientMedia && type === 'audio' ? remoteFallback : null
   )
 
   const imgFallback = previewUrl || url
@@ -595,7 +618,8 @@ function MediaLightbox({ lightboxState, onClose }) {
 
   const { blobUrl } = useClientMedia(
     fetchClientMedia ? attachment.url : null,
-    fetchClientMedia ? attachment.remote_url : null
+    fetchClientMedia ? attachment.remote_url : null,
+    fetchClientMedia ? attachment._remote_fallback : null
   )
   const effectiveSrc = blobUrl || attachment.url
 
