@@ -363,16 +363,17 @@ function processStatusContent(status, instanceUrl) {
     ...(status.media_attachments || []),
     ...quarantinedAttachments,
   ].map((att) => {
-    if (!remoteHost || remoteHost === instanceHost) return att
-    if (att.remote_url) return att
+    const enriched = { ...att, _status_uri: status.uri || null, _origin_host: remoteHost || null }
+    if (!remoteHost || remoteHost === instanceHost) return enriched
+    if (att.remote_url) return enriched
     try {
       const u = new URL(att.url)
       if (u.host === instanceHost) {
         u.host = remoteHost
-        return { ...att, _remote_fallback: u.toString() }
+        return { ...enriched, _remote_fallback: u.toString() }
       }
     } catch {}
-    return att
+    return enriched
   })
 
   const hasQuarantined = quarantinedAttachments.length > 0
@@ -535,11 +536,24 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
     try {
       const apiUrl = `${instanceUrl}/api/v1/media/${attachment.id}`
       const proxyRes = await fetch(proxyUrl(apiUrl) + (token ? `&auth=${encodeURIComponent('Bearer ' + token)}` : ''))
-      if (!proxyRes.ok) return []
-      const fresh = await proxyRes.json()
-      return [fresh.remote_url, fresh.url, fresh.text_url, fresh.preview_url].filter(Boolean)
+      if (proxyRes.ok) {
+        const fresh = await proxyRes.json()
+        const urls = [fresh.remote_url, fresh.url, fresh.preview_url].filter(Boolean)
+        if (urls.length > 0) return urls
+      }
+    } catch {}
+    const statusUri = attachment._status_uri
+    if (!statusUri) return []
+    try {
+      const apRes = await fetch(proxyUrl(statusUri), {
+        headers: { 'Accept': 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"' }
+      })
+      if (!apRes.ok) return []
+      const ap = await apRes.json()
+      const atts = ap.attachment || []
+      return atts.flatMap((a) => [a.url, a.href].filter(Boolean))
     } catch { return [] }
-  }, [instanceUrl, token, attachment.id])
+  }, [instanceUrl, token, attachment.id, attachment._status_uri])
 
   const { blobUrl: imgBlob, loading: imgLoading, error: imgError } = useClientMedia(
     fetchClientMedia && type === 'image' ? (previewUrl || url) : null,
@@ -678,11 +692,24 @@ function MediaLightbox({ lightboxState, onClose }) {
     try {
       const apiUrl = `${instanceUrl}/api/v1/media/${attachment.id}`
       const proxyRes = await fetch(proxyUrl(apiUrl) + (token ? `&auth=${encodeURIComponent('Bearer ' + token)}` : ''))
-      if (!proxyRes.ok) return []
-      const fresh = await proxyRes.json()
-      return [fresh.remote_url, fresh.url, fresh.text_url, fresh.preview_url].filter(Boolean)
+      if (proxyRes.ok) {
+        const fresh = await proxyRes.json()
+        const urls = [fresh.remote_url, fresh.url, fresh.preview_url].filter(Boolean)
+        if (urls.length > 0) return urls
+      }
+    } catch {}
+    const statusUri = attachment._status_uri
+    if (!statusUri) return []
+    try {
+      const apRes = await fetch(proxyUrl(statusUri), {
+        headers: { 'Accept': 'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams"' }
+      })
+      if (!apRes.ok) return []
+      const ap = await apRes.json()
+      const atts = ap.attachment || []
+      return atts.flatMap((a) => [a.url, a.href].filter(Boolean))
     } catch { return [] }
-  }, [instanceUrl, token, attachment.id])
+  }, [instanceUrl, token, attachment.id, attachment._status_uri])
 
   const imageAttachments = (attachments || []).filter((a) => a.type === 'image')
   const currentIdx = imageAttachments.findIndex((a) => a.id === attachment.id)
