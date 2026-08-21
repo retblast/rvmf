@@ -415,59 +415,71 @@ function useCursorPreview(previewWidth = 320, previewHeight = 320) {
 
 const clientMediaCache = new Map()
 
-function useClientMedia(url) {
+function useClientMedia(...urls) {
+  const key = urls.filter(Boolean).join('\0')
   const [state, setState] = useState(() => {
-    if (!url) return { blobUrl: null, loading: false, error: false }
-    const cached = clientMediaCache.get(url)
-    if (cached) return { blobUrl: cached, loading: false, error: false }
+    if (!key) return { blobUrl: null, loading: false, error: false }
+    for (const u of urls) {
+      if (u && clientMediaCache.has(u)) return { blobUrl: clientMediaCache.get(u), loading: false, error: false }
+    }
     return { blobUrl: null, loading: true, error: false }
   })
 
   useEffect(() => {
-    if (!url) return
-    const cached = clientMediaCache.get(url)
-    if (cached) { setState({ blobUrl: cached, loading: false, error: false }); return }
+    if (!key) return
+    for (const u of urls) {
+      if (u && clientMediaCache.has(u)) { setState({ blobUrl: clientMediaCache.get(u), loading: false, error: false }); return }
+    }
 
     let cancelled = false
     async function load() {
-      try {
-        const res = await fetch(url)
-        if (!res.ok) throw new Error(res.status)
-        const blob = await res.blob()
-        const blobUrl = URL.createObjectURL(blob)
-        clientMediaCache.set(url, blobUrl)
-        if (!cancelled) setState({ blobUrl, loading: false, error: false })
-      } catch {
-        if (!cancelled) setState({ blobUrl: null, loading: false, error: true })
+      for (const u of urls) {
+        if (!u) continue
+        try {
+          const res = await fetch(u)
+          if (!res.ok) continue
+          const blob = await res.blob()
+          const blobUrl = URL.createObjectURL(blob)
+          clientMediaCache.set(u, blobUrl)
+          if (!cancelled) setState({ blobUrl, loading: false, error: false })
+          return
+        } catch {
+          // try next URL
+        }
       }
+      if (!cancelled) setState({ blobUrl: null, loading: false, error: true })
     }
     load()
     return () => { cancelled = true }
-  }, [url])
+  }, [key])
 
   return state
 }
 
 function MediaItem({ attachment, revealed, onOpenLightbox }) {
-  const { type, url, preview_url: previewUrl, description } = attachment
+  const { type, url, preview_url: previewUrl, remote_url: remoteUrl, description } = attachment
   const { hoverPreviewsEnabled, fetchClientMedia } = useContext(AppSettingsContext)
   const { pos, track, clear } = useCursorPreview()
   const hoverEnabled = revealed && hoverPreviewsEnabled
 
-  const imgTarget = previewUrl || url
   const { blobUrl: imgBlob, loading: imgLoading, error: imgError } = useClientMedia(
-    fetchClientMedia && type === 'image' ? imgTarget : null
+    fetchClientMedia && type === 'image' ? (previewUrl || url) : null,
+    fetchClientMedia && type === 'image' ? url : null,
+    fetchClientMedia && type === 'image' ? remoteUrl : null
   )
   const { blobUrl: vidBlob, loading: vidLoading, error: vidError } = useClientMedia(
-    fetchClientMedia && (type === 'video' || type === 'gifv') ? url : null
+    fetchClientMedia && (type === 'video' || type === 'gifv') ? url : null,
+    fetchClientMedia && (type === 'video' || type === 'gifv') ? remoteUrl : null
   )
   const { blobUrl: audBlob, loading: audLoading, error: audError } = useClientMedia(
-    fetchClientMedia && type === 'audio' ? url : null
+    fetchClientMedia && type === 'audio' ? url : null,
+    fetchClientMedia && type === 'audio' ? remoteUrl : null
   )
 
-  const effectiveImgSrc = fetchClientMedia ? (imgBlob || (imgError ? imgTarget : imgTarget)) : imgTarget
-  const effectiveVidSrc = fetchClientMedia ? (vidBlob || url) : url
-  const effectiveAudSrc = fetchClientMedia ? (audBlob || url) : url
+  const imgFallback = previewUrl || url
+  const effectiveImgSrc = imgBlob || (fetchClientMedia ? imgFallback : imgFallback)
+  const effectiveVidSrc = vidBlob || url
+  const effectiveAudSrc = audBlob || url
 
   if (type === 'image') {
     return (
@@ -573,12 +585,19 @@ function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox, forceH
 
 function MediaLightbox({ lightboxState, onClose }) {
   const { attachment, attachments, index } = lightboxState || {}
+  const { fetchClientMedia } = useContext(AppSettingsContext)
   if (!attachment) return null
 
   const imageAttachments = (attachments || []).filter((a) => a.type === 'image')
   const currentIdx = imageAttachments.findIndex((a) => a.id === attachment.id)
   const hasPrev = currentIdx > 0
   const hasNext = currentIdx < imageAttachments.length - 1
+
+  const { blobUrl } = useClientMedia(
+    fetchClientMedia ? attachment.url : null,
+    fetchClientMedia ? attachment.remote_url : null
+  )
+  const effectiveSrc = blobUrl || attachment.url
 
   function goPrev() {
     if (hasPrev) lightboxState.onNavigate({ attachment: imageAttachments[currentIdx - 1], attachments, index: currentIdx - 1 })
@@ -614,7 +633,7 @@ function MediaLightbox({ lightboxState, onClose }) {
       )}
       <img
         className="lightbox-image"
-        src={attachment.url}
+        src={effectiveSrc}
         alt={attachment.description || ''}
         onClick={(e) => e.stopPropagation()}
       />
