@@ -413,32 +413,81 @@ function useCursorPreview(previewWidth = 320, previewHeight = 320) {
   return { pos, track, clear }
 }
 
+const clientMediaCache = new Map()
+
+function useClientMedia(url) {
+  const [state, setState] = useState(() => {
+    if (!url) return { blobUrl: null, loading: false, error: false }
+    const cached = clientMediaCache.get(url)
+    if (cached) return { blobUrl: cached, loading: false, error: false }
+    return { blobUrl: null, loading: true, error: false }
+  })
+
+  useEffect(() => {
+    if (!url) return
+    const cached = clientMediaCache.get(url)
+    if (cached) { setState({ blobUrl: cached, loading: false, error: false }); return }
+
+    let cancelled = false
+    async function load() {
+      try {
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(res.status)
+        const blob = await res.blob()
+        const blobUrl = URL.createObjectURL(blob)
+        clientMediaCache.set(url, blobUrl)
+        if (!cancelled) setState({ blobUrl, loading: false, error: false })
+      } catch {
+        if (!cancelled) setState({ blobUrl: null, loading: false, error: true })
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [url])
+
+  return state
+}
+
 function MediaItem({ attachment, revealed, onOpenLightbox }) {
   const { type, url, preview_url: previewUrl, description } = attachment
-  const { hoverPreviewsEnabled } = useContext(AppSettingsContext)
+  const { hoverPreviewsEnabled, fetchClientMedia } = useContext(AppSettingsContext)
   const { pos, track, clear } = useCursorPreview()
-  // Never preview on hover for content that's still behind the CW blur —
-  // that would leak exactly what the blur is meant to hide. Once revealed,
-  // ordinary hover behavior applies, gated by the settings toggle.
   const hoverEnabled = revealed && hoverPreviewsEnabled
+
+  const imgTarget = previewUrl || url
+  const { blobUrl: imgBlob, loading: imgLoading, error: imgError } = useClientMedia(
+    fetchClientMedia && type === 'image' ? imgTarget : null
+  )
+  const { blobUrl: vidBlob, loading: vidLoading, error: vidError } = useClientMedia(
+    fetchClientMedia && (type === 'video' || type === 'gifv') ? url : null
+  )
+  const { blobUrl: audBlob, loading: audLoading, error: audError } = useClientMedia(
+    fetchClientMedia && type === 'audio' ? url : null
+  )
+
+  const effectiveImgSrc = fetchClientMedia ? (imgBlob || (imgError ? imgTarget : imgTarget)) : imgTarget
+  const effectiveVidSrc = fetchClientMedia ? (vidBlob || url) : url
+  const effectiveAudSrc = fetchClientMedia ? (audBlob || url) : url
 
   if (type === 'image') {
     return (
       <>
         <button
           type="button"
-          className="media-item media-image"
+          className={`media-item media-image${imgLoading ? ' media-loading' : ''}${imgError ? ' media-error' : ''}`}
           onClick={() => onOpenLightbox(attachment)}
           onMouseMove={hoverEnabled ? track : undefined}
           onMouseEnter={hoverEnabled ? track : undefined}
           onMouseLeave={hoverEnabled ? clear : undefined}
           aria-label={description || 'Open image'}
         >
-          <img src={previewUrl || url} alt={description || ''} loading="lazy" />
+          <img src={effectiveImgSrc} alt={description || ''} loading={fetchClientMedia ? undefined : 'lazy'} />
+          {imgLoading && <div className="media-loading-overlay"><div className="media-spinner" /></div>}
+          {imgError && <div className="media-error-overlay"><span>Failed to load</span></div>}
         </button>
         {hoverEnabled && pos && (
           <div className="media-hover-preview" style={{ left: pos.x, top: pos.y }}>
-            <img src={url} alt={description || ''} />
+            <img src={effectiveImgSrc} alt={description || ''} />
           </div>
         )}
       </>
@@ -446,23 +495,23 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
   }
 
   if (type === 'video' || type === 'gifv') {
-    // Mastodon-style "gifv": a short muted video, looped and autoplaying,
-    // standing in for a GIF without the file size.
     return (
       <>
         <div
-          className="media-item media-video"
+          className={`media-item media-video${vidLoading ? ' media-loading' : ''}${vidError ? ' media-error' : ''}`}
           onMouseMove={hoverEnabled ? track : undefined}
           onMouseEnter={hoverEnabled ? track : undefined}
           onMouseLeave={hoverEnabled ? clear : undefined}
         >
           {type === 'video' ? (
-            <video controls preload="metadata" poster={previewUrl} src={url}>
+            <video controls preload="metadata" poster={previewUrl} src={effectiveVidSrc}>
               Your browser can&apos;t play this video.
             </video>
           ) : (
-            <video autoPlay loop muted playsInline preload="metadata" poster={previewUrl} src={url} />
+            <video autoPlay loop muted playsInline preload="metadata" poster={previewUrl} src={effectiveVidSrc} />
           )}
+          {vidLoading && <div className="media-loading-overlay"><div className="media-spinner" /></div>}
+          {vidError && <div className="media-error-overlay"><span>Failed to load</span></div>}
         </div>
         {hoverEnabled && pos && previewUrl && (
           <div className="media-hover-preview" style={{ left: pos.x, top: pos.y }}>
@@ -475,9 +524,11 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
 
   if (type === 'audio') {
     return (
-      <div className="media-item media-audio">
+      <div className={`media-item media-audio${audLoading ? ' media-loading' : ''}${audError ? ' media-error' : ''}`}>
         <Music size={16} />
-        <audio controls preload="metadata" src={url} />
+        <audio controls preload="metadata" src={effectiveAudSrc} />
+        {audLoading && <div className="media-loading-overlay"><div className="media-spinner" /></div>}
+        {audError && <div className="media-error-overlay"><span>Failed to load</span></div>}
       </div>
     )
   }
@@ -2609,6 +2660,24 @@ export default function App() {
     })
   }
 
+  const [fetchClientMedia, setFetchClientMedia] = useState(() => {
+    try {
+      return localStorage.getItem('mitra-fetch-client-media') === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  function toggleFetchClientMedia() {
+    setFetchClientMedia((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('mitra-fetch-client-media', String(next))
+      } catch {}
+      return next
+    })
+  }
+
   function handleClientNameChange(name) {
     setClientNameState(name)
     mitra.setClientName(name)
@@ -3215,7 +3284,7 @@ export default function App() {
   }
 
   return (
-    <AppSettingsContext.Provider value={{ hoverPreviewsEnabled }}>
+    <AppSettingsContext.Provider value={{ hoverPreviewsEnabled, fetchClientMedia }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
       <header className="headerbar">
         <div className="headerbar-brand">
@@ -3276,6 +3345,14 @@ export default function App() {
                       type="checkbox"
                       checked={hoverPreviewsEnabled}
                       onChange={toggleHoverPreviews}
+                    />
+                  </label>
+                  <label className="settings-menu-row">
+                    <span>Fetch media directly</span>
+                    <input
+                      type="checkbox"
+                      checked={fetchClientMedia}
+                      onChange={toggleFetchClientMedia}
                     />
                   </label>
                   <div className="settings-menu-row">
