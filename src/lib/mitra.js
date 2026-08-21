@@ -387,3 +387,9 @@ export function unfollowAccount(instanceUrl, token, accountId) {
     headers: { Authorization: `Bearer ${token}` },
   })
 }
+
+export function fetchMediaAttachment(instanceUrl, token, mediaId) {
+  return apiFetch(instanceUrl, `/api/v1/media/${mediaId}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+}

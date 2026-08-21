@@ -232,7 +232,7 @@ function renderRichText(text, mentions, emojis) {
       const emoji = emojiMap.get(shortcode)
       if (emoji) {
         parts.push(
-          <img
+          <ProxiedImg
             key={`e-${key++}`}
             className="custom-emoji"
             src={emoji.url}
@@ -387,9 +387,11 @@ function processStatusContent(status, instanceUrl) {
 }
 
 function Avatar({ name, src, large, size, onClick }) {
+  const [imgFailed, setImgFailed] = useState(false)
   const style = size ? { width: size, height: size } : undefined
-  if (src) {
-    return <img className={`avatar${large ? ' lg' : ''}${onClick ? ' clickable' : ''}`} style={style} src={src} alt="" onClick={onClick} />
+  const cls = `avatar${large ? ' lg' : ''}${onClick ? ' clickable' : ''}`
+  if (src && !imgFailed) {
+    return <ProxiedImg className={cls} style={style} src={src} onError={() => setImgFailed(true)} onClick={onClick} />
   }
   const initials = (name || '?')
     .split(' ')
@@ -398,7 +400,7 @@ function Avatar({ name, src, large, size, onClick }) {
     .slice(0, 2)
     .toUpperCase()
   return (
-    <div className={`avatar${large ? ' lg' : ''}${onClick ? ' clickable' : ''}`} style={style} onClick={onClick}>
+    <div className={cls} style={style} onClick={onClick}>
       {initials}
     </div>
   )
@@ -434,7 +436,18 @@ function useCursorPreview(previewWidth = 320, previewHeight = 320) {
 
 const clientMediaCache = new Map()
 
-function useClientMedia(...urls) {
+function proxyUrl(url) {
+  return `/media-proxy?url=${encodeURIComponent(url)}`
+}
+
+function safeProxyUrl(url) {
+  if (!url || url.startsWith('blob:') || url.startsWith('data:') || url.startsWith('/')) return url
+  return proxyUrl(url)
+}
+
+function useClientMedia(...args) {
+  const resolveUrls = typeof args[args.length - 1] === 'function' ? args.pop() : null
+  const urls = args
   const key = urls.filter(Boolean).join('\0')
   const [state, setState] = useState(() => {
     if (!key) return { blobUrl: null, loading: false, error: false }
@@ -455,7 +468,7 @@ function useClientMedia(...urls) {
       for (const u of urls) {
         if (!u) continue
         try {
-          const res = await fetch(u)
+          const res = await fetch(proxyUrl(u))
           if (!res.ok) continue
           const blob = await res.blob()
           const blobUrl = URL.createObjectURL(blob)
@@ -466,6 +479,27 @@ function useClientMedia(...urls) {
           // try next URL
         }
       }
+      if (resolveUrls && !cancelled) {
+        try {
+          const extra = await resolveUrls()
+          for (const u of (extra || [])) {
+            if (!u) continue
+            if (clientMediaCache.has(u)) {
+              if (!cancelled) setState({ blobUrl: clientMediaCache.get(u), loading: false, error: false })
+              return
+            }
+            try {
+              const res = await fetch(proxyUrl(u))
+              if (!res.ok) continue
+              const blob = await res.blob()
+              const blobUrl = URL.createObjectURL(blob)
+              clientMediaCache.set(u, blobUrl)
+              if (!cancelled) setState({ blobUrl, loading: false, error: false })
+              return
+            } catch {}
+          }
+        } catch {}
+      }
       if (!cancelled) setState({ blobUrl: null, loading: false, error: true })
     }
     load()
@@ -475,34 +509,62 @@ function useClientMedia(...urls) {
   return state
 }
 
+function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, ...rest }) {
+  const { fetchClientMedia } = useContext(AppSettingsContext)
+  const { blobUrl, loading, error } = useClientMedia(
+    fetchClientMedia && src ? src : null,
+    fetchClientMedia && fallbackSrc ? fallbackSrc : null
+  )
+  useEffect(() => {
+    if (error && onError) onError()
+  }, [error, onError])
+  const effectiveSrc = blobUrl || (src ? safeProxyUrl(src) : undefined)
+  if (!effectiveSrc) return null
+  return <img src={effectiveSrc} alt={alt || ''} className={className} style={style} loading={fetchClientMedia ? undefined : 'lazy'} {...rest} />
+}
+
 function MediaItem({ attachment, revealed, onOpenLightbox }) {
   const { type, url, preview_url: previewUrl, remote_url: remoteUrl, description } = attachment
   const remoteFallback = attachment._remote_fallback || null
-  const { hoverPreviewsEnabled, fetchClientMedia } = useContext(AppSettingsContext)
+  const { hoverPreviewsEnabled, fetchClientMedia, instanceUrl, token } = useContext(AppSettingsContext)
   const { pos, track, clear } = useCursorPreview()
   const hoverEnabled = revealed && hoverPreviewsEnabled
+
+  const resolveAtt = useCallback(async () => {
+    if (!instanceUrl || !attachment.id || typeof attachment.id === 'string' && attachment.id.startsWith('quarantined-')) return []
+    try {
+      const apiUrl = `${instanceUrl}/api/v1/media/${attachment.id}`
+      const proxyRes = await fetch(proxyUrl(apiUrl) + (token ? `&auth=${encodeURIComponent('Bearer ' + token)}` : ''))
+      if (!proxyRes.ok) return []
+      const fresh = await proxyRes.json()
+      return [fresh.remote_url, fresh.url, fresh.text_url, fresh.preview_url].filter(Boolean)
+    } catch { return [] }
+  }, [instanceUrl, token, attachment.id])
 
   const { blobUrl: imgBlob, loading: imgLoading, error: imgError } = useClientMedia(
     fetchClientMedia && type === 'image' ? (previewUrl || url) : null,
     fetchClientMedia && type === 'image' ? url : null,
     fetchClientMedia && type === 'image' ? remoteUrl : null,
-    fetchClientMedia && type === 'image' ? remoteFallback : null
+    fetchClientMedia && type === 'image' ? remoteFallback : null,
+    fetchClientMedia && type === 'image' ? resolveAtt : null
   )
   const { blobUrl: vidBlob, loading: vidLoading, error: vidError } = useClientMedia(
     fetchClientMedia && (type === 'video' || type === 'gifv') ? url : null,
     fetchClientMedia && (type === 'video' || type === 'gifv') ? remoteUrl : null,
-    fetchClientMedia && (type === 'video' || type === 'gifv') ? remoteFallback : null
+    fetchClientMedia && (type === 'video' || type === 'gifv') ? remoteFallback : null,
+    fetchClientMedia && (type === 'video' || type === 'gifv') ? resolveAtt : null
   )
   const { blobUrl: audBlob, loading: audLoading, error: audError } = useClientMedia(
     fetchClientMedia && type === 'audio' ? url : null,
     fetchClientMedia && type === 'audio' ? remoteUrl : null,
-    fetchClientMedia && type === 'audio' ? remoteFallback : null
+    fetchClientMedia && type === 'audio' ? remoteFallback : null,
+    fetchClientMedia && type === 'audio' ? resolveAtt : null
   )
 
-  const imgFallback = previewUrl || url
-  const effectiveImgSrc = imgBlob || (fetchClientMedia ? imgFallback : imgFallback)
-  const effectiveVidSrc = vidBlob || url
-  const effectiveAudSrc = audBlob || url
+  const imgFallback = safeProxyUrl(previewUrl || url)
+  const effectiveImgSrc = imgBlob || imgFallback
+  const effectiveVidSrc = vidBlob || safeProxyUrl(url)
+  const effectiveAudSrc = audBlob || safeProxyUrl(url)
 
   if (type === 'image') {
     return (
@@ -539,18 +601,18 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
           onMouseLeave={hoverEnabled ? clear : undefined}
         >
           {type === 'video' ? (
-            <video controls preload="metadata" poster={previewUrl} src={effectiveVidSrc}>
+            <video controls preload="metadata" poster={safeProxyUrl(previewUrl)} src={effectiveVidSrc}>
               Your browser can&apos;t play this video.
             </video>
           ) : (
-            <video autoPlay loop muted playsInline preload="metadata" poster={previewUrl} src={effectiveVidSrc} />
+            <video autoPlay loop muted playsInline preload="metadata" poster={safeProxyUrl(previewUrl)} src={effectiveVidSrc} />
           )}
           {vidLoading && <div className="media-loading-overlay"><div className="media-spinner" /></div>}
           {vidError && <div className="media-error-overlay"><span>Failed to load</span></div>}
         </div>
         {hoverEnabled && pos && previewUrl && (
           <div className="media-hover-preview" style={{ left: pos.x, top: pos.y }}>
-            <img src={previewUrl} alt={description || ''} />
+            <img src={safeProxyUrl(previewUrl)} alt={description || ''} />
           </div>
         )}
       </>
@@ -608,8 +670,19 @@ function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox, forceH
 
 function MediaLightbox({ lightboxState, onClose }) {
   const { attachment, attachments, index } = lightboxState || {}
-  const { fetchClientMedia } = useContext(AppSettingsContext)
+  const { fetchClientMedia, instanceUrl, token } = useContext(AppSettingsContext)
   if (!attachment) return null
+
+  const resolveAtt = useCallback(async () => {
+    if (!instanceUrl || !attachment.id || typeof attachment.id === 'string' && attachment.id.startsWith('quarantined-')) return []
+    try {
+      const apiUrl = `${instanceUrl}/api/v1/media/${attachment.id}`
+      const proxyRes = await fetch(proxyUrl(apiUrl) + (token ? `&auth=${encodeURIComponent('Bearer ' + token)}` : ''))
+      if (!proxyRes.ok) return []
+      const fresh = await proxyRes.json()
+      return [fresh.remote_url, fresh.url, fresh.text_url, fresh.preview_url].filter(Boolean)
+    } catch { return [] }
+  }, [instanceUrl, token, attachment.id])
 
   const imageAttachments = (attachments || []).filter((a) => a.type === 'image')
   const currentIdx = imageAttachments.findIndex((a) => a.id === attachment.id)
@@ -619,9 +692,10 @@ function MediaLightbox({ lightboxState, onClose }) {
   const { blobUrl } = useClientMedia(
     fetchClientMedia ? attachment.url : null,
     fetchClientMedia ? attachment.remote_url : null,
-    fetchClientMedia ? attachment._remote_fallback : null
+    fetchClientMedia ? attachment._remote_fallback : null,
+    fetchClientMedia ? resolveAtt : null
   )
-  const effectiveSrc = blobUrl || attachment.url
+  const effectiveSrc = blobUrl || safeProxyUrl(attachment.url)
 
   function goPrev() {
     if (hasPrev) lightboxState.onNavigate({ attachment: imageAttachments[currentIdx - 1], attachments, index: currentIdx - 1 })
@@ -1122,7 +1196,7 @@ function EmojiDropdown({ query, suggestions, selectedIndex, onSelect }) {
           onMouseDown={(e) => { e.preventDefault(); onSelect(s) }}
         >
           {s.type === 'custom'
-            ? <img className="custom-emoji" src={s.url} alt={s.name} width="18" height="18" />
+            ? <ProxiedImg className="custom-emoji" src={s.url} alt={s.name} width="18" height="18" />
             : <span className="emoji-char">{s.char}</span>
           }
           <span className="emoji-name">:{s.name}:</span>
@@ -1153,7 +1227,7 @@ function EmojiPicker({ customEmojis, onSelect, onClose }) {
       )}
       {customEmojis.slice(0, 20).map((e) => (
         <button key={e.shortcode} className="emoji-pick-btn" onMouseDown={(e2) => { e2.preventDefault(); onSelect(`:${e.shortcode}:`) }}>
-          <img className="custom-emoji" src={e.static_url || e.url} alt={e.shortcode} width="18" height="18" />
+          <ProxiedImg className="custom-emoji" src={e.static_url || e.url} alt={e.shortcode} width="18" height="18" />
         </button>
       ))}
     </div>
@@ -1174,7 +1248,7 @@ function ReactionChips({ reactions, statusId, instanceUrl, token, onReact }) {
           }}
         >
           {r.url ? (
-            <img className="reaction-emoji-img" src={r.url} alt={r.name} />
+            <ProxiedImg className="reaction-emoji-img" src={r.url} alt={r.name} />
           ) : (
             <span className="reaction-emoji-text">{r.name}</span>
           )}
@@ -1217,7 +1291,7 @@ function ReactionPicker({ status, instanceUrl, token, onReact, onClose }) {
           <div className="reaction-picker-section">
             {customEmoji.map((e) => (
               <button key={e.shortcode} className="reaction-picker-item" onClick={() => { onReact(status.id, `:${e.shortcode}:`, false); onClose() }}>
-                <img src={e.url} alt={e.shortcode} className="reaction-picker-custom-emoji" />
+                <ProxiedImg src={e.url} alt={e.shortcode} className="reaction-picker-custom-emoji" />
               </button>
             ))}
           </div>
@@ -1290,7 +1364,7 @@ function QuoteCard({ status, instanceUrl, onOpenThread }) {
       </div>
       <p className="quote-card-text">{content.textNodes}</p>
       {content.attachments.length > 0 && content.attachments[0].type === 'image' && (
-        <img className="quote-card-image" src={content.attachments[0].preview_url || content.attachments[0].url} alt="" />
+        <ProxiedImg className="quote-card-image" src={content.attachments[0].preview_url || content.attachments[0].url} alt="" />
       )}
     </div>
   )
@@ -2097,7 +2171,7 @@ function notificationVerb(type, notification) {
       const emojiUrl = notification?.emoji_url
       const emojiName = notification?.emoji || notification?.reaction?.content || '🧩'
       const emoji = emojiUrl
-        ? <img src={emojiUrl} alt={emojiName} className="inline-custom-emoji" />
+        ? <ProxiedImg src={emojiUrl} alt={emojiName} className="inline-custom-emoji" />
         : emojiName
       return <>reacted with {emoji} to your post</>
     }
@@ -2550,7 +2624,7 @@ function ProfileView({ accountId, instanceUrl, token, onOpenThread, onComposeRep
       <div className="profile-view">
         <div className="profile-header-wrap">
           {account.header && account.header !== '' && (
-            <img className="profile-header-img" src={account.header} alt="" />
+            <ProxiedImg className="profile-header-img" src={account.header} alt="" />
           )}
           <button className="icon-btn profile-back-btn" onClick={onClose}><ArrowLeft size={16} /></button>
         </div>
@@ -2705,9 +2779,9 @@ export default function App() {
 
   const [fetchClientMedia, setFetchClientMedia] = useState(() => {
     try {
-      return localStorage.getItem('mitra-fetch-client-media') === 'true'
+      return localStorage.getItem('mitra-fetch-client-media') !== 'false'
     } catch {
-      return false
+      return true
     }
   })
 
@@ -3327,7 +3401,7 @@ export default function App() {
   }
 
   return (
-    <AppSettingsContext.Provider value={{ hoverPreviewsEnabled, fetchClientMedia }}>
+    <AppSettingsContext.Provider value={{ hoverPreviewsEnabled, fetchClientMedia, instanceUrl: session.instanceUrl, token: session.token }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
       <header className="headerbar">
         <div className="headerbar-brand">
