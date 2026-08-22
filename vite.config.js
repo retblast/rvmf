@@ -14,10 +14,25 @@ function mediaProxyPlugin() {
             res.end('Missing url parameter')
             return
           }
+          // Only remote http(s) resources are legitimate proxy targets.
+          // Without this check the dev server is an open proxy (SSRF).
+          let parsedTarget
+          try {
+            parsedTarget = new URL(targetUrl)
+          } catch {
+            res.writeHead(400, { 'Content-Type': 'text/plain' })
+            res.end('Invalid url parameter')
+            return
+          }
+          if (parsedTarget.protocol !== 'http:' && parsedTarget.protocol !== 'https:') {
+            res.writeHead(400, { 'Content-Type': 'text/plain' })
+            res.end('Unsupported protocol')
+            return
+          }
           const headers = {}
-          const auth = url.searchParams.get('auth')
+          const auth = req.headers['authorization']
           if (auth) headers['Authorization'] = auth
-          const proxyRes = await fetch(targetUrl, {
+          const proxyRes = await fetch(parsedTarget.toString(), {
             headers,
             redirect: 'follow',
           })

@@ -572,7 +572,9 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
     if (!instanceUrl || !attachment.id || typeof attachment.id === 'string' && attachment.id.startsWith('quarantined-')) return []
     try {
       const apiUrl = `${instanceUrl}/api/v1/media/${attachment.id}`
-      const proxyRes = await fetch(proxyUrl(apiUrl) + (token ? `&auth=${encodeURIComponent('Bearer ' + token)}` : ''))
+      const proxyRes = await fetch(proxyUrl(apiUrl), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
       if (proxyRes.ok) {
         const fresh = await proxyRes.json()
         const urls = [fresh.remote_url, fresh.url, fresh.preview_url].filter(Boolean)
@@ -735,7 +737,9 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
     if (!instanceUrl || !attachment.id || typeof attachment.id === 'string' && attachment.id.startsWith('quarantined-')) return []
     try {
       const apiUrl = `${instanceUrl}/api/v1/media/${attachment.id}`
-      const proxyRes = await fetch(proxyUrl(apiUrl) + (token ? `&auth=${encodeURIComponent('Bearer ' + token)}` : ''))
+      const proxyRes = await fetch(proxyUrl(apiUrl), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
       if (proxyRes.ok) {
         const fresh = await proxyRes.json()
         const urls = [fresh.remote_url, fresh.url, fresh.preview_url].filter(Boolean)
