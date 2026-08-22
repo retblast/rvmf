@@ -1,4 +1,4 @@
-import { createContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 
 // A handful of cross-cutting display preferences that MediaItem needs deep
 // in the tree (timeline post, nested reply, notification preview, panel —
@@ -62,9 +62,33 @@ export function useCursorPreview(previewWidth = 320, previewHeight = 320) {
 }
 
 export function useClientMedia(...args) {
+  const { instanceUrl, token } = useContext(AppSettingsContext)
   const resolveUrls = typeof args[args.length - 1] === 'function' ? args.pop() : null
   const urls = args
   const key = urls.filter(Boolean).join('\0')
+
+  function fetchMedia(url) {
+    const headers = {}
+    // Only send the token toward our own instance — never to third-party
+    // hosts. The dev proxy forwards this header upstream as-is.
+    if (token && instanceUrl && url.startsWith(instanceUrl)) {
+      headers['Authorization'] = `Bearer ${token}`
+    }
+    return fetch(proxyUrl(url), { headers })
+  }
+
+  // An "ok" response can still be garbage: when an origin prunes a file it
+  // often serves an HTML error page with status 200. Caching that as a blob
+  // yields silently broken images, so treat non-media content types as a
+  // miss (octet-stream is allowed — some servers mislabel real media).
+  async function fetchMediaBlob(url) {
+    const res = await fetchMedia(url)
+    if (!res.ok) return null
+    const contentType = (res.headers.get('content-type') || '').toLowerCase()
+    if (contentType.startsWith('text/') || contentType === 'application/json') return null
+    return await res.blob()
+  }
+
   const [state, setState] = useState(() => {
     if (!key) return { blobUrl: null, loading: false, error: false }
     for (const u of urls) {
@@ -90,9 +114,8 @@ export function useClientMedia(...args) {
       for (const u of urls) {
         if (!u) continue
         try {
-          const res = await fetch(proxyUrl(u))
-          if (!res.ok) continue
-          const blob = await res.blob()
+          const blob = await fetchMediaBlob(u)
+          if (!blob) continue
           const blobUrl = URL.createObjectURL(blob)
           cacheClientMedia(u, blobUrl)
           if (!cancelled) setState({ blobUrl, loading: false, error: false })
@@ -112,9 +135,8 @@ export function useClientMedia(...args) {
               return
             }
             try {
-              const res = await fetch(proxyUrl(u))
-              if (!res.ok) continue
-              const blob = await res.blob()
+              const blob = await fetchMediaBlob(u)
+              if (!blob) continue
               const blobUrl = URL.createObjectURL(blob)
               cacheClientMedia(u, blobUrl)
               if (!cancelled) setState({ blobUrl, loading: false, error: false })

@@ -221,6 +221,24 @@ function hostOf(url) {
   }
 }
 
+// Mitra rewrites every federated attachment URL into its own signed
+// media-proxy form: `{instance}/api/media_proxy/{encodeURIComponent(
+// original)}?signature={hex}`. The signature only authenticates the URL,
+// so when the proxy fails (origin pruned the file, instance rotated its
+// Ed25519 key -> 403/404), the original URL can still be recovered
+// client-side by decoding the path segment back out. Returns null for
+// anything that isn't a Mitra-style proxy URL.
+export function decodeMediaProxyUrl(url) {
+  const match = String(url || '').match(/\/api\/media_proxy\/([^?]*)/)
+  if (!match) return null
+  try {
+    const decoded = decodeURIComponent(match[1])
+    return /^https?:\/\//i.test(decoded) ? decoded : null
+  } catch {
+    return null
+  }
+}
+
 // Some instance admins disable inline embedding of remote media as a
 // moderation measure (quarantining unruly remote instances) — the image
 // just shows up as a bare link in the post text instead of an attachment.
@@ -301,14 +319,13 @@ export function processStatusContent(status, instanceUrl) {
   ].map((att) => {
     const enriched = { ...att, _status_uri: status.uri || null, _origin_host: remoteHost || null }
     if (!remoteHost || remoteHost === instanceHost) return enriched
+    // Mastodon/Pleroma expose the origin URL directly — prefer it.
     if (att.remote_url) return enriched
-    try {
-      const u = new URL(att.url)
-      if (u.host === instanceHost) {
-        u.host = remoteHost
-        return { ...enriched, _remote_fallback: u.toString() }
-      }
-    } catch {}
+    // Mitra hides the origin URL inside its signed proxy link; decode it
+    // out so we can fetch from the poster's server if the proxy breaks.
+    // (Swapping the host on a /api/media_proxy/... path leads nowhere.)
+    const proxied = decodeMediaProxyUrl(att.url)
+    if (proxied) return { ...enriched, _remote_fallback: proxied }
     return enriched
   })
 
