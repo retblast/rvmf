@@ -15,13 +15,18 @@ import {
   useClientMedia,
 } from '../hooks'
 
+// The initials circle is always the base layer; the photo overlays it once
+// loaded. That way initials double as both the loading placeholder and the
+// permanent fallback when the avatar can't be fetched. State resets when
+// `src` changes so a reused Avatar doesn't show one user's fallback under
+// another user's photo.
 export function Avatar({ name, src, large, size, onClick }) {
-  const [imgFailed, setImgFailed] = useState(false)
+  const [imgState, setImgState] = useState('loading')
+  useEffect(() => {
+    setImgState('loading')
+  }, [src])
   const style = size ? { width: size, height: size } : undefined
   const cls = `avatar${large ? ' lg' : ''}${onClick ? ' clickable' : ''}`
-  if (src && !imgFailed) {
-    return <ProxiedImg className={cls} style={style} src={src} onError={() => setImgFailed(true)} onClick={onClick} />
-  }
   const initials = (name || '?')
     .split(' ')
     .map((p) => p[0])
@@ -31,11 +36,20 @@ export function Avatar({ name, src, large, size, onClick }) {
   return (
     <div className={cls} style={style} onClick={onClick}>
       {initials}
+      {src && imgState !== 'error' && (
+        <ProxiedImg
+          className="avatar-img"
+          style={style}
+          src={src}
+          onLoad={() => setImgState('ok')}
+          onError={() => setImgState('error')}
+        />
+      )}
     </div>
   )
 }
 
-export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, ...rest }) {
+export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, onLoad, ...rest }) {
   const { fetchClientMedia } = useContext(AppSettingsContext)
   const { blobUrl, loading, error } = useClientMedia(
     fetchClientMedia && src ? src : null,
@@ -48,9 +62,9 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, .
   if (fetchClientMedia) {
     if (error) return null
     if (!blobUrl) return null
-    return <img src={blobUrl} alt={alt || ''} className={className} style={style} {...rest} />
+    return <img src={blobUrl} alt={alt || ''} className={className} style={style} onLoad={onLoad} {...rest} />
   }
-  return <img src={safeProxyUrl(src)} alt={alt || ''} className={className} style={style} loading="lazy" {...rest} />
+  return <img src={safeProxyUrl(src)} alt={alt || ''} className={className} style={style} loading="lazy" onLoad={onLoad} {...rest} />
 }
 
 function MediaItem({ attachment, revealed, onOpenLightbox }) {
