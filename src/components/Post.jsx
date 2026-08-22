@@ -1,0 +1,890 @@
+import { memo, useContext, useEffect, useRef, useState } from 'react'
+import {
+  MessageCircle,
+  Repeat2,
+  Star,
+  MoreHorizontal,
+  X,
+  EyeOff,
+  Eye,
+  UserPlus,
+  AtSign,
+  Bell,
+  Smile,
+  Link,
+} from 'lucide-react'
+import * as mitra from '../lib/mitra'
+import { PickerContext } from '../hooks'
+import { formatRelativeTime, htmlToPlainText, processStatusContent } from '../lib/render.jsx'
+import { Avatar, MediaGrid, ProxiedImg } from './Media.jsx'
+import { COMMON_EMOJI } from './Emoji.jsx'
+
+// A status as returned by the timeline can itself be a boost: in that case
+// `post.account` is whoever boosted it, and the actual post — content,
+// author, counts, your favourite/reblog state — lives in `post.reblog`.
+// Everything that isn't the "so-and-so boosted" line should read from here.
+function unwrapStatus(post) {
+  return post.reblog || post
+}
+
+// One reply, at any depth, with the exact same action row and interactivity
+// as a normal post row (reply/boost/favourite/monero/more, all functional)
+// — not a stripped-down version. Its own already-loaded children render
+// directly beneath it — no per-node fetch or click-to-expand, since the
+// whole subtree came from one /context call at the moment the thread was
+// opened. Clicking a reply's body re-opens the panel focused on it
+// specifically (fresh ancestors, in case there's more context above what's
+// already showing), same handler as everywhere else in the app.
+export function ThreadReply({
+  node,
+  depth = 0,
+  instanceUrl,
+  token,
+  onUpdate,
+  onOpenThread,
+  onComposeReply,
+  onOpenLightbox,
+  onOpenProfile,
+  statusById,
+  onQuote,
+  compact = false,
+  highlightedId,
+  focusedReplyId,
+  onHighlightParent,
+  currentAccountId,
+  onDelete,
+  onMute,
+  onBlock,
+}) {
+  const [busy, setBusy] = useState(false)
+  const [mediaHidden, setMediaHidden] = useState(false)
+  const { openPickerId, setOpenPickerId } = useContext(PickerContext)
+  const showPicker = openPickerId === node.status.id
+  const setShowPicker = (open) => setOpenPickerId(open ? node.status.id : null)
+  const status = node.status
+  const account = status.account || {}
+  const name = account.display_name || account.username || 'Unknown'
+  const content = processStatusContent(status, instanceUrl)
+  const parentStatus = statusById?.get(status.in_reply_to_id) || null
+
+  async function toggleReaction(statusId, emoji, alreadyReacted) {
+    try {
+      const updated = alreadyReacted
+        ? await mitra.removeReaction(instanceUrl, token, statusId, emoji)
+        : await mitra.addReaction(instanceUrl, token, statusId, emoji)
+      onUpdate(updated)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  async function toggleFavourite() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const updated = await mitra.setFavourited(instanceUrl, token, status.id, status.favourited)
+      onUpdate(updated)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function toggleReblog() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const updated = await mitra.setReblogged(instanceUrl, token, status.id, status.reblogged)
+      const inner = updated.reblog ? { ...updated.reblog, reblogged: updated.reblogged } : updated
+      onUpdate(inner)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <div
+        className={`reply-row${highlightedId === status.id ? ' highlighted' : ''}${focusedReplyId === status.id ? ' focused-reply' : ''}`}
+        style={{ '--reply-depth': depth }}
+        data-status-id={status.id}
+      >
+        <Avatar name={name} src={account.avatar} onClick={() => onOpenProfile?.(account)} />
+        <div
+          className="reply-body"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenThread(status)
+          }}
+        >
+          <div className="post-meta">
+            <span className="post-name" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(account) }}>{name}</span>
+            <span className="post-handle" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(account) }}>@{account.acct || account.username}</span>
+            {parentStatus && (
+              <button
+                className="post-parent-link"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onOpenThread(parentStatus)
+                }}
+                onMouseEnter={() => onHighlightParent?.(parentStatus.id)}
+                onMouseLeave={() => onHighlightParent?.(null)}
+              >
+                parent
+              </button>
+            )}
+            <span className="post-time">{formatRelativeTime(status.created_at)}</span>
+          </div>
+          <p className="post-text">{content.textNodes}</p>
+          <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
+          <MediaGrid
+            attachments={content.attachments}
+            sensitive={content.sensitive}
+            spoilerText={content.spoilerText}
+            onOpenLightbox={onOpenLightbox}
+            forceHidden={mediaHidden}
+          />
+          <ReactionChips
+            reactions={status.pleroma?.emoji_reactions}
+            statusId={status.id}
+            instanceUrl={instanceUrl}
+            token={token}
+            onReact={toggleReaction}
+          />
+          <div className="post-actions" onClick={(e) => e.stopPropagation()}>
+            <button className="action-btn" aria-label="Reply" onClick={() => onComposeReply(status)}>
+              <MessageCircle size={15} />
+              {!compact && status.replies_count > 0 && <span>{status.replies_count}</span>}
+            </button>
+            <BoostDropdown
+              reblogged={status.reblogged}
+              reblogsCount={compact ? 0 : status.reblogs_count}
+              busy={busy}
+              onBoost={toggleReblog}
+              onQuote={() => onQuote(status)}
+            />
+            <button
+              className={`action-btn${status.favourited ? ' favorited' : ''}`}
+              aria-label="Favorite"
+              onClick={toggleFavourite}
+              disabled={busy}
+            >
+              <Star size={15} fill={status.favourited ? 'currentColor' : 'none'} />
+              {!compact && <span>{status.favourites_count}</span>}
+            </button>
+            {!compact && (
+              <>
+                <button
+                  className="action-btn"
+                  aria-label="React"
+                  onClick={() => setShowPicker(!showPicker)}
+                >
+                  <Smile size={15} />
+                </button>
+                {showPicker && (
+                  <ReactionPicker
+                    status={status}
+                    instanceUrl={instanceUrl}
+                    token={token}
+                    onReact={toggleReaction}
+                    onClose={() => setShowPicker(false)}
+                  />
+                )}
+              </>
+            )}
+            {content.attachments.length > 0 && (
+              <button
+                className="action-btn"
+                aria-label={mediaHidden ? 'Show media' : 'Hide media'}
+                onClick={() => setMediaHidden((v) => !v)}
+              >
+                {mediaHidden ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            )}
+            <PostOptionsMenu
+              status={status}
+              instanceUrl={instanceUrl}
+              token={token}
+              isOwn={status.account?.id === currentAccountId}
+              onDelete={onDelete}
+              onMute={onMute}
+              onBlock={onBlock}
+            />
+          </div>
+        </div>
+      </div>
+      {node.children.length > 0 && (
+        <div className="inline-replies-wrap">
+          <div className="inline-replies-track" onClick={(e) => e.stopPropagation()}>
+            {node.children.map((child) => (
+              <ThreadReply
+                key={child.status.id}
+                node={child}
+                depth={depth + 1}
+                instanceUrl={instanceUrl}
+                token={token}
+                onUpdate={onUpdate}
+                onOpenThread={onOpenThread}
+                onComposeReply={onComposeReply}
+                onOpenLightbox={onOpenLightbox}
+                onOpenProfile={onOpenProfile}
+                statusById={statusById}
+                onQuote={onQuote}
+                highlightedId={highlightedId}
+                focusedReplyId={focusedReplyId}
+                onHighlightParent={onHighlightParent}
+                currentAccountId={currentAccountId}
+                onDelete={onDelete}
+                onMute={onMute}
+                onBlock={onBlock}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+function ReactionChips({ reactions, statusId, instanceUrl, token, onReact }) {
+  if (!reactions || reactions.length === 0) return null
+  return (
+    <div className="reaction-chips">
+      {reactions.map((r) => (
+        <button
+          key={r.name}
+          className={`reaction-chip${r.me ? ' reacted' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onReact(statusId, r.name, r.me)
+          }}
+        >
+          {r.url ? (
+            <ProxiedImg className="reaction-emoji-img" src={r.url} alt={r.name} />
+          ) : (
+            <span className="reaction-emoji-text">{r.name}</span>
+          )}
+          <span className="reaction-count">{r.count}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ReactionPicker({ status, instanceUrl, token, onReact, onClose }) {
+  const [instanceEmoji, setInstanceEmoji] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    mitra.fetchCustomEmojis(instanceUrl).then((emojis) => {
+      if (!cancelled) setInstanceEmoji(emojis || [])
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [instanceUrl])
+  const seen = new Set()
+  const customEmoji = []
+  ;(status.emojis || []).forEach((e) => {
+    if (!seen.has(e.shortcode)) { seen.add(e.shortcode); customEmoji.push(e) }
+  })
+  instanceEmoji.forEach((e) => {
+    if (!seen.has(e.shortcode)) { seen.add(e.shortcode); customEmoji.push(e) }
+  })
+  return (
+    <div className="reaction-picker" onClick={(e) => e.stopPropagation()}>
+      <div className="reaction-picker-section">
+        {COMMON_EMOJI.map((emoji) => (
+          <button key={emoji} className="reaction-picker-item" onClick={() => { onReact(status.id, emoji, false); onClose() }}>
+            {emoji}
+          </button>
+        ))}
+      </div>
+      {customEmoji.length > 0 && (
+        <>
+          <div className="reaction-picker-divider" />
+          <div className="reaction-picker-section">
+            {customEmoji.map((e) => (
+              <button key={e.shortcode} className="reaction-picker-item" onClick={() => { onReact(status.id, `:${e.shortcode}:`, false); onClose() }}>
+                <ProxiedImg src={e.url} alt={e.shortcode} className="reaction-picker-custom-emoji" />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  return (
+    <div className="boost-dropdown-wrap" ref={ref}>
+      <button
+        className={`action-btn boost-trigger${reblogged ? ' boosted' : ''}`}
+        aria-label="Boost or quote"
+        onClick={() => setOpen(!open)}
+        disabled={busy}
+      >
+        <Repeat2 size={15} />
+        {reblogsCount > 0 && <span>{reblogsCount}</span>}
+      </button>
+      {open && (
+        <>
+          <div className="boost-dropdown-backdrop" onClick={() => setOpen(false)} />
+          <div className="boost-dropdown">
+            <button
+              className={`boost-dropdown-item${reblogged ? ' boosted' : ''}`}
+              onClick={() => { onBoost(); setOpen(false) }}
+            >
+              <Repeat2 size={15} />
+              {reblogged ? 'Unboost' : 'Boost'}
+            </button>
+            <button
+              className="boost-dropdown-item"
+              onClick={() => { onQuote(); setOpen(false) }}
+            >
+              <MessageCircle size={15} />
+              Quote
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+export function QuoteCard({ status, instanceUrl, onOpenThread }) {
+  if (!status) return null
+  const account = status.account || {}
+  const name = account.display_name || account.username || 'Unknown'
+  const content = processStatusContent(status, instanceUrl)
+  return (
+    <div className="quote-card" onClick={(e) => { e.stopPropagation(); onOpenThread(status) }}>
+      <div className="quote-card-meta">
+        <Avatar name={name} src={account.avatar} size={16} />
+        <span className="quote-card-name">{name}</span>
+        <span className="quote-card-handle">@{account.acct || account.username}</span>
+      </div>
+      <p className="quote-card-text">{content.textNodes}</p>
+      {content.attachments.length > 0 && content.attachments[0].type === 'image' && (
+        <ProxiedImg className="quote-card-image" src={content.attachments[0].preview_url || content.attachments[0].url} alt="" />
+      )}
+    </div>
+  )
+}
+
+export function PollCard({ poll, instanceUrl, token, onUpdated }) {
+  const [selected, setSelected] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  if (!poll) return null
+
+  const { id, options, expired, multiple, votes_count, voters_count, voted, own_votes, expires_at } = poll
+  const showResults = expired || voted
+
+  function toggleOption(idx) {
+    if (showResults || busy) return
+    if (multiple) {
+      setSelected((prev) =>
+        prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
+      )
+    } else {
+      setSelected([idx])
+    }
+  }
+
+  async function submitVote() {
+    if (selected.length === 0) return
+    setBusy(true)
+    setError('')
+    try {
+      const updated = await mitra.votePoll(instanceUrl, token, id, selected)
+      onUpdated(updated)
+    } catch (err) {
+      setError(err.message || 'Vote failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function timeLeft() {
+    if (!expires_at || expired) return null
+    const ms = new Date(expires_at) - Date.now()
+    if (ms <= 0) return null
+    const mins = Math.floor(ms / 60000)
+    if (mins < 60) return `${mins}m left`
+    const hrs = Math.floor(mins / 60)
+    if (hrs < 24) return `${hrs}h ${mins % 60}m left`
+    const days = Math.floor(hrs / 24)
+    return `${days}d left`
+  }
+
+  return (
+    <div className="poll-card">
+      {showResults ? (
+        options.map((opt, i) => {
+          const pct = votes_count > 0 ? Math.round((opt.votes_count / votes_count) * 100) : 0
+          const chosen = own_votes?.includes(i)
+          return (
+            <div key={i} className={`poll-option${chosen ? ' chosen' : ''}`}>
+              <div className="poll-option-header">
+                <span className="poll-option-text">{htmlToPlainText(opt.title)}</span>
+                <span className="poll-option-pct">{pct}%</span>
+              </div>
+              <div className="poll-option-bar">
+                <div className="poll-option-fill" style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          )
+        })
+      ) : (
+        options.map((opt, i) => (
+          <label key={i} className={`poll-option-pick${selected.includes(i) ? ' selected' : ''}`}>
+            <span className={`poll-radio${multiple ? ' checkbox' : ''}`}>
+              {selected.includes(i) && <span className="poll-radio-dot" />}
+            </span>
+            <span className="poll-option-text">{htmlToPlainText(opt.title)}</span>
+          </label>
+        ))
+      )}
+      {error && <div className="banner banner-error">{error}</div>}
+      <div className="poll-footer">
+        <span className="poll-meta">
+          {votes_count} vote{votes_count !== 1 ? 's' : ''}
+          {voters_count != null && voters_count !== votes_count && ` · ${voters_count} voter${voters_count !== 1 ? 's' : ''}`}
+          {timeLeft() && <> · {timeLeft()}</>}
+          {expired && <span className="poll-expired"> · Ended</span>}
+        </span>
+        {!showResults && (
+          <button
+            className="pill-btn suggested"
+            onClick={submitVote}
+            disabled={busy || selected.length === 0}
+          >
+            {busy ? 'Voting…' : 'Vote'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, onBlock }) {
+  const [open, setOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  function copyLink() {
+    const acct = status.account?.acct || status.account?.username || 'unknown'
+    const url = status.url || `https://${instanceUrl}/@${acct}/${status.id}`
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => { setCopied(false); setOpen(false) }, 900)
+    }).catch(() => {
+      setOpen(false)
+    })
+  }
+
+  function handleMute() {
+    onMute?.(status.account?.id)
+    setOpen(false)
+  }
+
+  function handleBlock() {
+    onBlock?.(status.account?.id)
+    setOpen(false)
+  }
+
+  function handleDelete() {
+    onDelete?.(status.id)
+    setOpen(false)
+  }
+
+  return (
+    <div className="boost-dropdown-wrap" ref={ref}>
+      <button className="action-btn" aria-label="More options" style={{ marginLeft: 'auto' }} onClick={() => setOpen(!open)}>
+        <MoreHorizontal size={15} />
+      </button>
+      {open && (
+        <>
+          <div className="boost-dropdown-backdrop" onClick={() => setOpen(false)} />
+          <div className="boost-dropdown">
+            <button className="boost-dropdown-item" onClick={copyLink}>
+              <Link size={15} />
+              {copied ? 'Copied!' : 'Copy link'}
+            </button>
+            {isOwn && (
+              <button className="boost-dropdown-item destructive" onClick={handleDelete}>
+                <X size={15} />
+                Delete
+              </button>
+            )}
+            {!isOwn && (
+              <>
+                <button className="boost-dropdown-item" onClick={handleMute}>
+                  <Eye size={15} />
+                  Mute
+                </button>
+                <button className="boost-dropdown-item" onClick={handleBlock}>
+                  <UserPlus size={15} />
+                  Block
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onQuote, statusById, depth, highlightedId, onHighlightParent, currentAccountId, onDelete, onMute, onBlock }) {
+  const [busy, setBusy] = useState(false)
+  const [mediaHidden, setMediaHidden] = useState(false)
+  const { openPickerId, setOpenPickerId } = useContext(PickerContext)
+  const isBoost = Boolean(post.reblog)
+  const status = unwrapStatus(post)
+  const showPicker = openPickerId === status.id
+  const setShowPicker = (open) => setOpenPickerId(open ? status.id : null)
+  const account = status.account || {}
+  const displayName = account.display_name || account.username || 'Unknown'
+  const booster = isBoost ? post.account : null
+  const content = processStatusContent(status, instanceUrl)
+  const parentStatus = statusById?.get(status.in_reply_to_id) || null
+  const replyToAccount = !parentStatus && status.in_reply_to_account_id
+    ? (status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
+    : null
+
+  async function toggleReaction(statusId, emoji, alreadyReacted) {
+    try {
+      const updated = alreadyReacted
+        ? await mitra.removeReaction(instanceUrl, token, statusId, emoji)
+        : await mitra.addReaction(instanceUrl, token, statusId, emoji)
+      onUpdate(isBoost ? { ...post, reblog: updated } : updated)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  async function toggleFavourite() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const updated = await mitra.setFavourited(instanceUrl, token, status.id, status.favourited)
+      onUpdate(isBoost ? { ...post, reblog: updated } : updated)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function toggleReblog() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const updated = await mitra.setReblogged(instanceUrl, token, status.id, status.reblogged)
+      const inner = updated.reblog ? { ...updated.reblog, reblogged: updated.reblogged } : updated
+      onUpdate(isBoost ? { ...post, reblog: inner } : inner)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className={`post-row${highlightedId === status.id ? ' highlighted' : ''}`} style={depth != null ? { '--reply-depth': depth } : undefined}>
+      {booster && (
+        <div className="repost-indicator">
+          <Repeat2 size={13} />
+          {booster.display_name || booster.username} boosted
+        </div>
+      )}
+      <div className="post-row-main">
+        <Avatar name={displayName} src={account.avatar} onClick={() => onOpenProfile?.(account)} />
+        <div
+          className="post-body"
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenThread(status)
+          }}
+        >
+          <div className="post-meta">
+            <span className="post-name" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(account) }}>{displayName}</span>
+            <span className="post-handle" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(account) }}>@{account.acct || account.username}</span>
+            {parentStatus && (
+              <button
+                className="post-parent-link"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onOpenThread(parentStatus)
+                }}
+                onMouseEnter={() => onHighlightParent?.(parentStatus.id)}
+                onMouseLeave={() => onHighlightParent?.(null)}
+              >
+                parent
+              </button>
+            )}
+            <span className="post-time">{formatRelativeTime(status.created_at)}</span>
+          </div>
+          {replyToAccount && (
+            <div className="post-reply-context">
+              In reply to{' '}
+              <span className="post-reply-link" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(replyToAccount) }}>
+                @{replyToAccount.acct || replyToAccount.username}
+              </span>
+            </div>
+          )}
+          <p className="post-text">{content.textNodes}</p>
+          <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
+          <MediaGrid
+            attachments={content.attachments}
+            sensitive={content.sensitive}
+            spoilerText={content.spoilerText}
+            onOpenLightbox={onOpenLightbox}
+            forceHidden={mediaHidden}
+          />
+          <ReactionChips
+            reactions={status.pleroma?.emoji_reactions}
+            statusId={status.id}
+            instanceUrl={instanceUrl}
+            token={token}
+            onReact={toggleReaction}
+          />
+          <div className="post-actions" onClick={(e) => e.stopPropagation()}>
+            <button className="action-btn" aria-label="Reply" onClick={() => onComposeReply(status)}>
+              <MessageCircle size={15} />
+              {status.replies_count > 0 && <span>{status.replies_count}</span>}
+            </button>
+            <BoostDropdown
+              reblogged={status.reblogged}
+              reblogsCount={status.reblogs_count}
+              busy={busy}
+              onBoost={toggleReblog}
+              onQuote={() => onQuote(status)}
+            />
+            <button
+              className={`action-btn${status.favourited ? ' favorited' : ''}`}
+              aria-label="Favorite"
+              onClick={toggleFavourite}
+              disabled={busy}
+            >
+              <Star size={15} fill={status.favourited ? 'currentColor' : 'none'} />
+              <span>{status.favourites_count}</span>
+            </button>
+            <button
+              className="action-btn"
+              aria-label="React"
+              onClick={() => setShowPicker(!showPicker)}
+            >
+              <Smile size={15} />
+            </button>
+            {showPicker && (
+              <ReactionPicker
+                status={status}
+                instanceUrl={instanceUrl}
+                token={token}
+                onReact={toggleReaction}
+                onClose={() => setShowPicker(false)}
+              />
+            )}
+            {content.attachments.length > 0 && (
+              <button
+                className="action-btn"
+                aria-label={mediaHidden ? 'Show media' : 'Hide media'}
+                onClick={() => setMediaHidden((v) => !v)}
+              >
+                {mediaHidden ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            )}
+            <PostOptionsMenu
+              status={status}
+              instanceUrl={instanceUrl}
+              token={token}
+              isOwn={status.account?.id === currentAccountId}
+              onDelete={onDelete}
+              onMute={onMute}
+              onBlock={onBlock}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+})
+
+function notificationVerb(type, notification) {
+  switch (type) {
+    case 'follow':
+      return 'followed you'
+    case 'follow_request':
+      return 'requested to follow you'
+    case 'reblog':
+      return 'boosted your post'
+    case 'favourite':
+      return 'favourited your post'
+    case 'mention':
+      return 'mentioned you'
+    case 'poll':
+      return "a poll you're in has ended"
+    case 'status':
+      return 'posted'
+    case 'update':
+      return 'edited a post'
+    case 'quote':
+      return 'quoted your post'
+    case 'pleroma:emoji_reaction': {
+      const emojiUrl = notification?.emoji_url
+      const emojiName = notification?.emoji || notification?.reaction?.content || '🧩'
+      const emoji = emojiUrl
+        ? <ProxiedImg src={emojiUrl} alt={emojiName} className="inline-custom-emoji" />
+        : emojiName
+      return <>reacted with {emoji} to your post</>
+    }
+    default:
+      return type.replace(/_/g, ' ')
+  }
+}
+
+function notificationIcon(type) {
+  switch (type) {
+    case 'follow':
+    case 'follow_request':
+      return UserPlus
+    case 'reblog':
+      return Repeat2
+    case 'favourite':
+      return Star
+    case 'mention':
+      return AtSign
+    case 'quote':
+      return MessageCircle
+    default:
+      return Bell
+  }
+}
+
+export const NotificationRow = memo(function NotificationRow({
+  notification,
+  instanceUrl,
+  token,
+  onUpdateStatus,
+  onOpenThread,
+  onComposeReply,
+  onOpenLightbox,
+  onOpenProfile,
+  onRespondFollowRequest,
+  statusById,
+  onQuote,
+  currentAccountId,
+  onDelete,
+  onMute,
+  onBlock,
+}) {
+  const account = notification.account || {}
+  const name = account.display_name || account.username || 'Unknown'
+  const Icon = notificationIcon(notification.type)
+  const [responding, setResponding] = useState(false)
+  const [responded, setResponded] = useState(null)
+
+  async function respond(action) {
+    if (responding) return
+    setResponding(true)
+    try {
+      await onRespondFollowRequest(account.id, action)
+      setResponded(action)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setResponding(false)
+    }
+  }
+
+  return (
+    <div className="notif-row">
+      <div className="notif-icon">
+        <Icon size={14} />
+      </div>
+      <div className="notif-body">
+        <div className="notif-header">
+          <Avatar name={name} src={account.avatar} size={22} onClick={() => onOpenProfile?.(account)} />
+          <span className="notif-text">
+            <span className="post-name clickable" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(account) }}>{name}</span> {notificationVerb(notification.type, notification)}
+          </span>
+          <span className="post-time">{formatRelativeTime(notification.created_at)}</span>
+        </div>
+
+        {notification.type === 'follow_request' && !responded && (
+          <div className="notif-actions">
+            <button
+              className="pill-btn suggested"
+              disabled={responding}
+              onClick={() => respond('authorize')}
+              type="button"
+            >
+              Accept
+            </button>
+            <button
+              className="pill-btn"
+              disabled={responding}
+              onClick={() => respond('reject')}
+              type="button"
+            >
+              Reject
+            </button>
+          </div>
+        )}
+        {responded && (
+          <div className="notif-responded">
+            {responded === 'authorize' ? 'Accepted.' : 'Rejected.'}
+          </div>
+        )}
+
+        {notification.status && (
+          <div className="notif-status-preview">
+            <ThreadReply
+              node={{ status: notification.status, children: [] }}
+              instanceUrl={instanceUrl}
+              token={token}
+              onUpdate={onUpdateStatus}
+              onOpenThread={onOpenThread}
+              onComposeReply={onComposeReply}
+              onOpenLightbox={onOpenLightbox}
+              onOpenProfile={onOpenProfile}
+              statusById={statusById}
+              onQuote={onQuote}
+              compact
+              currentAccountId={currentAccountId}
+              onDelete={onDelete}
+              onMute={onMute}
+              onBlock={onBlock}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+})
