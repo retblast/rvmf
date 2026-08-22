@@ -67,6 +67,10 @@ export function ThreadReply({
   const content = processStatusContent(status, instanceUrl)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
 
+  function handlePollUpdated(poll) {
+    onUpdate({ ...status, poll })
+  }
+
   async function toggleReaction(statusId, emoji, alreadyReacted) {
     try {
       const updated = alreadyReacted
@@ -140,6 +144,14 @@ export function ThreadReply({
           </div>
           <p className="post-text">{content.textNodes}</p>
           <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
+          {status.poll && (
+            <PollCard
+              poll={status.poll}
+              instanceUrl={instanceUrl}
+              token={token}
+              onUpdated={handlePollUpdated}
+            />
+          )}
           <MediaGrid
             attachments={content.attachments}
             sensitive={content.sensitive}
@@ -452,7 +464,11 @@ export function PollCard({ poll, instanceUrl, token, onUpdated }) {
         })
       ) : (
         options.map((opt, i) => (
-          <label key={i} className={`poll-option-pick${selected.includes(i) ? ' selected' : ''}`}>
+          <label
+            key={i}
+            className={`poll-option-pick${selected.includes(i) ? ' selected' : ''}`}
+            onClick={() => toggleOption(i)}
+          >
             <span className={`poll-radio${multiple ? ' checkbox' : ''}`}>
               {selected.includes(i) && <span className="poll-radio-dot" />}
             </span>
@@ -577,6 +593,11 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
     ? (status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
     : null
 
+  function handlePollUpdated(poll) {
+    const newStatus = { ...status, poll }
+    onUpdate(isBoost ? { ...post, reblog: newStatus } : newStatus)
+  }
+
   async function toggleReaction(statusId, emoji, alreadyReacted) {
     try {
       const updated = alreadyReacted
@@ -660,6 +681,14 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
           )}
           <p className="post-text">{content.textNodes}</p>
           <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
+          {status.poll && (
+            <PollCard
+              poll={status.poll}
+              instanceUrl={instanceUrl}
+              token={token}
+              onUpdated={handlePollUpdated}
+            />
+          )}
           <MediaGrid
             attachments={content.attachments}
             sensitive={content.sensitive}
