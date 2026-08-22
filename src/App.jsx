@@ -305,7 +305,10 @@ function extractQuarantinedImages(text, instanceUrl, posterAcct) {
   const instanceHost = hostOf(instanceUrl)
   if (!instanceHost) return { cleanedText: text, quarantinedUrls: [], posterRecoveryUrls: [] }
 
-  const posterHost = posterAcct ? hostOf('https://' + posterAcct.split('@')[1]) : ''
+  // Only remote accts carry "@domain" — local ones have no poster domain,
+  // so there's nothing to recover from.
+  const posterDomain = posterAcct && posterAcct.includes('@') ? posterAcct.split('@')[1] : null
+  const posterHost = posterDomain ? hostOf('https://' + posterDomain) : ''
 
   const quarantinedUrls = []
   const posterRecoveryUrls = []
@@ -435,7 +438,30 @@ function useCursorPreview(previewWidth = 320, previewHeight = 320) {
   return { pos, track, clear }
 }
 
+// Blob URLs fetched through the dev proxy are cached so scrolling back
+// doesn't refetch them. Object URLs are never GC'd while alive, so the
+// cache is bounded: oldest entries are evicted and their blob URLs
+// revoked once the cap is exceeded.
+const CLIENT_MEDIA_CACHE_MAX = 150
 const clientMediaCache = new Map()
+
+function getCachedClientMedia(url) {
+  if (!clientMediaCache.has(url)) return undefined
+  const blobUrl = clientMediaCache.get(url)
+  clientMediaCache.delete(url)
+  clientMediaCache.set(url, blobUrl) // refresh insertion order (recency)
+  return blobUrl
+}
+
+function cacheClientMedia(url, blobUrl) {
+  if (clientMediaCache.has(url)) clientMediaCache.delete(url)
+  clientMediaCache.set(url, blobUrl)
+  while (clientMediaCache.size > CLIENT_MEDIA_CACHE_MAX) {
+    const oldestKey = clientMediaCache.keys().next().value
+    URL.revokeObjectURL(clientMediaCache.get(oldestKey))
+    clientMediaCache.delete(oldestKey)
+  }
+}
 
 function proxyUrl(url) {
   return `/media-proxy?url=${encodeURIComponent(url)}`
@@ -453,7 +479,10 @@ function useClientMedia(...args) {
   const [state, setState] = useState(() => {
     if (!key) return { blobUrl: null, loading: false, error: false }
     for (const u of urls) {
-      if (u && clientMediaCache.has(u)) return { blobUrl: clientMediaCache.get(u), loading: false, error: false }
+      if (u) {
+        const cached = getCachedClientMedia(u)
+        if (cached) return { blobUrl: cached, loading: false, error: false }
+      }
     }
     return { blobUrl: null, loading: true, error: false }
   })
@@ -461,7 +490,10 @@ function useClientMedia(...args) {
   useEffect(() => {
     if (!key) return
     for (const u of urls) {
-      if (u && clientMediaCache.has(u)) { setState({ blobUrl: clientMediaCache.get(u), loading: false, error: false }); return }
+      if (u) {
+        const cached = getCachedClientMedia(u)
+        if (cached) { setState({ blobUrl: cached, loading: false, error: false }); return }
+      }
     }
 
     let cancelled = false
@@ -473,7 +505,7 @@ function useClientMedia(...args) {
           if (!res.ok) continue
           const blob = await res.blob()
           const blobUrl = URL.createObjectURL(blob)
-          clientMediaCache.set(u, blobUrl)
+          cacheClientMedia(u, blobUrl)
           if (!cancelled) setState({ blobUrl, loading: false, error: false })
           return
         } catch {
@@ -485,8 +517,9 @@ function useClientMedia(...args) {
           const extra = await resolveUrls()
           for (const u of (extra || [])) {
             if (!u) continue
-            if (clientMediaCache.has(u)) {
-              if (!cancelled) setState({ blobUrl: clientMediaCache.get(u), loading: false, error: false })
+            const cached = getCachedClientMedia(u)
+            if (cached) {
+              if (!cancelled) setState({ blobUrl: cached, loading: false, error: false })
               return
             }
             try {
@@ -494,7 +527,7 @@ function useClientMedia(...args) {
               if (!res.ok) continue
               const blob = await res.blob()
               const blobUrl = URL.createObjectURL(blob)
-              clientMediaCache.set(u, blobUrl)
+              cacheClientMedia(u, blobUrl)
               if (!cancelled) setState({ blobUrl, loading: false, error: false })
               return
             } catch {}
@@ -2782,6 +2815,8 @@ export default function App() {
   const [replyStates, setReplyStates] = useState({})
   const replyStatesRef = useRef(replyStates)
   replyStatesRef.current = replyStates
+  const sidePanelRef = useRef(sidePanel)
+  sidePanelRef.current = sidePanel
   const [sidePanel, setSidePanel] = useState(null)
   const [profileAccountId, setProfileAccountId] = useState(null)
   const [focusedReplyId, setFocusedReplyId] = useState(null)
@@ -3208,9 +3243,12 @@ export default function App() {
     })
     setFocusedReplyId(reply.id)
     setTimeout(() => setFocusedReplyId(null), 2000)
-    // Trigger an immediate context refresh so nested replies appear quickly
+    // Trigger an immediate context refresh so nested replies appear quickly.
+    // Read the panel through the ref — the closure above captured a stale
+    // `sidePanel` by the time this fires.
     setTimeout(() => {
-      const rootId = sidePanel?.threadRoot?.id || sidePanel?.status?.id
+      const panel = sidePanelRef.current
+      const rootId = panel?.threadRoot?.id || panel?.status?.id
       if (rootId && session) {
         mitra.fetchContext(session.instanceUrl, session.token, rootId)
           .then((context) => {

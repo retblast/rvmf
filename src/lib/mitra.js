@@ -259,21 +259,37 @@ export async function uploadMedia(instanceUrl, token, file, description) {
   let attachment = await res.json()
 
   if (res.status === 202) {
+    let ready = false
+    let permanentFailure = false
     for (let attempt = 0; attempt < 10; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 1200))
-      const pollRes = await fetch(`${instanceUrl}/api/v1/media/${attachment.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      let pollRes
+      try {
+        pollRes = await fetch(`${instanceUrl}/api/v1/media/${attachment.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      } catch {
+        continue // transient network error — retry
+      }
       if (pollRes.status === 200) {
         attachment = await pollRes.json()
+        ready = true
         break
       }
-      // still processing (202/206) — keep polling until attempts run out
+      if (pollRes.status >= 400) {
+        // 404 etc. won't resolve by retrying — stop early.
+        permanentFailure = true
+        break
+      }
+      // 202/206 — still processing, keep polling until attempts run out
     }
-  }
-
-  if (res.status === 202) {
-    throw new Error('Upload is still processing. Please try again shortly.')
+    if (!ready) {
+      throw new Error(
+        permanentFailure
+          ? 'Upload failed on the server side.'
+          : 'Upload is still processing. Please try again shortly.'
+      )
+    }
   }
 
   return attachment
