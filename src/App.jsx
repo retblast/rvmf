@@ -687,10 +687,16 @@ function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox, forceH
   )
 }
 
+// The open state lives in the parent: when closed this renders nothing
+// without ever changing hook counts. All hooks belong in LightboxContent,
+// which only mounts while there's actually something to show.
 function MediaLightbox({ lightboxState, onClose }) {
-  const { attachment, attachments, index } = lightboxState || {}
+  if (!lightboxState?.attachment) return null
+  return <LightboxContent {...lightboxState} onClose={onClose} />
+}
+
+function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
   const { fetchClientMedia, instanceUrl, token } = useContext(AppSettingsContext)
-  if (!attachment) return null
 
   const resolveAtt = useCallback(async () => {
     if (!instanceUrl || !attachment.id || typeof attachment.id === 'string' && attachment.id.startsWith('quarantined-')) return []
@@ -727,13 +733,12 @@ function MediaLightbox({ lightboxState, onClose }) {
     fetchClientMedia ? attachment._remote_fallback : null,
     fetchClientMedia ? resolveAtt : null
   )
-  const effectiveSrc = blobUrl || safeProxyUrl(attachment.url)
 
   function goPrev() {
-    if (hasPrev) lightboxState.onNavigate({ attachment: imageAttachments[currentIdx - 1], attachments, index: currentIdx - 1 })
+    if (hasPrev) onNavigate({ attachment: imageAttachments[currentIdx - 1], attachments, index: currentIdx - 1, onNavigate })
   }
   function goNext() {
-    if (hasNext) lightboxState.onNavigate({ attachment: imageAttachments[currentIdx + 1], attachments, index: currentIdx + 1 })
+    if (hasNext) onNavigate({ attachment: imageAttachments[currentIdx + 1], attachments, index: currentIdx + 1, onNavigate })
   }
 
   useEffect(() => {
@@ -744,7 +749,7 @@ function MediaLightbox({ lightboxState, onClose }) {
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [currentIdx, imageAttachments.length])
+  })
 
   return (
     <div className="dialog-overlay lightbox-overlay" onClick={onClose}>
