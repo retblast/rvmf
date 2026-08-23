@@ -878,6 +878,23 @@ button {
   padding: 8px 0;
 }
 
+button.settings-menu-link {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  width: 100%;
+}
+
+.settings-menu-arrow {
+  color: var(--text-secondary);
+}
+
+.muted-accounts-unmute {
+  margin-left: auto;
+}
+
 .char-counter {
   position: absolute;
   bottom: 8px;

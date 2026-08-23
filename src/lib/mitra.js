@@ -416,6 +416,21 @@ export function muteAccount(instanceUrl, token, accountId) {
   })
 }
 
+export function unmuteAccount(instanceUrl, token, accountId) {
+  return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/unmute`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function fetchMutes(instanceUrl, token, { max_id } = {}) {
+  const params = new URLSearchParams({ limit: '40' })
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/mutes?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 export function blockAccount(instanceUrl, token, accountId) {
   return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/block`, {
     method: 'POST',

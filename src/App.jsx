@@ -24,6 +24,7 @@ import { ThreadPanel, ThreadPanelContent } from './components/ThreadPanel.jsx'
 import { ProfileView } from './components/ProfileView.jsx'
 import { SearchView } from './components/SearchView.jsx'
 import { HashtagFeed } from './components/HashtagFeed.jsx'
+import { MutedAccountsView } from './components/MutedAccountsView.jsx'
 
 export default function App() {
   const { session, beginLogin, logout, authError, completingLogin } = useMitraSession()
@@ -809,6 +810,14 @@ export default function App() {
         </>
       )}
 
+      {view === 'muted' && (
+        <MutedAccountsView
+          instanceUrl={session.instanceUrl}
+          token={session.token}
+          onOpenProfile={(account) => { setView('home'); handleOpenProfile(account) }}
+        />
+      )}
+
       {view === 'search' && (
         <SearchView
           instanceUrl={session.instanceUrl}
@@ -1017,6 +1026,14 @@ export default function App() {
                       maxLength={32}
                     />
                   </div>
+                  <button
+                    type="button"
+                    className="settings-menu-row settings-menu-link"
+                    onClick={() => { setSettingsOpen(false); setView('muted') }}
+                  >
+                    <span>Muted accounts</span>
+                    <span className="settings-menu-arrow">→</span>
+                  </button>
                 </div>
               </>
             )}
