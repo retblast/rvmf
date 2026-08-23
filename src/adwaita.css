@@ -895,6 +895,21 @@ button.settings-menu-link {
   margin-left: auto;
 }
 
+.directory-card .directory-bio {
+  -webkit-box-orient: vertical;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  font-size: 12.5px;
+  line-height: 1.4;
+  margin-left: auto;
+  max-width: 45%;
+  overflow: hidden;
+}
+
+.directory-card .directory-bio p {
+  margin: 0;
+}
+
 .char-counter {
   position: absolute;
   bottom: 8px;

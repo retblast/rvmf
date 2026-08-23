@@ -369,6 +369,15 @@ export function fetchHashtagTimeline(instanceUrl, token, hashtag, { max_id } = {
   })
 }
 
+// Profile directory — returns Account[]. order: 'active' | 'new'
+export function fetchDirectory(instanceUrl, token, { local = false, order = 'active', offset = 0, limit = 20 } = {}) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset), order })
+  if (local) params.set('local', 'true')
+  return apiFetch(instanceUrl, `/api/v1/directory?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 export function votePoll(instanceUrl, token, pollId, choices) {
   return apiFetch(instanceUrl, `/api/v1/polls/${pollId}/votes`, {
     method: 'POST',

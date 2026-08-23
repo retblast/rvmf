@@ -6,6 +6,7 @@ import {
   Compass,
   Bookmark,
   Search,
+  Users,
   Plus,
   RotateCw,
   LogOut,
@@ -50,8 +51,11 @@ export default function App() {
   const [notifications, setNotifications] = useState([])
   const [notificationsLoading, setNotificationsLoading] = useState(false)
   const [notificationsError, setNotificationsError] = useState('')
-  const [exploreFeed, setExploreFeed] = useState('federated') // 'federated' | 'local'
+  const [exploreFeed, setExploreFeed] = useState('federated') // 'federated' | 'local' | 'people'
   const [exploreTimelines, setExploreTimelines] = useState({ federated: null, local: null })
+  const [directoryAccounts, setDirectoryAccounts] = useState([])
+  const [directoryLoading, setDirectoryLoading] = useState(false)
+  const [directoryHasMore, setDirectoryHasMore] = useState(true)
   const [exploreLoading, setExploreLoading] = useState(false)
   const [exploreError, setExploreError] = useState('')
   const [exploreHasMore, setExploreHasMore] = useState({ federated: true, local: true })
@@ -267,6 +271,30 @@ export default function App() {
     }
   }, [view, exploreFeed, exploreTimelines, loadExplore])
 
+  const loadMoreDirectory = useCallback(async () => {
+    if (!session || directoryLoading || !directoryHasMore) return
+    setDirectoryLoading(true)
+    try {
+      const more = await mitra.fetchDirectory(
+        session.instanceUrl,
+        session.token,
+        { offset: directoryAccounts.length }
+      )
+      setDirectoryAccounts((prev) => [...prev, ...more])
+      if (more.length < 20) setDirectoryHasMore(false)
+    } catch {
+      // silent
+    } finally {
+      setDirectoryLoading(false)
+    }
+  }, [session, directoryLoading, directoryHasMore, directoryAccounts.length])
+
+  useEffect(() => {
+    if (view === 'explore' && exploreFeed === 'people' && directoryAccounts.length === 0 && !directoryLoading) {
+      loadMoreDirectory()
+    }
+  }, [view, exploreFeed, directoryAccounts.length, directoryLoading, loadMoreDirectory])
+
   const loadBookmarks = useCallback(async () => {
     if (!session) return
     setBookmarksLoading(true)
@@ -327,13 +355,16 @@ export default function App() {
     if (!sentinel) return
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) loadMoreExplore()
+        if (entries[0].isIntersecting) {
+          if (exploreFeed === 'people') loadMoreDirectory()
+          else loadMoreExplore()
+        }
       },
       { rootMargin: '200px' }
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [view, loadMoreExplore, exploreTimelines[exploreFeed]?.length])
+  }, [view, exploreFeed, loadMoreExplore, loadMoreDirectory, exploreTimelines[exploreFeed]?.length])
 
   function updateExplorePost(updated) {
     setExploreTimelines((prev) => ({
@@ -774,38 +805,78 @@ export default function App() {
                 <Home size={13} />
                 Local
               </button>
+              <button
+                className={`feed-toggle-btn${exploreFeed === 'people' ? ' active' : ''}`}
+                onClick={() => setExploreFeed('people')}
+                type="button"
+              >
+                <Users size={13} />
+                People
+              </button>
             </div>
           </div>
-          {exploreLoading && !exploreTimelines[exploreFeed] ? (
-            <div className="empty-state">Loading…</div>
-          ) : !exploreTimelines[exploreFeed] || exploreTimelines[exploreFeed].length === 0 ? (
-            <div className="empty-state">Nothing here yet.</div>
+          {exploreFeed === 'people' ? (
+            directoryAccounts.length === 0 && directoryLoading ? (
+              <div className="empty-state">Loading…</div>
+            ) : (
+              <>
+                <div className="timeline-list">
+                  {directoryAccounts.map((account) => (
+                    <button
+                      type="button"
+                      key={account.id}
+                      className="search-account-row directory-card"
+                      onClick={() => handleOpenProfile(account)}
+                    >
+                      <Avatar name={account.display_name || account.username} src={account.avatar} />
+                      <div className="search-account-names">
+                        <span className="post-name">{account.display_name || account.username}</span>
+                        <span className="post-handle">@{account.acct || account.username}</span>
+                      </div>
+                      <span className="directory-bio">{account.note}</span>
+                    </button>
+                  ))}
+                </div>
+                {directoryHasMore && directoryAccounts.length > 0 && (
+                  <div ref={exploreSentinelRef} className="scroll-sentinel" />
+                )}
+                {directoryLoading && <div className="empty-state">Loading…</div>}
+              </>
+            )
           ) : (
-            <div className="timeline-list">
-              {exploreTimelines[exploreFeed].map((post) => (
-                <PostRow
-                  key={post.id}
-                  post={post}
-                  instanceUrl={session.instanceUrl}
-                  token={session.token}
-                  onUpdate={updateExplorePost}
-                  onOpenThread={handleOpenThread}
-                  onComposeReply={handleComposeReply}
-                  onOpenLightbox={setLightboxAttachment}
-                  onOpenProfile={handleOpenProfile}
-                  onQuote={handleQuote}
-                  currentAccountId={session.account?.id}
-                  onDelete={handleDeleteStatus}
-                  onEdit={handleEditStatus}
-                  onMute={handleMuteAccount}
-                  onBlock={handleBlockAccount}
-                />
-              ))}
-            </div>
-          )}
-          {exploreLoadingMore && <div className="empty-state">Loading…</div>}
-          {exploreHasMore[exploreFeed] && !exploreLoadingMore && exploreTimelines[exploreFeed]?.length > 0 && (
-            <div ref={exploreSentinelRef} className="scroll-sentinel" />
+            <>
+              {exploreLoading && !exploreTimelines[exploreFeed] ? (
+                <div className="empty-state">Loading…</div>
+              ) : !exploreTimelines[exploreFeed] || exploreTimelines[exploreFeed].length === 0 ? (
+                <div className="empty-state">Nothing here yet.</div>
+              ) : (
+                <div className="timeline-list">
+                  {exploreTimelines[exploreFeed].map((post) => (
+                    <PostRow
+                      key={post.id}
+                      post={post}
+                      instanceUrl={session.instanceUrl}
+                      token={session.token}
+                      onUpdate={updateExplorePost}
+                      onOpenThread={handleOpenThread}
+                      onComposeReply={handleComposeReply}
+                      onOpenLightbox={setLightboxAttachment}
+                      onOpenProfile={handleOpenProfile}
+                      onQuote={handleQuote}
+                      currentAccountId={session.account?.id}
+                      onDelete={handleDeleteStatus}
+                      onEdit={handleEditStatus}
+                      onMute={handleMuteAccount}
+                      onBlock={handleBlockAccount}
+                    />
+                  ))}
+                </div>
+              )}
+              {exploreLoadingMore && <div className="empty-state">Loading…</div>}
+              {exploreHasMore[exploreFeed] && !exploreLoadingMore && exploreTimelines[exploreFeed]?.length > 0 && (
+                <div ref={exploreSentinelRef} className="scroll-sentinel" />
+              )}
+            </>
           )}
         </>
       )}
