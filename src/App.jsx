@@ -643,8 +643,12 @@ export default function App() {
       e.stopPropagation()
       handleOpenHashtag(el.dataset.hashtag)
     }
-    document.addEventListener('click', onClick)
-    return () => document.removeEventListener('click', onClick)
+    // Capture phase is essential: these buttons' own React handlers call
+    // e.stopPropagation(), and since React dispatches from the root
+    // container, a bubble-phase document listener never fires — React
+    // halts native propagation before it gets there.
+    document.addEventListener('click', onClick, true)
+    return () => document.removeEventListener('click', onClick, true)
   }, [session])
 
   function handleQuote(status) {
