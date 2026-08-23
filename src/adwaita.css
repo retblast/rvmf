@@ -1004,6 +1004,18 @@ button {
   margin-bottom: 8px;
 }
 
+.search-hint {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  margin-bottom: 8px;
+}
+
+.search-hint code {
+  background: var(--accent-bg-subtle);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+
 .pull-indicator {
   align-items: center;
   backdrop-filter: blur(8px);

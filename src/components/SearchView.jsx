@@ -46,8 +46,44 @@ export function SearchView({
     setLoading(true)
     debounceRef.current = setTimeout(async () => {
       const seq = ++requestSeq.current
+      // Mitra's untyped search only finds posts for ">text", tags for
+      // "#tag", and people for a single username-shaped token — plain
+      // multi-word text is ignored entirely. Typed requests bypass that
+      // parser (type=statuses goes straight to full-text search), so
+      // each category gets the request shape it actually understands.
+      const firstToken = q.split(/\s+/)[0]
+      const tagQuery = `#${firstToken.replace(/^#/, '')}`
+      const acctQuery = firstToken
+      async function searchAccounts() {
+        return mitra.search(instanceUrl, token, acctQuery, { type: 'accounts' })
+      }
+      async function searchPosts() {
+        return mitra.search(instanceUrl, token, q.replace(/^>+/, '').trim(), { type: 'statuses' })
+      }
+      async function searchHashtags() {
+        if (!/^\w+$/.test(tagQuery.slice(1))) return { accounts: [], statuses: [], hashtags: [] }
+        return mitra.search(instanceUrl, token, tagQuery)
+      }
       try {
-        const res = await mitra.search(instanceUrl, token, q)
+        let res
+        if (tab === 'accounts') {
+          res = await searchAccounts()
+        } else if (tab === 'statuses') {
+          res = await searchPosts()
+        } else if (tab === 'hashtags') {
+          res = await searchHashtags()
+        } else {
+          const [accounts, statuses, hashtags] = await Promise.all([
+            searchAccounts().catch(() => ({ accounts: [] })),
+            searchPosts().catch(() => ({ statuses: [] })),
+            searchHashtags(),
+          ])
+          res = {
+            accounts: accounts.accounts || [],
+            statuses: statuses.statuses || [],
+            hashtags: hashtags.hashtags || [],
+          }
+        }
         if (seq === requestSeq.current) setResults(res)
       } catch (err) {
         if (seq === requestSeq.current) {
@@ -59,7 +95,7 @@ export function SearchView({
       }
     }, 400)
     return () => clearTimeout(debounceRef.current)
-  }, [query])
+  }, [query, tab])
 
   const hasAny = results && (results.accounts?.length || results.statuses?.length || results.hashtags?.length)
 
@@ -100,6 +136,11 @@ export function SearchView({
         </div>
       )}
       {error && <div className="banner banner-error">{error}</div>}
+      <div className="search-hint">
+        Posts match full text; people need a single @handle or name token;
+        hashtags take #tag. Prefixing with <code>&gt;</code> is no longer
+        required.
+      </div>
       {!query.trim() ? (
         <div className="empty-state">Type something to search.</div>
       ) : loading && !results ? (
