@@ -350,6 +350,25 @@ export function fetchInstance(instanceUrl) {
   return apiFetch(instanceUrl, '/api/v2/instance')
 }
 
+// Returns { accounts, statuses, hashtags } — `type` narrows to
+// 'accounts' | 'statuses' | null for everything.
+export function search(instanceUrl, token, q, { type, limit = 20, offset = 0 } = {}) {
+  const params = new URLSearchParams({ q, limit: String(limit), offset: String(offset) })
+  if (type) params.set('type', type)
+  return apiFetch(instanceUrl, `/api/v2/search?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// Public feed of posts carrying a given hashtag
+export function fetchHashtagTimeline(instanceUrl, token, hashtag, { max_id } = {}) {
+  const params = new URLSearchParams({ limit: '20' })
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/timelines/tag/${encodeURIComponent(hashtag)}?${params.toString()}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+}
+
 export function votePoll(instanceUrl, token, pollId, choices) {
   return apiFetch(instanceUrl, `/api/v1/polls/${pollId}/votes`, {
     method: 'POST',

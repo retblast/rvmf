@@ -177,14 +177,15 @@ function renderRichText(text, mentions, emojis) {
         parts.push(token)
       }
     } else if (token.startsWith('#')) {
+      // Click handling is delegated at the document level in App (a native
+      // listener), so this only stops the post body's own React handler —
+      // the tag name travels via data-hashtag.
       parts.push(
         <button
           key={`h-${key++}`}
           className="hashtag-link"
-          onClick={(e) => {
-            e.stopPropagation()
-            alert('not yet wired up :P')
-          }}
+          data-hashtag={token.slice(1)}
+          onClick={(e) => e.stopPropagation()}
         >
           {token}
         </button>

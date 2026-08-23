@@ -5,6 +5,7 @@ import {
   Bell,
   Compass,
   Bookmark,
+  Search,
   Plus,
   RotateCw,
   LogOut,
@@ -21,6 +22,8 @@ import { NotificationRow, PostRow } from './components/Post.jsx'
 import { ComposeDialog, EditDialog } from './components/Compose.jsx'
 import { ThreadPanel, ThreadPanelContent } from './components/ThreadPanel.jsx'
 import { ProfileView } from './components/ProfileView.jsx'
+import { SearchView } from './components/SearchView.jsx'
+import { HashtagFeed } from './components/HashtagFeed.jsx'
 
 export default function App() {
   const { session, beginLogin, logout, authError, completingLogin } = useMitraSession()
@@ -40,6 +43,7 @@ export default function App() {
   const sidePanelRef = useRef(sidePanel)
   sidePanelRef.current = sidePanel
   const [profileAccountId, setProfileAccountId] = useState(null)
+  const [hashtagTag, setHashtagTag] = useState(null)
   const [focusedReplyId, setFocusedReplyId] = useState(null)
   const [lightboxAttachment, setLightboxAttachment] = useState(null)
   const [notifications, setNotifications] = useState([])
@@ -484,9 +488,35 @@ export default function App() {
   function handleOpenProfile(account) {
     if (!account?.id) return
     setSidePanel(null)
+    setHashtagTag(null)
     setProfileAccountId(account.id)
     setView('home')
   }
+
+  // Opens a hashtag's public feed. Hashtag links inside post text reach
+  // here via document-level click delegation (see the effect below).
+  function handleOpenHashtag(tag) {
+    if (!tag) return
+    setSidePanel(null)
+    setProfileAccountId(null)
+    setHashtagTag(tag)
+    setView('home')
+  }
+
+  // Delegated handler for hashtag links rendered deep inside post content,
+  // where passing callbacks down would mean threading yet another prop
+  // through every row.
+  useEffect(() => {
+    function onClick(e) {
+      const el = e.target.closest?.('.hashtag-link')
+      if (!el) return
+      e.preventDefault()
+      e.stopPropagation()
+      handleOpenHashtag(el.dataset.hashtag)
+    }
+    document.addEventListener('click', onClick)
+    return () => document.removeEventListener('click', onClick)
+  }, [])
 
   function handleQuote(status) {
     setQuoteStatus(status)
@@ -641,7 +671,25 @@ export default function App() {
     </>
   )
 
-  const timelineContent = profileAccountId ? (
+  const timelineContent = hashtagTag ? (
+    <HashtagFeed
+      hashtag={hashtagTag}
+      instanceUrl={session.instanceUrl}
+      token={session.token}
+      onOpenThread={handleOpenThread}
+      onComposeReply={handleComposeReply}
+      onOpenLightbox={setLightboxAttachment}
+      onOpenProfile={(account) => { setHashtagTag(null); handleOpenProfile(account) }}
+      onUpdate={updatePost}
+      onQuote={handleQuote}
+      currentAccountId={session.account?.id}
+      onDelete={handleDeleteStatus}
+      onMute={handleMuteAccount}
+      onBlock={handleBlockAccount}
+      onEdit={handleEditStatus}
+      onClose={() => setHashtagTag(null)}
+    />
+  ) : profileAccountId ? (
     <ProfileView
       accountId={profileAccountId}
       instanceUrl={session.instanceUrl}
@@ -761,6 +809,25 @@ export default function App() {
         </>
       )}
 
+      {view === 'search' && (
+        <SearchView
+          instanceUrl={session.instanceUrl}
+          token={session.token}
+          onOpenThread={handleOpenThread}
+          onComposeReply={handleComposeReply}
+          onOpenLightbox={setLightboxAttachment}
+          onOpenProfile={handleOpenProfile}
+          onUpdatePost={updatePost}
+          onQuote={handleQuote}
+          currentAccountId={session.account?.id}
+          onDelete={handleDeleteStatus}
+          onMute={handleMuteAccount}
+          onBlock={handleBlockAccount}
+          onEdit={handleEditStatus}
+          onOpenHashtag={handleOpenHashtag}
+        />
+      )}
+
       {view === 'bookmarks' && (
         <>
           {bookmarksError && <div className="banner banner-error">{bookmarksError}</div>}
@@ -875,6 +942,13 @@ export default function App() {
           >
             <Bookmark size={14} />
             Bookmarks
+          </button>
+          <button
+            className={`view-switcher-btn${view === 'search' ? ' active' : ''}`}
+            onClick={() => setView('search')}
+          >
+            <Search size={14} />
+            Search
           </button>
         </div>
 
