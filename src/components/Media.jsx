@@ -385,7 +385,8 @@ export function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox,
   // the hover surface. The floating preview shows the first image.
   const peekEnabled = hoverPreviewsEnabled && !revealed && (!alwaysSensitive || peekSpoilerMedia)
   const { pos, track, clear } = useCursorPreview()
-  const peekSource = shown.find((att) => att.type === 'image')
+  const isPeekVideo = (att) => att.type === 'video' || att.type === 'gifv'
+  const peekSource = shown.find((att) => att.type === 'image' || isPeekVideo(att))
 
   return (
     <div className="media-wrap" onClick={(e) => e.stopPropagation()}>
@@ -414,7 +415,17 @@ export function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox,
       )}
       {peekEnabled && pos && peekSource && (
         <div className="media-hover-preview peek-sensitive" style={{ left: pos.x, top: pos.y }}>
-          <ProxiedImg src={peekSource.preview_url || peekSource.url} alt="" />
+          {isPeekVideo(peekSource) ? (
+            <video
+              src={safeProxyUrl(peekSource.url)}
+              autoPlay
+              muted
+              playsInline
+              loop={peekSource.type === 'gifv'}
+            />
+          ) : (
+            <ProxiedImg src={peekSource.preview_url || peekSource.url} alt="" />
+          )}
         </div>
       )}
     </div>

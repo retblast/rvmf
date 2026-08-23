@@ -1484,7 +1484,8 @@ span.img-placeholder.custom-emoji {
   background: var(--view-bg);
 }
 
-.media-hover-preview img {
+.media-hover-preview img,
+.media-hover-preview video {
   width: 100%;
   height: 100%;
   object-fit: contain;
