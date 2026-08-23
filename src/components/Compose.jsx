@@ -423,6 +423,10 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
     token
   )
   const poll = usePollDraft()
+  // One key per draft: retries of a timed-out submit dedupe server-side.
+  const draftKeyRef = useRef(
+    typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `draft-${Date.now()}-${Math.random()}`
+  )
   const { query: acQuery, suggestions: acSuggestions, selectedIndex: acIndex, handleKeyDown: acKeyDown } = useEmojiAutocomplete(text, setText, textareaRef, customEmojis)
 
   useEffect(() => {
@@ -462,6 +466,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
         quoteId: quoteStatus?.id,
         spoilerText: showCW ? spoilerText : undefined,
         poll: poll.params,
+        idempotencyKey: draftKeyRef.current,
       })
       onPosted(status)
       onClose()

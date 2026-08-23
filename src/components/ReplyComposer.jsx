@@ -32,6 +32,10 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
     token
   )
   const poll = usePollDraft()
+  // One key per draft: retries of a timed-out submit dedupe server-side.
+  const draftKeyRef = useRef(
+    typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `draft-${Date.now()}-${Math.random()}`
+  )
   const account = status?.account || {}
   const name = account.display_name || account.username || 'Unknown'
   const { defaultVisibility } = useContext(AppSettingsContext)
@@ -76,6 +80,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
         mediaIds,
         spoilerText: showCW ? spoilerText : undefined,
         poll: poll.params,
+        idempotencyKey: draftKeyRef.current,
       })
       onPosted(status.id, reply)
     } catch (err) {

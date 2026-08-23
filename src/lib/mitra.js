@@ -223,7 +223,7 @@ export function respondFollowRequest(instanceUrl, token, accountId, action) {
 }
 
 export function postStatus(instanceUrl, token, text, options = {}) {
-  const { inReplyToId, visibility = 'public', mediaIds, quoteId, spoilerText, poll } = options
+  const { inReplyToId, visibility = 'public', mediaIds, quoteId, spoilerText, poll, idempotencyKey } = options
   const body = { status: text, visibility }
   if (inReplyToId) body.in_reply_to_id = inReplyToId
   if (quoteId) body.quote_id = quoteId
@@ -238,6 +238,9 @@ export function postStatus(instanceUrl, token, text, options = {}) {
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      // Same key = same post: protects against double-submits and
+      // retry-after-timeout duplicates. Per draft, not per attempt.
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
     },
     body: JSON.stringify(body),
   })
