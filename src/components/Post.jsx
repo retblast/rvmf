@@ -180,6 +180,11 @@ export function ThreadReply({
               </button>
             )}
             <span className="post-time">{formatRelativeTime(status.created_at)}</span>
+            {status.edited_at && (
+              <span className="post-edited" title={`Edited ${formatRelativeTime(status.edited_at)}`}>
+                (edited)
+              </span>
+            )}
           </div>
           {replyToAccount && (
             <div className="post-reply-context">
@@ -797,6 +802,11 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
               </button>
             )}
             <span className="post-time">{formatRelativeTime(status.created_at)}</span>
+            {status.edited_at && (
+              <span className="post-edited" title={`Edited ${formatRelativeTime(status.edited_at)}`}>
+                (edited)
+              </span>
+            )}
           </div>
           {replyToAccount && (
             <div className="post-reply-context">

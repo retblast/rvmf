@@ -2683,3 +2683,9 @@ textarea.profile-edit-input {
   align-items: center;
   margin-top: 6px;
 }
+
+.post-edited {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
