@@ -136,6 +136,17 @@ button {
   object-fit: contain;
 }
 
+.login-icon img {
+  border-radius: 10px;
+}
+
+.login-recognized {
+  color: var(--success);
+  font-size: 12.5px;
+  font-weight: 600;
+  margin: -10px auto 14px;
+}
+
 .view-switcher {
   display: flex;
   align-items: center;

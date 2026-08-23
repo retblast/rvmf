@@ -1,10 +1,37 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Rss } from 'lucide-react'
+import { normalizeInstanceUrl } from './lib/mitra'
 
 export default function LoginView({ onBeginLogin, error: externalError, completingLogin }) {
   const [instanceUrl, setInstanceUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // Normalized origin once the typed domain answers as an instance —
+  // drives the favicon swap in both brand spots.
+  const [recognized, setRecognized] = useState(null)
+
+  useEffect(() => {
+    const raw = instanceUrl.trim()
+    if (!raw) {
+      setRecognized(null)
+      return undefined
+    }
+    const timer = setTimeout(async () => {
+      const normalized = normalizeInstanceUrl(raw)
+      try {
+        const res = await fetch(`${normalized}/api/v1/instance`)
+        if (!res.ok) throw new Error('not an instance')
+        const data = await res.json()
+        // Instance entities carry their address under `uri` (v1) or
+        // `domain` (v2) — anything else isn't something we can log into.
+        if (data && (data.uri || data.domain)) setRecognized(normalized)
+        else setRecognized(null)
+      } catch {
+        setRecognized(null)
+      }
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [instanceUrl])
 
   async function submit(e) {
     e.preventDefault()
@@ -26,20 +53,38 @@ export default function LoginView({ onBeginLogin, error: externalError, completi
 
   const displayError = error || externalError
 
+  function Favicon({ size }) {
+    if (!recognized) return <Rss size={size} />
+    return (
+      <img
+        className="headerbar-instance-icon login-favicon"
+        src={`${recognized}/favicon.ico`}
+        alt=""
+        width={size}
+        height={size}
+      />
+    )
+  }
+
   return (
     <div className="login-screen">
       <header className="headerbar">
         <div className="headerbar-brand">
-          <Rss size={18} />
+          <Favicon size={18} />
           Mitra
         </div>
       </header>
 
       <div className="content-scroll scrollbar-thin">
         <div className="login-wrap">
-          <div className="login-icon">
-            <Rss size={32} />
+          <div className={`login-icon${recognized ? ' recognized' : ''}`}>
+            <Favicon size={32} />
           </div>
+          {recognized && (
+            <div className="login-recognized">
+              ✓ {recognized.replace(/^https?:\/\//, '')}
+            </div>
+          )}
           <h1 className="login-title">Sign in to your instance</h1>
           <p className="login-subtitle">
             {completingLogin
