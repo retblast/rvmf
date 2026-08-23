@@ -123,6 +123,29 @@ export function visibilityLabel(v) {
   }
 }
 
+const VISIBILITY_OPTIONS = ['public', 'unlisted', 'private', 'direct']
+
+// Renders the standard visibility options, plus whatever non-standard
+// value is currently set (e.g. Mitra's 'subscribers') so it displays
+// instead of leaving the select blank.
+export function VisibilitySelect({ value, onChange }) {
+  const options = VISIBILITY_OPTIONS.includes(value)
+    ? VISIBILITY_OPTIONS
+    : [value, ...VISIBILITY_OPTIONS]
+  return (
+    <select
+      className="compose-visibility-select"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label="Visibility"
+    >
+      {options.map((v) => (
+        <option key={v} value={v}>{visibilityLabel(v)}</option>
+      ))}
+    </select>
+  )
+}
+
 export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted, maxCharacters = 500 }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
@@ -309,16 +332,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
               />
             )}
           </div>
-          <select
-            className="compose-visibility-select"
-            value={visibility}
-            onChange={(e) => setVisibility(e.target.value)}
-          >
-          <option value="public">{visibilityLabel('public')}</option>
-          <option value="unlisted">{visibilityLabel('unlisted')}</option>
-          <option value="private">{visibilityLabel('private')}</option>
-          <option value="direct">{visibilityLabel('direct')}</option>
-        </select>
+          <VisibilitySelect value={visibility} onChange={setVisibility} />
         <div style={{ flex: 1 }} />
         <button className="pill-btn" onClick={onClose} type="button">
           Cancel
@@ -597,7 +611,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [visibility, setVisibility] = useState('public')
+  const [visibility, setVisibility] = useState(replyToStatus?.visibility || 'public')
   const [spoilerText, setSpoilerText] = useState('')
   const [showCW, setShowCW] = useState(false)
   const fileInputRef = useRef(null)
@@ -786,16 +800,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
               />
             )}
           </div>
-          <select
-            className="compose-visibility-select"
-            value={visibility}
-            onChange={(e) => setVisibility(e.target.value)}
-          >
-            <option value="public">{visibilityLabel('public')}</option>
-            <option value="unlisted">{visibilityLabel('unlisted')}</option>
-            <option value="private">{visibilityLabel('private')}</option>
-            <option value="direct">{visibilityLabel('direct')}</option>
-          </select>
+          <VisibilitySelect value={visibility} onChange={setVisibility} />
           <div style={{ flex: 1, minWidth: 0 }} />
           <button className="pill-btn" onClick={onClose} type="button">
             Cancel

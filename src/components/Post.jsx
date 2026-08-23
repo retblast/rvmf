@@ -29,6 +29,12 @@ function unwrapStatus(post) {
   return post.reblog || post
 }
 
+// Only public and unlisted posts can be reposted — servers reject boosts
+// of followers-only/direct/subscribers content, so don't offer the button.
+export function canBoostStatus(status) {
+  return ['public', 'unlisted'].includes(status?.visibility)
+}
+
 // One reply, at any depth, with the exact same action row and interactivity
 // as a normal post row (reply/boost/favourite/monero/more, all functional)
 // — not a stripped-down version. Its own already-loaded children render
@@ -210,13 +216,15 @@ export function ThreadReply({
               <MessageCircle size={15} />
               {!compact && status.replies_count > 0 && <span>{status.replies_count}</span>}
             </button>
-            <BoostDropdown
-              reblogged={status.reblogged}
-              reblogsCount={compact ? 0 : status.reblogs_count}
-              busy={busy}
-              onBoost={toggleReblog}
-              onQuote={() => onQuote(status)}
-            />
+            {canBoostStatus(status) && (
+              <BoostDropdown
+                reblogged={status.reblogged}
+                reblogsCount={compact ? 0 : status.reblogs_count}
+                busy={busy}
+                onBoost={toggleReblog}
+                onQuote={() => onQuote(status)}
+              />
+            )}
             <button
               className={`action-btn${status.favourited ? ' favorited' : ''}`}
               aria-label="Favorite"
@@ -787,13 +795,15 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
               <MessageCircle size={15} />
               {status.replies_count > 0 && <span>{status.replies_count}</span>}
             </button>
-            <BoostDropdown
-              reblogged={status.reblogged}
-              reblogsCount={status.reblogs_count}
-              busy={busy}
-              onBoost={toggleReblog}
-              onQuote={() => onQuote(status)}
-            />
+            {canBoostStatus(status) && (
+              <BoostDropdown
+                reblogged={status.reblogged}
+                reblogsCount={status.reblogs_count}
+                busy={busy}
+                onBoost={toggleReblog}
+                onQuote={() => onQuote(status)}
+              />
+            )}
             <button
               className={`action-btn${status.favourited ? ' favorited' : ''}`}
               aria-label="Favorite"
