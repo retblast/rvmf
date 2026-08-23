@@ -232,12 +232,10 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
   )
 }
 
-function MediaItem({ attachment, revealed, onOpenLightbox }) {
+function MediaItem({ attachment, onOpenLightbox }) {
   const { type, url, preview_url: previewUrl, remote_url: remoteUrl, description } = attachment
   const remoteFallback = attachment._remote_fallback || null
   const { fetchClientMedia, instanceUrl, token } = useContext(AppSettingsContext)
-  const { pos, track, clear } = useCursorPreview()
-  const hoverEnabled = revealed
 
   const resolveAtt = useCallback(async () => {
     if (!instanceUrl || !attachment.id || typeof attachment.id === 'string' && attachment.id.startsWith('quarantined-')) return []
@@ -294,20 +292,12 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
           type="button"
           className={`media-item media-image${imgLoading ? ' media-loading' : ''}${imgError ? ' media-error' : ''}`}
           onClick={() => onOpenLightbox(attachment)}
-          onMouseMove={hoverEnabled ? track : undefined}
-          onMouseEnter={hoverEnabled ? track : undefined}
-          onMouseLeave={hoverEnabled ? clear : undefined}
           aria-label={description || 'Open image'}
         >
           {showImg && <img src={imgSrc} alt={description || ''} />}
           {imgLoading && <div className="media-loading-overlay"><div className="media-spinner" /></div>}
           {imgError && <div className="media-error-overlay"><span>Failed to load</span></div>}
         </button>
-        {hoverEnabled && pos && imgBlob && (
-          <div className="media-hover-preview" style={{ left: pos.x, top: pos.y }}>
-            <img src={imgBlob} alt={description || ''} />
-          </div>
-        )}
       </>
     )
   }
@@ -319,9 +309,6 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
       <>
         <div
           className={`media-item media-video${vidLoading ? ' media-loading' : ''}${vidError ? ' media-error' : ''}`}
-          onMouseMove={hoverEnabled ? track : undefined}
-          onMouseEnter={hoverEnabled ? track : undefined}
-          onMouseLeave={hoverEnabled ? clear : undefined}
         >
           {showVid && (type === 'video' ? (
             <video controls preload="metadata" poster={safeProxyUrl(previewUrl)} src={vidSrc}>
@@ -333,11 +320,6 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
           {vidLoading && <div className="media-loading-overlay"><div className="media-spinner" /></div>}
           {vidError && <div className="media-error-overlay"><span>Failed to load</span></div>}
         </div>
-        {hoverEnabled && pos && previewUrl && (
-          <div className="media-hover-preview" style={{ left: pos.x, top: pos.y }}>
-            <img src={safeProxyUrl(previewUrl)} alt={description || ''} />
-          </div>
-        )}
       </>
     )
   }
@@ -365,6 +347,7 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
 
 export function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox, forceHidden }) {
   const { alwaysSensitive, peekSpoilerMedia } = useContext(AppSettingsContext)
+  const { pos, track, clear } = useCursorPreview()
   const effectiveSensitive = Boolean(sensitive) || Boolean(alwaysSensitive)
   const [userRevealed, setUserRevealed] = useState(!effectiveSensitive)
   const revealed = !forceHidden && userRevealed
@@ -380,11 +363,12 @@ export function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox,
 
   const shown = attachments.slice(0, 4)
 
-  // Peek-at-spoiler: while the CW overlay covers the grid, MediaItem's
-  // own handlers never see pointer events — so the overlay itself is
-  // the hover surface. The floating preview shows the first image.
-  const peekEnabled = !revealed && (!alwaysSensitive || peekSpoilerMedia)
-  const { pos, track, clear } = useCursorPreview()
+  // Hover preview exists solely as the spoiler peek: while a CW overlay
+  // covers the grid (its button swallows all pointer events), hovering
+  // the overlay floats a muted preview of the first image/video. Only
+  // meaningful in strict 'mark all media as sensitive' mode with its
+  // sub-toggle enabled — outside it, media is one click away anyway.
+  const peekEnabled = alwaysSensitive && peekSpoilerMedia && !revealed
   const isPeekVideo = (att) => att.type === 'video' || att.type === 'gifv'
   const peekSource = shown.find((att) => att.type === 'image' || isPeekVideo(att))
 
@@ -395,7 +379,6 @@ export function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox,
           <MediaItem
             key={att.id}
             attachment={att}
-            revealed={revealed}
             onOpenLightbox={() => onOpenLightbox({ attachment: att, attachments: shown, index: idx })}
           />
         ))}
