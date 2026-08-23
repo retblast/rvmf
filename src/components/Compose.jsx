@@ -10,6 +10,7 @@ import {
 import * as mitra from '../lib/mitra'
 import { processStatusContent, renderEmojiText } from '../lib/render.jsx'
 import { QuoteCard } from './Post.jsx'
+import { ProxiedImg } from './Media.jsx'
 import {
   insertAtCaret,
   useEmojiAutocomplete,

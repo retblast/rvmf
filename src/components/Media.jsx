@@ -67,7 +67,7 @@ function ImgPlaceholder({ text, alt, className }) {
 // registry -> ':name:' placeholder. Each candidate is remembered in the
 // shared negative cache so remounts don't re-request known-dead URLs.
 function useDirectEmojiSrc(src, fallbackText) {
-  const { instanceUrl, token } = useContext(AppSettingsContext)
+  const { instanceUrl } = useContext(AppSettingsContext)
   // step: 0 origin | 1 proxy | 2 resolving registry | 3 override origin |
   //       4 override proxy | 5 dead
   const [step, setStep] = useState(0)
@@ -251,7 +251,7 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
         const urls = [fresh.remote_url, fresh.url, fresh.preview_url].filter(Boolean)
         if (urls.length > 0) return urls
       }
-    } catch {}
+    } catch { /* ignore */ }
     const statusUri = attachment._status_uri
     if (!statusUri) return []
     try {
@@ -416,7 +416,7 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
         const urls = [fresh.remote_url, fresh.url, fresh.preview_url].filter(Boolean)
         if (urls.length > 0) return urls
       }
-    } catch {}
+    } catch { /* ignore */ }
     const statusUri = attachment._status_uri
     if (!statusUri) return []
     try {

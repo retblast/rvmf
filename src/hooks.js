@@ -185,7 +185,7 @@ export function useClientMedia(...args) {
               return
             }
           }
-        } catch {}
+        } catch { /* resolver failures fall through to the error state */ }
       }
       if (!cancelled) setState({ blobUrl: null, loading: false, error: true })
     }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Search as SearchIcon } from 'lucide-react'
 import * as mitra from '../lib/mitra'
-import { formatRelativeTime, htmlToPlainText } from '../lib/render.jsx'
+import { htmlToPlainText } from '../lib/render.jsx'
 import { Avatar } from './Media.jsx'
 import { PostRow } from './Post.jsx'
 

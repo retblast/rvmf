@@ -7,6 +7,7 @@ import {
   Bookmark,
   Search,
   Users,
+  List,
   Plus,
   RotateCw,
   LogOut,
@@ -27,6 +28,7 @@ import { SearchView } from './components/SearchView.jsx'
 import { HashtagFeed } from './components/HashtagFeed.jsx'
 import { MutedAccountsView } from './components/MutedAccountsView.jsx'
 import { ListsView } from './components/ListsView.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { GroupsView } from './components/GroupsView.jsx'
 
 export default function App() {
@@ -117,7 +119,7 @@ export default function App() {
       const next = !prev
       try {
         localStorage.setItem('mitra-fetch-client-media', String(next))
-      } catch {}
+      } catch { /* ignore */ }
       return next
     })
   }
@@ -148,7 +150,7 @@ export default function App() {
     }
     try {
       localStorage.setItem('mitra-theme-mode', themeMode)
-    } catch {}
+    } catch { /* ignore */ }
   }, [themeMode])
 
   const loadTimeline = useCallback(async () => {
@@ -1133,7 +1135,7 @@ export default function App() {
       {tier !== 'wide' && view === 'notifications' && (
         <>
           <div className="section-label">Notifications</div>
-          {notificationsBody}
+          <ErrorBoundary>{notificationsBody}</ErrorBoundary>
         </>
       )}
     </div>
@@ -1206,6 +1208,20 @@ export default function App() {
           >
             <Compass size={14} />
             Explore
+          </button>
+          <button
+            className={`view-switcher-btn${view === 'lists' ? ' active' : ''}`}
+            onClick={() => setView('lists')}
+          >
+            <List size={14} />
+            Lists
+          </button>
+          <button
+            className={`view-switcher-btn${view === 'groups' ? ' active' : ''}`}
+            onClick={() => setView('groups')}
+          >
+            <Users size={14} />
+            Groups
           </button>
           <button
             className={`view-switcher-btn${view === 'bookmarks' ? ' active' : ''}`}
@@ -1303,22 +1319,6 @@ export default function App() {
                     <span>Muted accounts</span>
                     <span className="settings-menu-arrow">→</span>
                   </button>
-                  <button
-                    type="button"
-                    className="settings-menu-row settings-menu-link"
-                    onClick={() => { setSettingsOpen(false); setView('lists') }}
-                  >
-                    <span>Lists</span>
-                    <span className="settings-menu-arrow">→</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="settings-menu-row settings-menu-link"
-                    onClick={() => { setSettingsOpen(false); setView('groups') }}
-                  >
-                    <span>Groups</span>
-                    <span className="settings-menu-arrow">→</span>
-                  </button>
                   {notifPolicy && (
                     <div className="settings-menu-section">
                       <span className="settings-menu-heading">Filtered notifications (server)</span>
@@ -1352,12 +1352,12 @@ export default function App() {
         <div className="app-shell">
           <aside className="notif-column scrollbar-thin">
             <div className="section-label">Notifications</div>
-            {notificationsBody}
+            <ErrorBoundary>{notificationsBody}</ErrorBoundary>
           </aside>
-          <div className="content-scroll scrollbar-thin" ref={setScrollEl}>{timelineContent}</div>
+          <div className="content-scroll scrollbar-thin" ref={setScrollEl}><ErrorBoundary>{timelineContent}</ErrorBoundary></div>
           <aside className="thread-column scrollbar-thin">
             {sidePanel ? (
-              <ThreadPanelContent {...threadPanelProps} />
+              <ErrorBoundary><ThreadPanelContent {...threadPanelProps} /></ErrorBoundary>
             ) : (
               <div className="thread-column-empty">Select a post to view its replies.</div>
             )}
@@ -1365,15 +1365,15 @@ export default function App() {
         </div>
       ) : tier === 'medium' ? (
         <div className={`main-layout${sidePanel ? ' panel-open' : ''}`}>
-          <div className="content-scroll scrollbar-thin" ref={setScrollEl}>{timelineContent}</div>
-          <ThreadPanel {...threadPanelProps} />
+          <div className="content-scroll scrollbar-thin" ref={setScrollEl}><ErrorBoundary>{timelineContent}</ErrorBoundary></div>
+          <ErrorBoundary><ThreadPanel {...threadPanelProps} /></ErrorBoundary>
         </div>
       ) : (
         <div className="main-layout">
           <div className="content-scroll scrollbar-thin" ref={setScrollEl}>
             {sidePanel ? (
               <div className="timeline-wrap">
-                <ThreadPanelContent {...threadPanelProps} backLabel="Back to timeline" />
+                <ErrorBoundary><ThreadPanelContent {...threadPanelProps} backLabel="Back to timeline" /></ErrorBoundary>
               </div>
             ) : (
               timelineContent
