@@ -21,7 +21,7 @@ import { AppSettingsContext, PickerContext, useLayoutTier, usePullToRefresh } fr
 import LoginView from './LoginView'
 import { Avatar, MediaLightbox } from './components/Media.jsx'
 import { NotificationRow, PostRow } from './components/Post.jsx'
-import { ComposeDialog, EditDialog } from './components/Compose.jsx'
+import { ComposeDialog, EditDialog, visibilityLabel as mitraVisibilityLabel } from './components/Compose.jsx'
 import { ThreadPanel, ThreadPanelContent } from './components/ThreadPanel.jsx'
 import { ProfileView } from './components/ProfileView.jsx'
 import { SearchView } from './components/SearchView.jsx'
@@ -88,6 +88,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [clientName, setClientNameState] = useState(() => mitra.getClientName())
   const [notifPolicy, setNotifPolicy] = useState(null)
+  const [defaultVisibility, setDefaultVisibility] = useState('public')
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
 
@@ -164,6 +165,16 @@ export default function App() {
       } catch { /* ignore */ }
       return next
     })
+  }
+
+  // Persist the posting default on the account (SharedClientConfig) so
+  // it applies everywhere, not just this browser.
+  function handleDefaultVisibilityChange(v) {
+    const previous = defaultVisibility
+    setDefaultVisibility(v)
+    if (!session) return
+    mitra.updateCredentials(session.instanceUrl, session.token, { source: { privacy: v } })
+      .catch(() => setDefaultVisibility(previous))
   }
 
   function handleClientNameChange(name) {
@@ -421,6 +432,20 @@ export default function App() {
       loadMoreDirectory()
     }
   }, [view, exploreFeed, directoryAccounts.length, directoryLoading, loadMoreDirectory])
+
+  // Server-side posting default: seeds the composer's visibility and
+  // syncs across devices via SharedClientConfig.
+  useEffect(() => {
+    if (!session) return
+    let cancelled = false
+    mitra.fetchPreferences(session.instanceUrl, session.token)
+      .then((prefs) => {
+        const v = prefs?.['posting:default:visibility']
+        if (!cancelled && v) setDefaultVisibility(v)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [session])
 
   const loadBookmarks = useCallback(async () => {
     if (!session) return
@@ -1235,7 +1260,7 @@ export default function App() {
   }
 
   return (
-    <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, instanceUrl: session.instanceUrl, token: session.token }}>
+    <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, defaultVisibility, instanceUrl: session.instanceUrl, token: session.token }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
       {showPullIndicator && (
         <div className={`pull-indicator${refreshing ? ' refreshing' : ''}`} style={pull ? { transform: `translateX(-50%) translateY(${Math.min(pull / 2, 24)}px)` } : undefined}>
@@ -1395,6 +1420,18 @@ export default function App() {
                         Dark
                       </button>
                     </div>
+                  </div>
+                  <div className="settings-menu-row">
+                    <span>Default post visibility</span>
+                    <select
+                      className="compose-visibility-select"
+                      value={defaultVisibility}
+                      onChange={(e) => handleDefaultVisibilityChange(e.target.value)}
+                    >
+                      {['public', 'unlisted', 'private', 'direct'].map((v) => (
+                        <option key={v} value={v}>{mitraVisibilityLabel(v)}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="settings-menu-row">
                     <span>Sent from</span>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import {
   X,
   Paperclip,
@@ -11,8 +11,8 @@ import * as mitra from '../lib/mitra'
 import { processStatusContent, renderEmojiText } from '../lib/render.jsx'
 import { QuoteCard } from './Post.jsx'
 import { ProxiedImg } from './Media.jsx'
-import {
-  insertAtCaret,
+import { AppSettingsContext } from '../hooks'
+import { insertAtCaret,
   useEmojiAutocomplete,
   EmojiDropdown,
   EmojiPicker,
@@ -405,10 +405,13 @@ export function PollEditorFields({ poll }) {
 }
 
 export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus, replyToStatus, maxCharacters = 500 }) {
+  const { defaultVisibility } = useContext(AppSettingsContext)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [visibility, setVisibility] = useState(replyToStatus?.visibility || 'public')
+  // Replies inherit the parent's visibility; fresh posts start at the
+  // server-configured default.
+  const [visibility, setVisibility] = useState(replyToStatus?.visibility || defaultVisibility || 'public')
   const [spoilerText, setSpoilerText] = useState('')
   const [showCW, setShowCW] = useState(false)
   const fileInputRef = useRef(null)

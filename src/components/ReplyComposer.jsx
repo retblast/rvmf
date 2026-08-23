@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import {
   X,
   Eye,
@@ -9,6 +9,7 @@ import {
 import * as mitra from '../lib/mitra'
 import { processStatusContent } from '../lib/render.jsx'
 import { useMediaUploads, MediaUploadStrip, CharCounter, VisibilitySelect, usePollDraft, PollEditorFields, ParentPreviewMedia } from './Compose.jsx'
+import { AppSettingsContext } from '../hooks'
 import {
   insertAtCaret,
   useEmojiAutocomplete,
@@ -33,7 +34,10 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
   const poll = usePollDraft()
   const account = status?.account || {}
   const name = account.display_name || account.username || 'Unknown'
-  const [visibility, setVisibility] = useState(status?.visibility || 'public')
+  const { defaultVisibility } = useContext(AppSettingsContext)
+  // Replies inherit the parent's visibility; fresh posts start at the
+  // server-configured default.
+  const [visibility, setVisibility] = useState(status?.visibility || defaultVisibility || 'public')
   const { query: acQuery, suggestions: acSuggestions, selectedIndex: acIndex, handleKeyDown: acKeyDown } = useEmojiAutocomplete(text, setText, textareaRef, customEmojis)
 
   useEffect(() => {

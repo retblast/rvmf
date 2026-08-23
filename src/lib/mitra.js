@@ -519,6 +519,14 @@ export function votePoll(instanceUrl, token, pollId, choices) {
   })
 }
 
+// Server-side posting defaults (SharedClientConfig). The visibility
+// here seeds new posts and syncs across devices.
+export function fetchPreferences(instanceUrl, token) {
+  return apiFetch(instanceUrl, '/api/v1/preferences', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 // Direct-message inbox: one entry per conversation thread, with
 // participants and the most recent post. Read-only — Mitra has no
 // delete/mark-read conversation endpoints.
