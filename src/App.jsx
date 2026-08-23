@@ -82,30 +82,11 @@ export default function App() {
   const [bookmarksHasMore, setBookmarksHasMore] = useState(true)
   const [bookmarksLoadingMore, setBookmarksLoadingMore] = useState(false)
   const bookmarksSentinelRef = useRef(null)
-  const [hoverPreviewsEnabled, setHoverPreviewsEnabled] = useState(() => {
-    try {
-      return localStorage.getItem('mitra-hover-previews') !== 'false'
-    } catch {
-      return true
-    }
-  })
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [clientName, setClientNameState] = useState(() => mitra.getClientName())
   const [notifPolicy, setNotifPolicy] = useState(null)
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
-
-  function toggleHoverPreviews() {
-    setHoverPreviewsEnabled((prev) => {
-      const next = !prev
-      try {
-        localStorage.setItem('mitra-hover-previews', String(next))
-      } catch {
-        // localStorage unavailable — setting just won't persist across reloads
-      }
-      return next
-    })
-  }
 
   const [fetchClientMedia, setFetchClientMedia] = useState(() => {
     try {
@@ -1238,7 +1219,7 @@ export default function App() {
   }
 
   return (
-    <AppSettingsContext.Provider value={{ hoverPreviewsEnabled, fetchClientMedia, alwaysSensitive, peekSpoilerMedia, instanceUrl: session.instanceUrl, token: session.token }}>
+    <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, instanceUrl: session.instanceUrl, token: session.token }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
       {showPullIndicator && (
         <div className={`pull-indicator${refreshing ? ' refreshing' : ''}`} style={pull ? { transform: `translateX(-50%) translateY(${Math.min(pull / 2, 24)}px)` } : undefined}>
@@ -1336,14 +1317,6 @@ export default function App() {
                 <div className="settings-menu-backdrop" onClick={() => setSettingsOpen(false)} />
                 <div className="settings-menu">
                   <label className="settings-menu-row">
-                    <span>Media hover previews</span>
-                    <input
-                      type="checkbox"
-                      checked={hoverPreviewsEnabled}
-                      onChange={toggleHoverPreviews}
-                    />
-                  </label>
-                  <label className="settings-menu-row">
                     <span>Fetch media directly</span>
                     <input
                       type="checkbox"
@@ -1359,7 +1332,7 @@ export default function App() {
                       onChange={toggleAlwaysSensitive}
                     />
                   </label>
-                  {alwaysSensitive && hoverPreviewsEnabled && (
+                  {alwaysSensitive && (
                     <label className="settings-menu-row settings-menu-subrow">
                       <span>Reveal media on hover (peek)</span>
                       <input

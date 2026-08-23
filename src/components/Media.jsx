@@ -235,9 +235,9 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
 function MediaItem({ attachment, revealed, onOpenLightbox }) {
   const { type, url, preview_url: previewUrl, remote_url: remoteUrl, description } = attachment
   const remoteFallback = attachment._remote_fallback || null
-  const { hoverPreviewsEnabled, fetchClientMedia, instanceUrl, token } = useContext(AppSettingsContext)
+  const { fetchClientMedia, instanceUrl, token } = useContext(AppSettingsContext)
   const { pos, track, clear } = useCursorPreview()
-  const hoverEnabled = revealed && hoverPreviewsEnabled
+  const hoverEnabled = revealed
 
   const resolveAtt = useCallback(async () => {
     if (!instanceUrl || !attachment.id || typeof attachment.id === 'string' && attachment.id.startsWith('quarantined-')) return []
@@ -364,7 +364,7 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
 }
 
 export function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox, forceHidden }) {
-  const { alwaysSensitive, peekSpoilerMedia, hoverPreviewsEnabled } = useContext(AppSettingsContext)
+  const { alwaysSensitive, peekSpoilerMedia } = useContext(AppSettingsContext)
   const effectiveSensitive = Boolean(sensitive) || Boolean(alwaysSensitive)
   const [userRevealed, setUserRevealed] = useState(!effectiveSensitive)
   const revealed = !forceHidden && userRevealed
@@ -383,7 +383,7 @@ export function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox,
   // Peek-at-spoiler: while the CW overlay covers the grid, MediaItem's
   // own handlers never see pointer events — so the overlay itself is
   // the hover surface. The floating preview shows the first image.
-  const peekEnabled = hoverPreviewsEnabled && !revealed && (!alwaysSensitive || peekSpoilerMedia)
+  const peekEnabled = !revealed && (!alwaysSensitive || peekSpoilerMedia)
   const { pos, track, clear } = useCursorPreview()
   const isPeekVideo = (att) => att.type === 'video' || att.type === 'gifv'
   const peekSource = shown.find((att) => att.type === 'image' || isPeekVideo(att))
