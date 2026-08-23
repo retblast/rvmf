@@ -526,6 +526,14 @@ export function deleteStatus(instanceUrl, token, id) {
   })
 }
 
+// Pin/unpin one of the user's own posts to their profile.
+export function setPinned(instanceUrl, token, id, pinned) {
+  return apiFetch(instanceUrl, `/api/v1/statuses/${id}/${pinned ? 'pin' : 'unpin'}`, {
+    method: pinned ? 'POST' : 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 // Raw source of a post as it was written — needed for editing, since the
 // rendered content is HTML.
 export function fetchStatusSource(instanceUrl, token, id) {

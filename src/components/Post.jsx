@@ -14,6 +14,8 @@ import {
   Smile,
   Link,
   Edit3,
+  Pin,
+  PinOff,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { PickerContext, useEscapeKey } from '../hooks'
@@ -283,6 +285,7 @@ export function ThreadReply({
               onMute={onMute}
               onBlock={onBlock}
               onEdit={onEdit}
+              onUpdate={onUpdate}
             />
           </div>
         </div>
@@ -569,9 +572,11 @@ export function PollCard({ poll, instanceUrl, token, onUpdated }) {
   )
 }
 
-function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, onBlock, onEdit }) {
+function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, onBlock, onEdit, onUpdate }) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [pinBusy, setPinBusy] = useState(false)
+  const [pinError, setPinError] = useState('')
   const ref = useRef(null)
   useEscapeKey(() => setOpen(false), open)
 
@@ -610,6 +615,24 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
     setOpen(false)
   }
 
+  // Mitra reports pinned state directly on the status payload, so the
+  // menu item can be data-driven. The endpoint returns the updated
+  // status; propagate it so every list stays in sync.
+  async function togglePinned() {
+    if (pinBusy) return
+    setPinBusy(true)
+    setPinError('')
+    try {
+      const updated = await mitra.setPinned(instanceUrl, token, status.id, !status.pinned)
+      onUpdate?.(updated || { ...status, pinned: !status.pinned })
+      setOpen(false)
+    } catch (err) {
+      setPinError(err.message || 'Pin failed.')
+    } finally {
+      setPinBusy(false)
+    }
+  }
+
   return (
     <div className="boost-dropdown-wrap" ref={ref}>
       <button className="action-btn" aria-label="More options" style={{ marginLeft: 'auto' }} onClick={() => setOpen(!open)}>
@@ -630,11 +653,18 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
               </button>
             )}
             {isOwn && (
+              <button className="boost-dropdown-item" onClick={togglePinned} disabled={pinBusy}>
+                {status.pinned ? <PinOff size={15} /> : <Pin size={15} />}
+                {status.pinned ? 'Unpin from profile' : 'Pin to profile'}
+              </button>
+            )}
+            {isOwn && (
               <button className="boost-dropdown-item destructive" onClick={handleDelete}>
                 <X size={15} />
                 Delete
               </button>
             )}
+            {pinError && <div className="banner banner-error">{pinError}</div>}
             {!isOwn && (
               <>
                 <button className="boost-dropdown-item" onClick={handleMute}>
@@ -865,6 +895,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
               onMute={onMute}
               onBlock={onBlock}
               onEdit={onEdit}
+              onUpdate={onUpdate}
             />
           </div>
         </div>
