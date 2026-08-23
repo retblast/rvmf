@@ -130,6 +130,12 @@ button {
   color: var(--accent);
 }
 
+.headerbar-instance-icon {
+  border-radius: 4px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
 .view-switcher {
   display: flex;
   align-items: center;

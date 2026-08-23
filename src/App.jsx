@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  Rss,
   Home,
   Bell,
   Compass,
@@ -27,6 +26,7 @@ import { ProfileView } from './components/ProfileView.jsx'
 import { SearchView } from './components/SearchView.jsx'
 import { HashtagFeed } from './components/HashtagFeed.jsx'
 import { MutedAccountsView } from './components/MutedAccountsView.jsx'
+import InstanceIcon from './components/InstanceIcon.jsx'
 import { ListsView } from './components/ListsView.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { GroupsView } from './components/GroupsView.jsx'
@@ -168,8 +168,23 @@ export default function App() {
     }
     try {
       localStorage.setItem('mitra-theme-mode', themeMode)
-    } catch { /* ignore */ }
+    } catch { /* persistence unavailable */ }
   }, [themeMode])
+
+  // Browser tab favicon follows the instance; restored when logged out.
+  const defaultFaviconRef = useRef(null)
+  useEffect(() => {
+    let link = document.querySelector("link[rel~='icon']")
+    if (!link) {
+      link = document.createElement('link')
+      link.rel = 'icon'
+      document.head.appendChild(link)
+    }
+    if (!defaultFaviconRef.current) defaultFaviconRef.current = link.href
+    link.href = session
+      ? `${session.instanceUrl}/favicon.ico`
+      : defaultFaviconRef.current
+  }, [session])
 
   const loadTimeline = useCallback(async () => {
     if (!session) return
@@ -1193,7 +1208,7 @@ export default function App() {
       )}
       <header className="headerbar">
         <div className="headerbar-brand">
-          <Rss size={18} />
+          <InstanceIcon instanceUrl={session.instanceUrl} />
           <div>
             Mitra
             <div className="headerbar-subtitle">
