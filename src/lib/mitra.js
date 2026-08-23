@@ -579,6 +579,71 @@ export function editStatus(instanceUrl, token, id, text) {
   })
 }
 
+// --- Account portability ---
+
+async function apiText(instanceUrl, path, options = {}) {
+  let res
+  try {
+    res = await fetch(`${instanceUrl}${path}`, options)
+  } catch {
+    throw new Error("Couldn't reach that instance.")
+  }
+  if (!res.ok) throw new Error(`Request failed (${res.status})`)
+  return res.text()
+}
+
+export function exportFollowsCsv(instanceUrl, token) {
+  return apiText(instanceUrl, '/api/v1/settings/export_follows', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function exportFollowersCsv(instanceUrl, token) {
+  return apiText(instanceUrl, '/api/v1/settings/export_followers', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+function postSettingsJson(instanceUrl, token, path, body) {
+  return apiFetch(instanceUrl, path, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+}
+
+export function importFollowsCsv(instanceUrl, token, csv) {
+  return postSettingsJson(instanceUrl, token, '/api/v1/settings/import_follows', { follows_csv: csv })
+}
+
+export function importFollowersCsv(instanceUrl, token, csv) {
+  return postSettingsJson(instanceUrl, token, '/api/v1/settings/import_followers', { followers_csv: csv })
+}
+
+export function addAlias(instanceUrl, token, acct) {
+  return postSettingsJson(instanceUrl, token, '/api/v1/settings/aliases', { acct })
+}
+
+export function removeAlias(instanceUrl, token, actorId) {
+  return postSettingsJson(instanceUrl, token, '/api/v1/settings/aliases/remove', { actor_id: actorId })
+}
+
+// Ask followers of this account to re-follow the target account
+// (account migration). Irreversible.
+export function moveFollowers(instanceUrl, token, targetAcct) {
+  return postSettingsJson(instanceUrl, token, '/api/v1/settings/move_followers', { target_acct: targetAcct })
+}
+
+export function deleteAccount(instanceUrl, token) {
+  return apiFetch(instanceUrl, '/api/v1/settings/delete_account', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 // --- Account security (settings module) ---
 
 // Active OAuth tokens ("sessions"), oldest last. is_current marks the

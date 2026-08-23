@@ -2835,3 +2835,24 @@ textarea.profile-edit-input {
 .media-blurhash-wrap + img {
   position: relative;
 }
+
+.portability-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.portability-row .profile-edit-input {
+  flex: 1;
+}
+
+.portability-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.account-card-heading.danger {
+  color: var(--error, #c01c28);
+  margin-top: 6px;
+}
