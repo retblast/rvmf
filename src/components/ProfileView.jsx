@@ -4,6 +4,7 @@ import * as mitra from '../lib/mitra'
 import { processStatusContent } from '../lib/render.jsx'
 import { Avatar, ProxiedImg } from './Media.jsx'
 import { PostRow } from './Post.jsx'
+import { ProfileEditDialog } from './ProfileEdit.jsx'
 
 // Add/remove this profile to/from the user's lists. Membership state is
 // resolved per list on open (Mitra has no bulk "lists for account"
@@ -146,6 +147,7 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
   }, [account, instanceUrl, token, currentAccountId])
 
   const isOwn = account?.id === currentAccountId
+  const [editingProfile, setEditingProfile] = useState(false)
 
   async function toggleFollow() {
     if (!account || followBusy) return
@@ -254,6 +256,11 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
               <ProfileListsMenu account={account} instanceUrl={instanceUrl} token={token} />
             </>
           )}
+          {isOwn && (
+            <button className="pill-btn suggested" onClick={() => setEditingProfile(true)}>
+              Edit profile
+            </button>
+          )}
         </div>
         {bio && <div className="profile-bio">{bio}</div>}
         <div className="profile-stats">
@@ -297,6 +304,18 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
         {hasMore && statuses.length > 0 && <div ref={sentinelRef} className="scroll-sentinel" />}
         {loadingMore && <div className="empty-state">Loading…</div>}
       </div>
+      {editingProfile && (
+        <ProfileEditDialog
+          account={account}
+          instanceUrl={instanceUrl}
+          token={token}
+          onClose={() => setEditingProfile(false)}
+          onSaved={(updated) => {
+            setAccount(updated)
+            setEditingProfile(false)
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -581,6 +581,20 @@ export function fetchAccount(instanceUrl, accountId) {
   return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}`)
 }
 
+// Partial profile update. Image fields (avatar/header) take raw base64
+// strings plus a matching *_media_type; an empty string removes the
+// image. fields_attributes is [{ name, value }].
+export function updateCredentials(instanceUrl, token, fields) {
+  return apiFetch(instanceUrl, '/api/v1/accounts/update_credentials', {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(fields),
+  })
+}
+
 // Resolve an acct ("user" or "user@domain") to a full Account
 export function lookupAccount(instanceUrl, token, acct) {
   const params = new URLSearchParams({ acct })
