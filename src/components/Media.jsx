@@ -232,17 +232,12 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
   )
 }
 
-function MediaItem({ attachment, revealed, spoilerText, onOpenLightbox }) {
+function MediaItem({ attachment, revealed, onOpenLightbox }) {
   const { type, url, preview_url: previewUrl, remote_url: remoteUrl, description } = attachment
   const remoteFallback = attachment._remote_fallback || null
-  const { hoverPreviewsEnabled, fetchClientMedia, alwaysSensitive, peekSpoilerMedia, instanceUrl, token } = useContext(AppSettingsContext)
+  const { hoverPreviewsEnabled, fetchClientMedia, instanceUrl, token } = useContext(AppSettingsContext)
   const { pos, track, clear } = useCursorPreview()
-  // Hover peeks work on spoilered media — the floating preview only
-  // exists while the cursor stays on the thumbnail. In strict 'mark all
-  // media as sensitive' mode peeking requires its own explicit toggle,
-  // since those users opted out of accidental exposure.
-  const canPeekSpoiler = revealed || !alwaysSensitive || peekSpoilerMedia
-  const hoverEnabled = canPeekSpoiler && hoverPreviewsEnabled
+  const hoverEnabled = revealed && hoverPreviewsEnabled
 
   const resolveAtt = useCallback(async () => {
     if (!instanceUrl || !attachment.id || typeof attachment.id === 'string' && attachment.id.startsWith('quarantined-')) return []
@@ -309,8 +304,7 @@ function MediaItem({ attachment, revealed, spoilerText, onOpenLightbox }) {
           {imgError && <div className="media-error-overlay"><span>Failed to load</span></div>}
         </button>
         {hoverEnabled && pos && imgBlob && (
-          <div className={"media-hover-preview" + (revealed ? '' : ' peek-sensitive')} style={{ left: pos.x, top: pos.y }}>
-            {revealed ? null : <span className='peek-tag'>{spoilerText || 'Sensitive'}</span>}
+          <div className="media-hover-preview" style={{ left: pos.x, top: pos.y }}>
             <img src={imgBlob} alt={description || ''} />
           </div>
         )}
@@ -340,8 +334,7 @@ function MediaItem({ attachment, revealed, spoilerText, onOpenLightbox }) {
           {vidError && <div className="media-error-overlay"><span>Failed to load</span></div>}
         </div>
         {hoverEnabled && pos && previewUrl && (
-          <div className={"media-hover-preview" + (revealed ? '' : ' peek-sensitive')} style={{ left: pos.x, top: pos.y }}>
-            {revealed ? null : <span className='peek-tag'>{spoilerText || 'Sensitive'}</span>}
+          <div className="media-hover-preview" style={{ left: pos.x, top: pos.y }}>
             <img src={safeProxyUrl(previewUrl)} alt={description || ''} />
           </div>
         )}
@@ -371,7 +364,7 @@ function MediaItem({ attachment, revealed, spoilerText, onOpenLightbox }) {
 }
 
 export function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox, forceHidden }) {
-  const { alwaysSensitive } = useContext(AppSettingsContext)
+  const { alwaysSensitive, peekSpoilerMedia, hoverPreviewsEnabled } = useContext(AppSettingsContext)
   const effectiveSensitive = Boolean(sensitive) || Boolean(alwaysSensitive)
   const [userRevealed, setUserRevealed] = useState(!effectiveSensitive)
   const revealed = !forceHidden && userRevealed
@@ -387,6 +380,13 @@ export function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox,
 
   const shown = attachments.slice(0, 4)
 
+  // Peek-at-spoiler: while the CW overlay covers the grid, MediaItem's
+  // own handlers never see pointer events — so the overlay itself is
+  // the hover surface. The floating preview shows the first image.
+  const peekEnabled = hoverPreviewsEnabled && !revealed && (!alwaysSensitive || peekSpoilerMedia)
+  const { pos, track, clear } = useCursorPreview()
+  const peekSource = shown.find((att) => att.type === 'image')
+
   return (
     <div className="media-wrap" onClick={(e) => e.stopPropagation()}>
       <div className={`media-grid count-${shown.length}${revealed ? '' : ' blurred'}`}>
@@ -395,16 +395,28 @@ export function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox,
             key={att.id}
             attachment={att}
             revealed={revealed}
-            spoilerText={spoilerText}
             onOpenLightbox={() => onOpenLightbox({ attachment: att, attachments: shown, index: idx })}
           />
         ))}
       </div>
       {!revealed && (
-        <button type="button" className="media-cw-overlay" onClick={() => setUserRevealed(true)}>
+        <button
+          type="button"
+          className="media-cw-overlay"
+          onClick={() => setUserRevealed(true)}
+          onMouseEnter={peekEnabled ? track : undefined}
+          onMouseMove={peekEnabled ? track : undefined}
+          onMouseLeave={peekEnabled ? clear : undefined}
+        >
           <Eye size={18} />
           <span>{spoilerText || 'Sensitive content'} — click to view</span>
         </button>
+      )}
+      {peekEnabled && pos && peekSource && (
+        <div className="media-hover-preview peek-sensitive" style={{ left: pos.x, top: pos.y }}>
+          <span className="peek-tag">{spoilerText || 'Sensitive'}</span>
+          <ProxiedImg src={peekSource.preview_url || peekSource.url} alt="" />
+        </div>
       )}
     </div>
   )
