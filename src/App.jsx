@@ -27,6 +27,7 @@ import { SearchView } from './components/SearchView.jsx'
 import { HashtagFeed } from './components/HashtagFeed.jsx'
 import { MutedAccountsView } from './components/MutedAccountsView.jsx'
 import InstanceIcon from './components/InstanceIcon.jsx'
+import { applyOsAccent } from './lib/osAccent'
 import { ListsView } from './components/ListsView.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { GroupsView } from './components/GroupsView.jsx'
@@ -121,6 +122,25 @@ export default function App() {
       return false
     }
   })
+
+  const [useOsAccent, setUseOsAccent] = useState(() => {
+    try {
+      return localStorage.getItem('mitra-use-os-accent') !== 'false'
+    } catch {
+      return true
+    }
+  })
+
+  function toggleUseOsAccent() {
+    setUseOsAccent((prev) => {
+      const next = !prev
+      applyOsAccent(next)
+      try {
+        localStorage.setItem('mitra-use-os-accent', String(next))
+      } catch { /* persistence unavailable */ }
+      return next
+    })
+  }
 
   function toggleAlwaysSensitive() {
     setAlwaysSensitive((prev) => {
@@ -1317,6 +1337,14 @@ export default function App() {
                       type="checkbox"
                       checked={alwaysSensitive}
                       onChange={toggleAlwaysSensitive}
+                    />
+                  </label>
+                  <label className="settings-menu-row">
+                    <span>Use system accent color</span>
+                    <input
+                      type="checkbox"
+                      checked={useOsAccent}
+                      onChange={toggleUseOsAccent}
                     />
                   </label>
                   <div className="settings-menu-row">
