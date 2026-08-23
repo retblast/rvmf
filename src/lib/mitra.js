@@ -194,6 +194,26 @@ export function fetchNotifications(instanceUrl, token) {
   })
 }
 
+// Read-position sync. timelines: array like ['home', 'notifications'].
+export function fetchMarkers(instanceUrl, token, timelines) {
+  const params = timelines.map((t) => `timeline[]=${t}`).join('&')
+  return apiFetch(instanceUrl, `/api/v1/markers?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// data: { home?: { last_read_id }, notifications?: { last_read_id } }
+export function updateMarker(instanceUrl, token, data) {
+  return apiFetch(instanceUrl, '/api/v1/markers', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  })
+}
+
 export function respondFollowRequest(instanceUrl, token, accountId, action) {
   // action: 'authorize' | 'reject'
   return apiFetch(instanceUrl, `/api/v1/follow_requests/${accountId}/${action}`, {

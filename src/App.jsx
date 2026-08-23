@@ -51,6 +51,12 @@ export default function App() {
   const [notifications, setNotifications] = useState([])
   const [notificationsLoading, setNotificationsLoading] = useState(false)
   const [notificationsError, setNotificationsError] = useState('')
+  // Server-synced read position for notifications (markers API). Compared
+  // against notification created_at timestamps — reliable regardless of
+  // how the server assigns ids.
+  const [notifMarkerAt, setNotifMarkerAt] = useState(null)
+  const [notifUnread, setNotifUnread] = useState(0)
+  const notifMarkerSyncingRef = useRef(false)
   const [exploreFeed, setExploreFeed] = useState('federated') // 'federated' | 'local' | 'people'
   const [exploreTimelines, setExploreTimelines] = useState({ federated: null, local: null })
   const [directoryAccounts, setDirectoryAccounts] = useState([])
@@ -146,6 +152,13 @@ export default function App() {
     try {
       const statuses = await mitra.fetchHomeTimeline(session.instanceUrl, session.token)
       setTimeline(statuses)
+      // Sync the home read marker to the newest post so other clients
+      // (and future sessions) can resume from here.
+      if (statuses[0]?.id) {
+        mitra.updateMarker(session.instanceUrl, session.token, {
+          home: { last_read_id: String(statuses[0].id) },
+        }).catch(() => {})
+      }
     } catch (err) {
       setError(err.message || 'Failed to load timeline.')
     } finally {
@@ -200,6 +213,54 @@ export default function App() {
       setNotificationsLoading(false)
     }
   }, [session])
+
+  // Restore the notifications read marker once per session so the unread
+  // count on the tab is accurate.
+  useEffect(() => {
+    if (!session) return
+    let cancelled = false
+    mitra.fetchMarkers(session.instanceUrl, session.token, ['notifications'])
+      .then((markers) => {
+        if (cancelled || !markers?.notifications?.updated_at) return
+        setNotifMarkerAt(new Date(markers.notifications.updated_at))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [session])
+
+  // Recompute the unread badge whenever the list or the marker changes.
+  useEffect(() => {
+    if (!notifMarkerAt) {
+      setNotifUnread(0)
+      return
+    }
+    const count = notifications.filter((n) => new Date(n.created_at) > notifMarkerAt).length
+    setNotifUnread(count)
+  }, [notifications, notifMarkerAt])
+
+  // While the user can see notifications, keep the marker pinned to the
+  // newest item — that's what "read" means here. Throttled so the 5s
+  // poll doesn't hammer the endpoint.
+  const notificationsVisible = view === 'notifications' || tier === 'wide'
+  useEffect(() => {
+    if (!session || !notificationsVisible || notifications.length === 0) return
+    if (notifMarkerSyncingRef.current) return
+    const newest = notifications[0]
+    if (!newest) return
+    notifMarkerSyncingRef.current = true
+    mitra.updateMarker(session.instanceUrl, session.token, {
+      notifications: { last_read_id: String(newest.id) },
+    })
+      .then((markers) => {
+        if (markers?.notifications?.updated_at) {
+          setNotifMarkerAt(new Date(markers.notifications.updated_at))
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        setTimeout(() => { notifMarkerSyncingRef.current = false }, 5000)
+      })
+  }, [notificationsVisible, notifications, session])
 
   useEffect(() => {
     if (view === 'notifications' || tier === 'wide') {
@@ -1007,6 +1068,7 @@ export default function App() {
             >
               <Bell size={14} />
               Notifications
+              {notifUnread > 0 && <span className="notif-badge">{notifUnread > 99 ? '99+' : notifUnread}</span>}
             </button>
           )}
           <button
