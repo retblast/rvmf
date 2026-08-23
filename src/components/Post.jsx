@@ -66,7 +66,8 @@ export function ThreadReply({
   const setShowPicker = (open) => setOpenPickerId(open ? node.status.id : null)
   const status = node.status
   const account = status.account || {}
-  const name = renderEmojiText(account.display_name || account.username || 'Unknown', account.emojis)
+  const rawName = account.display_name || account.username || 'Unknown'
+  const name = renderEmojiText(rawName, account.emojis)
   const content = processStatusContent(status, instanceUrl)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
 
@@ -132,7 +133,7 @@ export function ThreadReply({
         style={{ '--reply-depth': depth }}
         data-status-id={status.id}
       >
-        <Avatar name={name} src={account.avatar} onClick={() => onOpenProfile?.(account)} />
+        <Avatar name={rawName} src={account.avatar} onClick={() => onOpenProfile?.(account)} />
         <div
           className="reply-body"
           onClick={(e) => {
@@ -406,12 +407,13 @@ function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote }) {
 export function QuoteCard({ status, instanceUrl, onOpenThread }) {
   if (!status) return null
   const account = status.account || {}
-  const name = renderEmojiText(account.display_name || account.username || 'Unknown', account.emojis)
+  const rawName = account.display_name || account.username || 'Unknown'
+  const name = renderEmojiText(rawName, account.emojis)
   const content = processStatusContent(status, instanceUrl)
   return (
     <div className="quote-card" onClick={(e) => { e.stopPropagation(); onOpenThread(status) }}>
       <div className="quote-card-meta">
-        <Avatar name={name} src={account.avatar} size={16} />
+        <Avatar name={rawName} src={account.avatar} size={16} />
         <span className="quote-card-name">{name}</span>
         <span className="quote-card-handle">@{account.acct || account.username}</span>
       </div>
@@ -619,7 +621,8 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   const showPicker = openPickerId === status.id
   const setShowPicker = (open) => setOpenPickerId(open ? status.id : null)
   const account = status.account || {}
-  const displayName = renderEmojiText(account.display_name || account.username || 'Unknown', account.emojis)
+  const displayNameRaw = account.display_name || account.username || 'Unknown'
+  const displayName = renderEmojiText(displayNameRaw, account.emojis)
   const booster = isBoost ? post.account : null
   const content = processStatusContent(status, instanceUrl)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
@@ -692,7 +695,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
         </div>
       )}
       <div className="post-row-main">
-        <Avatar name={displayName} src={account.avatar} onClick={() => onOpenProfile?.(account)} />
+        <Avatar name={displayNameRaw} src={account.avatar} onClick={() => onOpenProfile?.(account)} />
         <div
           className="post-body"
           onClick={(e) => {
@@ -893,7 +896,8 @@ export const NotificationRow = memo(function NotificationRow({
   onBlock,
 }) {
   const account = notification.account || {}
-  const name = renderEmojiText(account.display_name || account.username || 'Unknown', account.emojis)
+  const rawName = account.display_name || account.username || 'Unknown'
+  const name = renderEmojiText(rawName, account.emojis)
   const Icon = notificationIcon(notification.type)
   const [responding, setResponding] = useState(false)
   const [responded, setResponded] = useState(null)
@@ -918,7 +922,7 @@ export const NotificationRow = memo(function NotificationRow({
       </div>
       <div className="notif-body">
         <div className="notif-header">
-          <Avatar name={name} src={account.avatar} size={22} onClick={() => onOpenProfile?.(account)} />
+          <Avatar name={rawName} src={account.avatar} size={22} onClick={() => onOpenProfile?.(account)} />
           <span className="notif-text">
             <span className="post-name clickable" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(account) }}>{name}</span> {notificationVerb(notification.type, notification)}
           </span>

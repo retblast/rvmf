@@ -27,7 +27,7 @@ export function Avatar({ name, src, large, size, onClick }) {
   }, [src])
   const style = size ? { width: size, height: size } : undefined
   const cls = `avatar${large ? ' lg' : ''}${onClick ? ' clickable' : ''}`
-  const initials = (name || '?')
+  const initials = (typeof name === 'string' ? name : '?')
     .split(' ')
     .map((p) => p[0])
     .join('')
