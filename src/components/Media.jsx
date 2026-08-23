@@ -1,4 +1,5 @@
-import { useCallback, useContext, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { decodeBlurhash } from '../lib/blurhash'
 import {
   X,
   Music,
@@ -232,6 +233,73 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
   )
 }
 
+// Blurred color-field preview shown while the real image loads.
+// Decodes once per hash at a small fixed resolution; CSS scales it up
+// smoothly over the media slot.
+function BlurhashPlaceholder({ hash, aspectRatio }) {
+  const canvasRef = useRef(null)
+  const w = 32
+  const h = Math.max(8, Math.min(64, aspectRatio ? Math.round(32 / aspectRatio) : 32))
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const decoded = decodeBlurhash(hash, w, h)
+    if (!decoded) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.putImageData(new ImageData(decoded.rgba, decoded.width, decoded.height), 0, 0)
+  }, [hash, h])
+  return (
+    <canvas
+      ref={canvasRef}
+      className="media-blurhash"
+      width={w}
+      height={h}
+      aria-hidden="true"
+    />
+  )
+}
+
+function attachmentAspect(attachment) {
+  const meta = attachment.meta || {}
+  const dims = meta.small?.width ? meta.small : meta.original
+  if (dims?.width && dims?.height) return dims.width / dims.height
+  return null
+}
+
+// Image slot with a blurhash underlay. The placeholder stays visible
+// until the browser has actually painted the image — in direct mode
+// the <img> starts loading immediately, so the hook's loading flag
+// alone can't drive this.
+function ImageMedia({ attachment, description, showImg, imgSrc, imgLoading, imgError, clientMode, onOpenLightbox }) {
+  const [imgReady, setImgReady] = useState(false)
+  const aspectRatio = attachmentAspect(attachment)
+  const showPlaceholder = Boolean(attachment.blurhash) && !(clientMode ? !imgLoading : imgReady)
+  return (
+    <button
+      type="button"
+      className={`media-item media-image${showPlaceholder ? ' media-loading' : ''}${imgError ? ' media-error' : ''}`}
+      onClick={() => onOpenLightbox(attachment)}
+      aria-label={description || 'Open image'}
+    >
+      {attachment.blurhash && !imgError && (
+        <div className="media-blurhash-wrap" style={aspectRatio ? { aspectRatio: `${aspectRatio}` } : undefined}>
+          <BlurhashPlaceholder hash={attachment.blurhash} aspectRatio={aspectRatio} />
+        </div>
+      )}
+      {showImg && (
+        <img
+          src={imgSrc}
+          alt={description || ''}
+          onLoad={() => setImgReady(true)}
+        />
+      )}
+      {!attachment.blurhash && imgLoading && <div className="media-loading-overlay"><div className="media-spinner" /></div>}
+      {imgError && <div className="media-error-overlay"><span>Failed to load</span></div>}
+    </button>
+  )
+}
+
 function MediaItem({ attachment, onOpenLightbox }) {
   const { type, url, preview_url: previewUrl, remote_url: remoteUrl, description } = attachment
   const remoteFallback = attachment._remote_fallback || null
@@ -287,18 +355,16 @@ function MediaItem({ attachment, onOpenLightbox }) {
     const showImg = fetchClientMedia ? (imgBlob || imgError) : true
     const imgSrc = imgBlob || safeProxyUrl(previewUrl || url)
     return (
-      <>
-        <button
-          type="button"
-          className={`media-item media-image${imgLoading ? ' media-loading' : ''}${imgError ? ' media-error' : ''}`}
-          onClick={() => onOpenLightbox(attachment)}
-          aria-label={description || 'Open image'}
-        >
-          {showImg && <img src={imgSrc} alt={description || ''} />}
-          {imgLoading && <div className="media-loading-overlay"><div className="media-spinner" /></div>}
-          {imgError && <div className="media-error-overlay"><span>Failed to load</span></div>}
-        </button>
-      </>
+      <ImageMedia
+        attachment={attachment}
+        description={description}
+        showImg={showImg}
+        imgSrc={imgSrc}
+        imgLoading={imgLoading}
+        imgError={imgError}
+        clientMode={Boolean(fetchClientMedia)}
+        onOpenLightbox={onOpenLightbox}
+      />
     )
   }
 

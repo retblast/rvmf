@@ -2813,3 +2813,25 @@ textarea.profile-edit-input {
   align-items: center;
   gap: 6px;
 }
+
+/* --- Blurhash placeholder --- */
+.media-blurhash-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.media-blurhash {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(6px);
+  transform: scale(1.1);
+}
+
+.media-blurhash-wrap + img {
+  position: relative;
+}
