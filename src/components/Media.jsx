@@ -457,12 +457,17 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
   const hasPrev = currentIdx > 0
   const hasNext = currentIdx < imageAttachments.length - 1
 
-  const { blobUrl } = useClientMedia(
+  const { blobUrl, loading, error } = useClientMedia(
     fetchClientMedia ? attachment.url : null,
     fetchClientMedia ? attachment.remote_url : null,
     fetchClientMedia ? attachment._remote_fallback : null,
     fetchClientMedia ? resolveAtt : null
   )
+
+  // With 'fetch media directly' disabled the blob pipeline is bypassed
+  // entirely — fall back to the same proxied URL the thumbnails use.
+  let displaySrc = blobUrl || safeProxyUrl(attachment.preview_url || attachment.url)
+  if (fetchClientMedia && loading) displaySrc = null
 
   function goPrev() {
     if (hasPrev) onNavigate({ attachment: imageAttachments[currentIdx - 1], attachments, index: currentIdx - 1, onNavigate })
@@ -496,13 +501,17 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
           <ChevronRight size={24} />
         </button>
       )}
-      {blobUrl ? (
+      {displaySrc ? (
         <img
           className="lightbox-image"
-          src={blobUrl}
+          src={displaySrc}
           alt={attachment.description || ''}
           onClick={(e) => e.stopPropagation()}
         />
+      ) : error ? (
+        <div className="lightbox-image media-error" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span>Failed to load</span>
+        </div>
       ) : (
         <div className="lightbox-image media-loading" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="media-spinner" />
