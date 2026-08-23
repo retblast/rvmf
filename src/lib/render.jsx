@@ -341,27 +341,12 @@ function extractQuarantinedImages(text, instanceUrl, posterAcct) {
 // Combines mention-linking and quarantined-image extraction into what a
 // post/reply actually needs to render: text nodes plus a merged attachment
 // list (real attachments + any quarantined images recovered from the text).
-// The 'mark all media as sensitive' setting also disables quarantined
-// image recovery — users who want zero auto-loaded media certainly don't
-// want remote images injected out of post text. Read straight from
-// localStorage so every processStatusContent call site honors it without
-// threading another prop/context through the tree.
-function alwaysSensitiveEnabled() {
-  try {
-    return localStorage.getItem('mitra-always-sensitive') === 'true'
-  } catch {
-    return false
-  }
-}
-
 export function processStatusContent(status, instanceUrl) {
-  const { cleanedText, quarantinedUrls, posterRecoveryUrls } = alwaysSensitiveEnabled()
-    ? { cleanedText: htmlToPlainText(status.content), quarantinedUrls: [], posterRecoveryUrls: [] }
-    : extractQuarantinedImages(
-        htmlToPlainText(status.content),
-        instanceUrl,
-        status.account?.acct
-      )
+  const { cleanedText, quarantinedUrls, posterRecoveryUrls } = extractQuarantinedImages(
+    htmlToPlainText(status.content),
+    instanceUrl,
+    status.account?.acct
+  )
   const textNodes = renderRichText(cleanedText, status.mentions, status.emojis)
 
   // Both local-instance and poster-domain recovered images are shown behind
