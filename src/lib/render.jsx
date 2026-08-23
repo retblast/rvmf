@@ -55,6 +55,7 @@ export function renderEmojiText(text, emojis) {
     parts.push(
       <ProxiedImg
         key={`de-${key++}`}
+        direct
         className="custom-emoji"
         src={emoji.static_url || emoji.url}
         alt={match[0]}
@@ -201,6 +202,7 @@ function renderRichText(text, mentions, emojis) {
         parts.push(
           <ProxiedImg
             key={`e-${key++}`}
+            direct
             className="custom-emoji"
             src={emoji.url}
             alt={token}

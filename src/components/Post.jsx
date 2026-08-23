@@ -70,6 +70,12 @@ export function ThreadReply({
   const name = renderEmojiText(rawName, account.emojis)
   const content = processStatusContent(status, instanceUrl)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
+  // Same context line as PostRow: when the parent isn't loaded, fall back
+  // to the mention matching in_reply_to_account_id. Notification previews
+  // have no statusById, so this is usually the only source there.
+  const replyToAccount = !parentStatus && status.in_reply_to_account_id
+    ? (status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
+    : null
 
   function handlePollUpdated(poll) {
     onUpdate({ ...status, poll })
@@ -164,6 +170,17 @@ export function ThreadReply({
             )}
             <span className="post-time">{formatRelativeTime(status.created_at)}</span>
           </div>
+          {replyToAccount && (
+            <div className="post-reply-context">
+              In reply to{' '}
+              <span
+                className="post-reply-link clickable"
+                onClick={(e) => { e.stopPropagation(); onOpenProfile?.(replyToAccount) }}
+              >
+                @{replyToAccount.acct || replyToAccount.username}
+              </span>
+            </div>
+          )}
           <p className="post-text">{content.textNodes}</p>
           <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
           {status.poll && (
@@ -307,7 +324,7 @@ function ReactionChips({ reactions, statusId, instanceUrl, token, onReact }) {
           }}
         >
           {r.url ? (
-            <ProxiedImg className="reaction-emoji-img" src={r.url} alt={r.name} />
+            <ProxiedImg direct className="reaction-emoji-img" src={r.url} alt={r.name} />
           ) : (
             <span className="reaction-emoji-text">{r.name}</span>
           )}
@@ -350,7 +367,7 @@ function ReactionPicker({ status, instanceUrl, token, onReact, onClose }) {
           <div className="reaction-picker-section">
             {customEmoji.map((e) => (
               <button key={e.shortcode} className="reaction-picker-item" onClick={() => { onReact(status.id, `:${e.shortcode}:`, false); onClose() }}>
-                <ProxiedImg src={e.url} alt={e.shortcode} className="reaction-picker-custom-emoji" />
+                <ProxiedImg direct src={e.url} alt={e.shortcode} className="reaction-picker-custom-emoji" />
               </button>
             ))}
           </div>
@@ -858,7 +875,7 @@ function notificationVerb(type, notification) {
       const emojiUrl = notification?.emoji_url
       const emojiName = notification?.emoji || notification?.reaction?.content || '🧩'
       const emoji = emojiUrl
-        ? <ProxiedImg src={emojiUrl} alt={emojiName} className="inline-custom-emoji" />
+        ? <ProxiedImg direct src={emojiUrl} alt={emojiName} className="inline-custom-emoji" />
         : String(emojiName).startsWith(':')
           ? <ProxiedImg alt={emojiName} className="inline-custom-emoji" fallbackText={String(emojiName).replaceAll(':', '')} />
           : emojiName

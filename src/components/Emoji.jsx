@@ -145,7 +145,7 @@ export function EmojiDropdown({ query, suggestions, selectedIndex, onSelect }) {
           onMouseDown={(e) => { e.preventDefault(); onSelect(s) }}
         >
           {s.type === 'custom'
-            ? <ProxiedImg className="custom-emoji" src={s.url} alt={s.name} width="18" height="18" />
+            ? <ProxiedImg direct className="custom-emoji" src={s.url} alt={s.name} width="18" height="18" />
             : <span className="emoji-char">{s.char}</span>
           }
           <span className="emoji-name">:{s.name}:</span>
@@ -176,7 +176,7 @@ export function EmojiPicker({ customEmojis, onSelect, onClose }) {
       )}
       {customEmojis.slice(0, 20).map((e) => (
         <button key={e.shortcode} className="emoji-pick-btn" onMouseDown={(e2) => { e2.preventDefault(); onSelect(`:${e.shortcode}:`) }}>
-          <ProxiedImg className="custom-emoji" src={e.static_url || e.url} alt={e.shortcode} width="18" height="18" />
+          <ProxiedImg direct className="custom-emoji" src={e.static_url || e.url} alt={e.shortcode} width="18" height="18" />
         </button>
       ))}
     </div>

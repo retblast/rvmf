@@ -59,12 +59,12 @@ function ImgPlaceholder({ text, alt, className }) {
   )
 }
 
-export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, onLoad, fallbackText, ...rest }) {
+export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, onLoad, fallbackText, direct, ...rest }) {
   const { fetchClientMedia } = useContext(AppSettingsContext)
   const [directFailed, setDirectFailed] = useState(false)
   const { blobUrl, loading, error } = useClientMedia(
-    fetchClientMedia && src ? src : null,
-    fetchClientMedia && fallbackSrc ? fallbackSrc : null
+    !direct && fetchClientMedia && src ? src : null,
+    !direct && fetchClientMedia && fallbackSrc ? fallbackSrc : null
   )
   useEffect(() => {
     if (error && onError) onError()
@@ -80,7 +80,7 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
 
   const showPlaceholder = Boolean(fallbackText) && (
     !src ||
-    (fetchClientMedia ? (error || (!blobUrl && loading)) : directFailed)
+    (direct ? directFailed : (fetchClientMedia ? (error || (!blobUrl && loading)) : directFailed))
   )
   if (showPlaceholder) {
     return <ImgPlaceholder text={fallbackText} alt={alt} className={className} />
@@ -88,6 +88,13 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
   // Without fallbackText the old behavior stands: render nothing while
   // pending/failed (callers like Avatar layer their own placeholders).
   if (!src) return null
+  if (direct) {
+    // Plain cross-origin <img>, no proxy/blob pipeline — browsers can
+    // display images from any origin without CORS. Used for tiny public
+    // assets (custom emojis) where the pipeline adds failure modes.
+    if (directFailed) return null
+    return <img src={src} alt={alt || ''} className={className} style={style} loading="lazy" onLoad={onLoad} onError={handleDirectError} {...rest} />
+  }
   if (fetchClientMedia) {
     if (error) return null
     if (!blobUrl) return null
