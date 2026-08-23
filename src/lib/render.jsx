@@ -21,6 +21,18 @@ export function formatRelativeTime(iso) {
 function htmlToPlainText(html) {
   const doc = new DOMParser().parseFromString(html || '', 'text/html')
   doc.querySelectorAll('p.quote-inline, .quote-inline').forEach((el) => el.remove())
+  // Server renders posts (markdown or HTML source) into HTML with real
+  // <a> links. Preserve them as [label](href) tokens so renderRichText
+  // can rebuild clickable labeled anchors instead of flattening the
+  // label into dead text. Mention/hashtag anchors are skipped — their
+  // bare text feeds those dedicated branches.
+  doc.querySelectorAll('a[href]').forEach((el) => {
+    if (/mention|hashtag/i.test(el.className)) return
+    const label = (el.textContent || el.getAttribute('href') || '').replace(/[[\]]/g, '').trim()
+    const href = el.getAttribute('href') || ''
+    if (!label) return
+    el.replaceWith(`[${label}](${href})`)
+  })
   doc.querySelectorAll('img.custom-emoji').forEach((img) => {
     const alt = img.getAttribute('alt') || img.getAttribute('title') || ':emoji:'
     img.replaceWith(alt)
@@ -136,6 +148,11 @@ export function updateTreeNode(nodes, updated) {
 // original HTML) on purpose — no dangerouslySetInnerHTML anywhere, just
 // safe React nodes built from a regex split.
 const URL_RE_SOURCE = 'https?://[^\\s<>"]+'
+// Markdown-style labeled links, e.g. [label](https://…) — emitted by
+// htmlToPlainText when preserving <a> elements, or present verbatim in
+// posts whose source was markdown that the server didn't render.
+const MD_LINK_RE_SOURCE = '\\[[^\\]\\n]+\\]\\(https?://[^\\s)]+\\)'
+const MD_LINK_PARSE_RE = /^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/
 
 function shortenUrlForDisplay(url) {
   try {
@@ -165,6 +182,7 @@ function renderRichText(text, mentions, emojis) {
       .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     patternParts.push(`@(?:${escaped.join('|')})\\b`)
   }
+  patternParts.push(MD_LINK_RE_SOURCE) // before the bare-URL pattern, so the label wins over the inner URL
   patternParts.push(':[a-zA-Z0-9_+-]+:')
   patternParts.push('#[\\w]+')
   patternParts.push(URL_RE_SOURCE)
@@ -212,6 +230,24 @@ function renderRichText(text, mentions, emojis) {
             @{handle}
           </a>
         )
+      }
+    } else if (token.startsWith('[')) {
+      const md = token.match(MD_LINK_PARSE_RE)
+      if (md) {
+        parts.push(
+          <a
+            key={`l-${key++}`}
+            className="mention-link"
+            href={md[2]}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {md[1]}
+          </a>
+        )
+      } else {
+        parts.push(token)
       }
     } else if (token.startsWith(':') && token.endsWith(':')) {
       const shortcode = token.slice(1, -1)
