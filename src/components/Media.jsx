@@ -61,6 +61,11 @@ function ImgPlaceholder({ text, alt, className }) {
 
 export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, onLoad, fallbackText, direct, ...rest }) {
   const { fetchClientMedia } = useContext(AppSettingsContext)
+  // Direct mode escalation: try the origin URL as-is; if the server
+  // rejects browser requests (hotlink protection, CDN rules), retry once
+  // through the dev proxy (server-side fetch, no browser headers), then
+  // give up and show the placeholder.
+  const [viaProxy, setViaProxy] = useState(false)
   const [directFailed, setDirectFailed] = useState(false)
   const { blobUrl, loading, error } = useClientMedia(
     !direct && fetchClientMedia && src ? src : null,
@@ -70,11 +75,17 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
     if (error && onError) onError()
   }, [error, onError])
   useEffect(() => {
+    setViaProxy(false)
     setDirectFailed(false)
   }, [src])
 
   function handleDirectError(e) {
+    if (direct && !viaProxy) {
+      setViaProxy(true)
+      return
+    }
     setDirectFailed(true)
+    console.warn(`[media] failed to load image: ${src}`)
     onError?.(e)
   }
 
@@ -89,11 +100,19 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
   // pending/failed (callers like Avatar layer their own placeholders).
   if (!src) return null
   if (direct) {
-    // Plain cross-origin <img>, no proxy/blob pipeline — browsers can
-    // display images from any origin without CORS. Used for tiny public
-    // assets (custom emojis) where the pipeline adds failure modes.
     if (directFailed) return null
-    return <img src={src} alt={alt || ''} className={className} style={style} loading="lazy" onLoad={onLoad} onError={handleDirectError} {...rest} />
+    return (
+      <img
+        src={viaProxy ? safeProxyUrl(src) : src}
+        alt={alt || ''}
+        className={className}
+        style={style}
+        loading="lazy"
+        onLoad={onLoad}
+        onError={handleDirectError}
+        {...rest}
+      />
+    )
   }
   if (fetchClientMedia) {
     if (error) return null
