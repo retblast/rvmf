@@ -117,7 +117,12 @@ export function ThreadReply({
     setBusy(true)
     try {
       const updated = await mitra.setReblogged(instanceUrl, token, status.id, status.reblogged)
-      const inner = updated.reblog ? { ...updated.reblog, reblogged: updated.reblogged } : updated
+      // Mitra serializes the freshly-created repost wrapper on reblog,
+      // whose own `reblogged` is always false — the real flag lives on
+      // the wrapped original. Unreblog returns the original directly.
+      const inner = updated.reblog
+        ? { ...updated.reblog, reblogged: Boolean(updated.reblog.reblogged) }
+        : { ...updated, reblogged: Boolean(updated.reblogged) }
       onUpdate(inner)
     } catch (err) {
       console.error(err)
@@ -677,7 +682,12 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
     setBusy(true)
     try {
       const updated = await mitra.setReblogged(instanceUrl, token, status.id, status.reblogged)
-      const inner = updated.reblog ? { ...updated.reblog, reblogged: updated.reblogged } : updated
+      // Mitra serializes the freshly-created repost wrapper on reblog,
+      // whose own `reblogged` is always false — the real flag lives on
+      // the wrapped original. Unreblog returns the original directly.
+      const inner = updated.reblog
+        ? { ...updated.reblog, reblogged: Boolean(updated.reblog.reblogged) }
+        : { ...updated, reblogged: Boolean(updated.reblogged) }
       onUpdate(isBoost ? { ...post, reblog: inner } : inner)
     } catch (err) {
       console.error(err)
