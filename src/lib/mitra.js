@@ -389,6 +389,116 @@ export function fetchHashtagTimeline(instanceUrl, token, hashtag, { max_id } = {
   })
 }
 
+// ---- Lists (Mitra "custom feeds", Mastodon-list-shaped) ----
+
+export function fetchLists(instanceUrl, token) {
+  return apiFetch(instanceUrl, '/api/v1/lists', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function createList(instanceUrl, token, title) {
+  return apiFetch(instanceUrl, '/api/v1/lists', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ title }),
+  })
+}
+
+export function updateList(instanceUrl, token, id, title) {
+  return apiFetch(instanceUrl, `/api/v1/lists/${id}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ title }),
+  })
+}
+
+export function deleteList(instanceUrl, token, id) {
+  return apiFetch(instanceUrl, `/api/v1/lists/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function fetchListAccounts(instanceUrl, token, id) {
+  // limit=0 means "all members"
+  return apiFetch(instanceUrl, `/api/v1/lists/${id}/accounts?limit=0`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function addAccountsToList(instanceUrl, token, id, accountIds) {
+  return apiFetch(instanceUrl, `/api/v1/lists/${id}/accounts`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ account_ids: accountIds }),
+  })
+}
+
+export function removeAccountsFromList(instanceUrl, token, id, accountIds) {
+  const params = accountIds.map((id2) => `account_ids[]=${id2}`).join('&')
+  return apiFetch(instanceUrl, `/api/v1/lists/${id}/accounts?${params}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function fetchListTimeline(instanceUrl, token, listId, { max_id } = {}) {
+  const params = new URLSearchParams({ limit: '20' })
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/timelines/list/${listId}?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// ---- Groups ----
+
+// filter: 'admin' | 'member' — omit for all affiliated groups
+export function fetchFollowedGroups(instanceUrl, token, { filter, offset = 0, limit = 40 } = {}) {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  if (filter) params.set('filter', filter)
+  return apiFetch(instanceUrl, `/api/v1/groups/followed?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function createGroup(instanceUrl, token, name, description) {
+  const body = { name }
+  if (description) body.description = description
+  return apiFetch(instanceUrl, '/api/v1/groups', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+}
+
+export function fetchGroupTimeline(instanceUrl, token, groupId, { max_id } = {}) {
+  const params = new URLSearchParams({ limit: '20' })
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/timelines/group/${groupId}?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// Read-only on Mitra: which remote notifications the instance filters out
+export function fetchNotificationPolicy(instanceUrl, token) {
+  return apiFetch(instanceUrl, '/api/v2/notifications/policy', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 // Profile directory — returns Account[]. order: 'active' | 'new'
 export function fetchDirectory(instanceUrl, token, { local = false, order = 'active', offset = 0, limit = 20 } = {}) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset), order })

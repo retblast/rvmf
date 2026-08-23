@@ -26,6 +26,8 @@ import { ProfileView } from './components/ProfileView.jsx'
 import { SearchView } from './components/SearchView.jsx'
 import { HashtagFeed } from './components/HashtagFeed.jsx'
 import { MutedAccountsView } from './components/MutedAccountsView.jsx'
+import { ListsView } from './components/ListsView.jsx'
+import { GroupsView } from './components/GroupsView.jsx'
 
 export default function App() {
   const { session, beginLogin, logout, authError, completingLogin } = useMitraSession()
@@ -84,6 +86,7 @@ export default function App() {
   })
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [clientName, setClientNameState] = useState(() => mitra.getClientName())
+  const [notifPolicy, setNotifPolicy] = useState(null)
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
 
@@ -957,6 +960,40 @@ export default function App() {
         />
       )}
 
+      {view === 'lists' && (
+        <ListsView
+          instanceUrl={session.instanceUrl}
+          token={session.token}
+          onOpenThread={handleOpenThread}
+          onComposeReply={handleComposeReply}
+          onOpenLightbox={setLightboxAttachment}
+          onOpenProfile={handleOpenProfile}
+          onQuote={handleQuote}
+          currentAccountId={session.account?.id}
+          onDelete={handleDeleteStatus}
+          onMute={handleMuteAccount}
+          onBlock={handleBlockAccount}
+          onEdit={handleEditStatus}
+        />
+      )}
+
+      {view === 'groups' && (
+        <GroupsView
+          instanceUrl={session.instanceUrl}
+          token={session.token}
+          onOpenThread={handleOpenThread}
+          onComposeReply={handleComposeReply}
+          onOpenLightbox={setLightboxAttachment}
+          onOpenProfile={handleOpenProfile}
+          onQuote={handleQuote}
+          currentAccountId={session.account?.id}
+          onDelete={handleDeleteStatus}
+          onMute={handleMuteAccount}
+          onBlock={handleBlockAccount}
+          onEdit={handleEditStatus}
+        />
+      )}
+
       {view === 'search' && (
         <SearchView
           instanceUrl={session.instanceUrl}
@@ -1115,7 +1152,14 @@ export default function App() {
             <button
               className="icon-btn"
               aria-label="Settings"
-              onClick={() => setSettingsOpen((v) => !v)}
+              onClick={() => {
+                setSettingsOpen((v) => !v)
+                if (!notifPolicy) {
+                  mitra.fetchNotificationPolicy(session.instanceUrl, session.token)
+                    .then(setNotifPolicy)
+                    .catch(() => {})
+                }
+              }}
             >
               <Settings size={16} />
             </button>
@@ -1180,6 +1224,33 @@ export default function App() {
                     <span>Muted accounts</span>
                     <span className="settings-menu-arrow">→</span>
                   </button>
+                  <button
+                    type="button"
+                    className="settings-menu-row settings-menu-link"
+                    onClick={() => { setSettingsOpen(false); setView('lists') }}
+                  >
+                    <span>Lists</span>
+                    <span className="settings-menu-arrow">→</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="settings-menu-row settings-menu-link"
+                    onClick={() => { setSettingsOpen(false); setView('groups') }}
+                  >
+                    <span>Groups</span>
+                    <span className="settings-menu-arrow">→</span>
+                  </button>
+                  {notifPolicy && (
+                    <div className="settings-menu-section">
+                      <span className="settings-menu-heading">Filtered notifications (server)</span>
+                      {Object.entries(notifPolicy).filter(([, v]) => typeof v === 'boolean').map(([key, value]) => (
+                        <label key={key} className="settings-menu-row settings-menu-subrow">
+                          <span>{key.replace(/_/g, ' ')}</span>
+                          <input type="checkbox" checked={value} disabled />
+                        </label>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </>
             )}

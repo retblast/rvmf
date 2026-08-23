@@ -1036,6 +1036,95 @@ button {
   to { transform: rotate(360deg); }
 }
 
+/* ---- lists & groups ---- */
+
+.lists-create-row {
+  display: flex;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.lists-create-input {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--window-bg);
+  color: var(--text-primary);
+  flex: 1;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+.list-row {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  padding: 6px 12px;
+}
+
+.list-row-title {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  flex: 1;
+  font-family: inherit;
+  font-size: 13.5px;
+  text-align: left;
+}
+
+.profile-lists-dropdown {
+  min-width: 200px;
+  right: 0;
+}
+
+.profile-lists-item {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.settings-menu-section {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 6px;
+}
+
+.settings-menu-heading {
+  color: var(--text-secondary);
+  display: block;
+  font-size: 11.5px;
+  padding: 2px 0;
+  text-transform: uppercase;
+}
+
+.settings-menu-subrow span {
+  text-transform: capitalize;
+}
+
+.group-create {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+}
+
+.group-create summary {
+  align-items: center;
+  color: var(--accent);
+  cursor: pointer;
+  display: flex;
+  gap: 6px;
+  user-select: none;
+}
+
+.group-create-description {
+  resize: vertical;
+}
+
 button.settings-menu-link {
   background: none;
   border: none;

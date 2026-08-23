@@ -1,9 +1,99 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, ListPlus } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { processStatusContent } from '../lib/render.jsx'
 import { Avatar, ProxiedImg } from './Media.jsx'
 import { PostRow } from './Post.jsx'
+
+// Add/remove this profile to/from the user's lists. Membership state is
+// resolved per list on open (Mitra has no bulk "lists for account"
+// endpoint).
+function ProfileListsMenu({ account, instanceUrl, token }) {
+  const [open, setOpen] = useState(false)
+  const [lists, setLists] = useState(null)
+  const [member, setMember] = useState({})
+  const [busyId, setBusyId] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!open) return undefined
+    let cancelled = false
+    mitra.fetchLists(instanceUrl, token)
+      .then(async (userLists) => {
+        if (cancelled) return
+        setLists(userLists)
+        const entries = await Promise.all(
+          (userLists || []).map((list) =>
+            mitra.fetchListAccounts(instanceUrl, token, list.id)
+              .then((accounts) => [list.id, (accounts || []).some((a) => a.id === account.id)])
+              .catch(() => [list.id, false])
+          )
+        )
+        if (!cancelled) setMember(Object.fromEntries(entries))
+      })
+      .catch((err) => { if (!cancelled) setError(err.message || 'Failed to load lists.') })
+    return () => { cancelled = true }
+  }, [open, account.id])
+
+  async function toggle(list) {
+    if (busyId) return
+    setBusyId(list.id)
+    setError('')
+    try {
+      if (member[list.id]) {
+        await mitra.removeAccountsFromList(instanceUrl, token, list.id, [account.id])
+        setMember((prev) => ({ ...prev, [list.id]: false }))
+      } else {
+        await mitra.addAccountsToList(instanceUrl, token, list.id, [account.id])
+        setMember((prev) => ({ ...prev, [list.id]: true }))
+      }
+    } catch (err) {
+      setError(err.message || 'Update failed.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <div className="boost-dropdown-wrap">
+      <button
+        type="button"
+        className={`pill-btn${open ? ' suggested' : ''}`}
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Lists"
+      >
+        <ListPlus size={14} style={{ marginRight: 4 }} />
+        Lists
+      </button>
+      {open && (
+        <>
+          <div className="boost-dropdown-backdrop" onClick={() => setOpen(false)} />
+          <div className="boost-dropdown profile-lists-dropdown">
+            {!lists ? (
+              <span className="poll-meta">Loading…</span>
+            ) : lists.length === 0 ? (
+              <span className="poll-meta">No lists yet — create one in Settings.</span>
+            ) : (
+              lists.map((list) => (
+                <button
+                  type="button"
+                  key={list.id}
+                  className="boost-dropdown-item profile-lists-item"
+                  disabled={busyId === list.id}
+                  onClick={() => toggle(list)}
+                >
+                  <input type="checkbox" checked={Boolean(member[list.id])} readOnly />
+                  {list.title}
+                </button>
+              ))
+            )}
+            {error && <div className="banner banner-error">{error}</div>}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
 export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onUpdate, onQuote, currentAccountId, onDelete, onMute, onBlock, onEdit, onClose }) {
   const [account, setAccount] = useState(null)
@@ -153,13 +243,16 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
             )}
           </div>
           {!isOwn && (
-            <button
-              className={`pill-btn ${relationship?.following ? '' : 'suggested'}`}
-              onClick={toggleFollow}
-              disabled={followBusy}
-            >
-              {followBusy ? '…' : relationship?.following ? 'Following' : 'Follow'}
-            </button>
+            <>
+              <button
+                className={`pill-btn ${relationship?.following ? '' : 'suggested'}`}
+                onClick={toggleFollow}
+                disabled={followBusy}
+              >
+                {followBusy ? '…' : relationship?.following ? 'Following' : 'Follow'}
+              </button>
+              <ProfileListsMenu account={account} instanceUrl={instanceUrl} token={token} />
+            </>
           )}
         </div>
         {bio && <div className="profile-bio">{bio}</div>}
