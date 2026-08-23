@@ -581,6 +581,14 @@ export function fetchAccount(instanceUrl, accountId) {
   return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}`)
 }
 
+// Resolve an acct ("user" or "user@domain") to a full Account
+export function lookupAccount(instanceUrl, token, acct) {
+  const params = new URLSearchParams({ acct })
+  return apiFetch(instanceUrl, `/api/v1/accounts/lookup?${params.toString()}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+}
+
 export function fetchAccountStatuses(instanceUrl, token, accountId, { onlyMedia = false, excludeReplies = false, excludeReblogs = false, pinned = false, max_id } = {}) {
   const params = new URLSearchParams({ limit: '20' })
   if (onlyMedia) params.set('only_media', 'true')

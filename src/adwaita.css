@@ -1798,6 +1798,14 @@ span.img-placeholder.custom-emoji {
   font-weight: 500;
 }
 
+button.mention-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: inherit;
+}
+
 .mention-link:hover {
   text-decoration: underline;
 }

@@ -183,18 +183,36 @@ function renderRichText(text, mentions, emojis) {
     if (token.startsWith('@')) {
       const handle = token.slice(1)
       const mention = mentions.find((m) => m.acct === handle || m.username === handle)
-      parts.push(
-        <a
-          key={`m-${key++}`}
-          className="mention-link"
-          href={mention?.url}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(e) => e.stopPropagation()}
-        >
-          @{handle}
-        </a>
-      )
+      // Navigation is delegated at the document level in App: with a
+      // mention id the profile opens directly, otherwise the acct is
+      // resolved via /accounts/lookup. Falls back to an external link
+      // only when there's nothing to route by.
+      if (mention?.id) {
+        parts.push(
+          <button
+            key={`m-${key++}`}
+            className="mention-link"
+            data-account-id={mention.id}
+            data-acct={mention.acct || mention.username}
+            onClick={(e) => e.stopPropagation()}
+          >
+            @{handle}
+          </button>
+        )
+      } else {
+        parts.push(
+          <a
+            key={`m-${key++}`}
+            className="mention-link"
+            href={mention?.url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+          >
+            @{handle}
+          </a>
+        )
+      }
     } else if (token.startsWith(':') && token.endsWith(':')) {
       const shortcode = token.slice(1, -1)
       const emoji = emojiMap.get(shortcode)

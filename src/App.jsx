@@ -606,11 +606,37 @@ export default function App() {
     setView('home')
   }
 
-  // Delegated handler for hashtag links rendered deep inside post content,
-  // where passing callbacks down would mean threading yet another prop
-  // through every row.
+  // Delegated handler for links rendered deep inside post content
+  // (hashtags, @mentions), where passing callbacks down would mean
+  // threading yet another prop through every row. Mentions resolve to a
+  // local profile: by account id when the mention carries one, otherwise
+  // by acct lookup — falling back to the external URL only if that fails.
   useEffect(() => {
     function onClick(e) {
+      const mentionEl = e.target.closest?.('.mention-link')
+      if (mentionEl) {
+        e.preventDefault()
+        e.stopPropagation()
+        const accountId = mentionEl.dataset.accountId
+        const acct = mentionEl.dataset.acct || (mentionEl.textContent || '').replace(/^@/, '')
+        const openExternal = () => {
+          const href = mentionEl.getAttribute('href')
+          if (href) window.open(href, '_blank', 'noopener')
+        }
+        if (accountId) {
+          handleOpenProfile({ id: accountId })
+        } else if (acct) {
+          mitra.lookupAccount(session.instanceUrl, session.token, acct)
+            .then((account) => {
+              if (account?.id) handleOpenProfile(account)
+              else openExternal()
+            })
+            .catch(() => openExternal())
+        } else {
+          openExternal()
+        }
+        return
+      }
       const el = e.target.closest?.('.hashtag-link')
       if (!el) return
       e.preventDefault()
@@ -619,7 +645,7 @@ export default function App() {
     }
     document.addEventListener('click', onClick)
     return () => document.removeEventListener('click', onClick)
-  }, [])
+  }, [session])
 
   function handleQuote(status) {
     setQuoteStatus(status)
