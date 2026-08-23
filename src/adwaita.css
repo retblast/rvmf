@@ -761,6 +761,51 @@ button {
   box-shadow: 0 0 0 2px var(--accent-bg-subtle);
 }
 
+.poll-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-strong);
+}
+
+.poll-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.poll-editor-input {
+  flex: 1;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--window-bg);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+.poll-editor-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.poll-editor-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.poll-editor-multiple {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
 .char-counter {
   position: absolute;
   bottom: 8px;

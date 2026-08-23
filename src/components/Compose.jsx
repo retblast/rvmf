@@ -5,6 +5,7 @@ import {
   Eye,
   Smile,
   ImagePlus,
+  BarChart2,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { processStatusContent } from '../lib/render.jsx'
@@ -136,6 +137,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
     instanceUrl,
     token
   )
+  const poll = usePollDraft()
   const account = status?.account || {}
   const name = account.display_name || account.username || 'Unknown'
   const [visibility, setVisibility] = useState(status?.visibility || 'public')
@@ -145,8 +147,14 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
     mitra.fetchCustomEmojis(instanceUrl).then((emojis) => setCustomEmojis(emojis || [])).catch(() => {})
   }, [instanceUrl])
 
+  // Polls and media attachments are mutually exclusive
+  useEffect(() => {
+    if (uploads.length > 0 && poll.enabled) poll.setEnabled(false)
+    if (poll.enabled && mediaIds.length > 0) removeUpload(mediaIds[0])
+  }, [uploads.length, poll.enabled])
+
   async function submit() {
-    if (!text.trim() && mediaIds.length === 0) {
+    if (!text.trim() && mediaIds.length === 0 && !poll.enabled) {
       setError('Write something or attach a file first.')
       return
     }
@@ -158,6 +166,10 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
       setError('Still uploading — hang on a sec.')
       return
     }
+    if (poll.enabled && !poll.valid) {
+      setError('A poll needs at least two options.')
+      return
+    }
     setBusy(true)
     setError('')
     try {
@@ -166,6 +178,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
         visibility,
         mediaIds,
         spoilerText: showCW ? spoilerText : undefined,
+        poll: poll.params,
       })
       onPosted(status.id, reply)
     } catch (err) {
@@ -237,6 +250,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
         }} />
         <CharCounter current={text.length} max={maxCharacters} />
       </div>
+      {poll.enabled && <PollEditorFields poll={poll} />}
       <MediaUploadStrip uploads={uploads} onRemove={removeUpload} />
       <div className="dialog-actions">
         <input
@@ -266,6 +280,16 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
           onClick={() => setShowCW((v) => !v)}
         >
           <Eye size={16} />
+        </button>
+        <button
+          className={`icon-btn${poll.enabled ? ' active' : ''}`}
+          type="button"
+          aria-label="Add poll"
+          title={uploads.length > 0 ? 'Polls and media can\u2019t be combined' : undefined}
+          disabled={uploads.length > 0}
+          onClick={() => poll.setEnabled((v) => !v)}
+        >
+          <BarChart2 size={16} />
         </button>
           <div style={{ position: 'relative', flex: '0 0 auto' }}>
             <button
@@ -318,6 +342,116 @@ export function CharCounter({ current, max }) {
   return <span className={`char-counter ${cls}`}>{remaining}</span>
 }
 
+const POLL_DURATIONS = [
+  ['30 minutes', 1800],
+  ['1 hour', 3600],
+  ['6 hours', 21600],
+  ['1 day', 86400],
+  ['3 days', 259200],
+  ['7 days', 604800],
+]
+const POLL_MAX_OPTIONS = 8
+
+// Draft state for the poll being composed. `params` is undefined while
+// disabled or invalid, so submit handlers can pass it straight through.
+export function usePollDraft() {
+  const [enabled, setEnabled] = useState(false)
+  const [options, setOptions] = useState(['', ''])
+  const [expiresIn, setExpiresIn] = useState(86400)
+  const [multiple, setMultiple] = useState(false)
+
+  function setOption(i, value) {
+    setOptions((prev) => prev.map((o, idx) => (idx === i ? value : o)))
+  }
+  function addOption() {
+    setOptions((prev) => (prev.length >= POLL_MAX_OPTIONS ? prev : [...prev, '']))
+  }
+  function removeOption(i) {
+    setOptions((prev) => (prev.length <= 2 ? prev : prev.filter((_, idx) => idx !== i)))
+  }
+  function reset() {
+    setEnabled(false)
+    setOptions(['', ''])
+    setExpiresIn(86400)
+    setMultiple(false)
+  }
+
+  const trimmedOptions = options.map((o) => o.trim()).filter(Boolean)
+  const params = enabled
+    ? { options: trimmedOptions, expires_in: expiresIn, multiple }
+    : undefined
+
+  return {
+    enabled,
+    setEnabled,
+    options,
+    setOption,
+    addOption,
+    removeOption,
+    expiresIn,
+    setExpiresIn,
+    multiple,
+    setMultiple,
+    reset,
+    params,
+    valid: !enabled || trimmedOptions.length >= 2,
+  }
+}
+
+function PollEditorFields({ poll }) {
+  return (
+    <div className="poll-editor">
+      {poll.options.map((opt, i) => (
+        <div className="poll-editor-row" key={i}>
+          <input
+            className="poll-editor-input"
+            type="text"
+            value={opt}
+            placeholder={`Option ${i + 1}`}
+            maxLength={200}
+            onChange={(e) => poll.setOption(i, e.target.value)}
+          />
+          {poll.options.length > 2 && (
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Remove option"
+              onClick={() => poll.removeOption(i)}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      ))}
+      <div className="poll-editor-controls">
+        {poll.options.length < POLL_MAX_OPTIONS && (
+          <button type="button" className="pill-btn" onClick={poll.addOption}>
+            Add option
+          </button>
+        )}
+        <select
+          className="compose-visibility-select"
+          value={poll.expiresIn}
+          onChange={(e) => poll.setExpiresIn(Number(e.target.value))}
+          aria-label="Poll duration"
+        >
+          {POLL_DURATIONS.map(([label, secs]) => (
+            <option key={secs} value={secs}>{label}</option>
+          ))}
+        </select>
+        <label className="poll-editor-multiple">
+          <input
+            type="checkbox"
+            checked={poll.multiple}
+            onChange={(e) => poll.setMultiple(e.target.checked)}
+          />
+          Multiple choices
+        </label>
+      </div>
+    </div>
+  )
+}
+
 export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus, maxCharacters = 500 }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
@@ -333,14 +467,21 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
     instanceUrl,
     token
   )
+  const poll = usePollDraft()
   const { query: acQuery, suggestions: acSuggestions, selectedIndex: acIndex, handleKeyDown: acKeyDown } = useEmojiAutocomplete(text, setText, textareaRef, customEmojis)
 
   useEffect(() => {
     mitra.fetchCustomEmojis(instanceUrl).then((emojis) => setCustomEmojis(emojis || [])).catch(() => {})
   }, [instanceUrl])
 
+  // Polls and media attachments are mutually exclusive
+  useEffect(() => {
+    if (uploads.length > 0 && poll.enabled) poll.setEnabled(false)
+    if (poll.enabled && mediaIds.length > 0) removeUpload(mediaIds[0])
+  }, [uploads.length, poll.enabled])
+
   async function submit() {
-    if (!text.trim() && mediaIds.length === 0 && !quoteStatus) {
+    if (!text.trim() && mediaIds.length === 0 && !quoteStatus && !poll.enabled) {
       setError('Write something or attach a file first.')
       return
     }
@@ -352,6 +493,10 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
       setError('Still uploading — hang on a sec.')
       return
     }
+    if (poll.enabled && !poll.valid) {
+      setError('A poll needs at least two options.')
+      return
+    }
     setBusy(true)
     setError('')
     try {
@@ -360,6 +505,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
         visibility,
         quoteId: quoteStatus?.id,
         spoilerText: showCW ? spoilerText : undefined,
+        poll: poll.params,
       })
       onPosted(status)
       onClose()
@@ -429,6 +575,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
             <QuoteCard status={quoteStatus} instanceUrl={instanceUrl} onOpenThread={() => {}} />
           </div>
         )}
+        {poll.enabled && <PollEditorFields poll={poll} />}
         <MediaUploadStrip uploads={uploads} onRemove={removeUpload} />
         <div className="dialog-actions">
           <input
@@ -458,6 +605,16 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
             onClick={() => setShowCW((v) => !v)}
           >
             <Eye size={16} />
+          </button>
+          <button
+            className={`icon-btn${poll.enabled ? ' active' : ''}`}
+            type="button"
+            aria-label="Add poll"
+            title={uploads.length > 0 ? 'Polls and media can\u2019t be combined' : undefined}
+            disabled={uploads.length > 0}
+            onClick={() => poll.setEnabled((v) => !v)}
+          >
+            <BarChart2 size={16} />
           </button>
           <div style={{ position: 'relative', flex: '0 0 auto' }}>
             <button

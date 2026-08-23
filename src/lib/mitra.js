@@ -203,11 +203,12 @@ export function respondFollowRequest(instanceUrl, token, accountId, action) {
 }
 
 export function postStatus(instanceUrl, token, text, options = {}) {
-  const { inReplyToId, visibility = 'public', mediaIds, quoteId, spoilerText } = options
+  const { inReplyToId, visibility = 'public', mediaIds, quoteId, spoilerText, poll } = options
   const body = { status: text, visibility }
   if (inReplyToId) body.in_reply_to_id = inReplyToId
   if (quoteId) body.quote_id = quoteId
   if (mediaIds && mediaIds.length > 0) body.media_ids = mediaIds
+  if (poll) body.poll = poll // { options: [...], expires_in (seconds), multiple }
   if (spoilerText) {
     body.sensitive = true
     body.spoiler_text = spoilerText
