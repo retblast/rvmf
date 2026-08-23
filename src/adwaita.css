@@ -2546,19 +2546,3 @@ textarea:focus-visible {
   border: 1px solid var(--accent);
 }
 
-.peek-tag {
-  background: var(--accent);
-  border-radius: var(--radius-control);
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 600;
-  left: 6px;
-  max-width: calc(100% - 12px);
-  overflow: hidden;
-  padding: 2px 8px;
-  position: absolute;
-  text-overflow: ellipsis;
-  top: 6px;
-  white-space: nowrap;
-  z-index: 1;
-}

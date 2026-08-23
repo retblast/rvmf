@@ -414,7 +414,6 @@ export function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox,
       )}
       {peekEnabled && pos && peekSource && (
         <div className="media-hover-preview peek-sensitive" style={{ left: pos.x, top: pos.y }}>
-          <span className="peek-tag">{spoilerText || 'Sensitive'}</span>
           <ProxiedImg src={peekSource.preview_url || peekSource.url} alt="" />
         </div>
       )}
