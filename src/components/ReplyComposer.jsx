@@ -7,7 +7,7 @@ import {
   BarChart2,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
-import { processStatusContent, renderEmojiText } from '../lib/render.jsx'
+import { processStatusContent } from '../lib/render.jsx'
 import { useMediaUploads, MediaUploadStrip, CharCounter, VisibilitySelect, usePollDraft, PollEditorFields, ParentPreviewMedia } from './Compose.jsx'
 import {
   insertAtCaret,

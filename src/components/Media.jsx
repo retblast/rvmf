@@ -364,8 +364,17 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
 }
 
 export function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox, forceHidden }) {
-  const [userRevealed, setUserRevealed] = useState(!sensitive)
+  const { alwaysSensitive } = useContext(AppSettingsContext)
+  const effectiveSensitive = Boolean(sensitive) || Boolean(alwaysSensitive)
+  const [userRevealed, setUserRevealed] = useState(!effectiveSensitive)
   const revealed = !forceHidden && userRevealed
+
+  // Re-blur everything when the global setting flips on mid-session;
+  // flipping it off only un-hides media that wasn't sensitive to begin
+  // with.
+  useEffect(() => {
+    setUserRevealed(!effectiveSensitive)
+  }, [effectiveSensitive])
 
   if (!attachments || attachments.length === 0) return null
 

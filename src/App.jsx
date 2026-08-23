@@ -114,6 +114,24 @@ export default function App() {
     }
   })
 
+  const [alwaysSensitive, setAlwaysSensitive] = useState(() => {
+    try {
+      return localStorage.getItem('mitra-always-sensitive') === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  function toggleAlwaysSensitive() {
+    setAlwaysSensitive((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('mitra-always-sensitive', String(next))
+      } catch { /* persistence unavailable */ }
+      return next
+    })
+  }
+
   function toggleFetchClientMedia() {
     setFetchClientMedia((prev) => {
       const next = !prev
@@ -1165,7 +1183,7 @@ export default function App() {
   }
 
   return (
-    <AppSettingsContext.Provider value={{ hoverPreviewsEnabled, fetchClientMedia, instanceUrl: session.instanceUrl, token: session.token }}>
+    <AppSettingsContext.Provider value={{ hoverPreviewsEnabled, fetchClientMedia, alwaysSensitive, instanceUrl: session.instanceUrl, token: session.token }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
       {showPullIndicator && (
         <div className={`pull-indicator${refreshing ? ' refreshing' : ''}`} style={pull ? { transform: `translateX(-50%) translateY(${Math.min(pull / 2, 24)}px)` } : undefined}>
@@ -1276,6 +1294,14 @@ export default function App() {
                       type="checkbox"
                       checked={fetchClientMedia}
                       onChange={toggleFetchClientMedia}
+                    />
+                  </label>
+                  <label className="settings-menu-row">
+                    <span>Mark all media as sensitive</span>
+                    <input
+                      type="checkbox"
+                      checked={alwaysSensitive}
+                      onChange={toggleAlwaysSensitive}
                     />
                   </label>
                   <div className="settings-menu-row">
