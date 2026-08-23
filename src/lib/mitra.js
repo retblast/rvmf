@@ -368,6 +368,28 @@ export function deleteStatus(instanceUrl, token, id) {
   })
 }
 
+// Raw source of a post as it was written — needed for editing, since the
+// rendered content is HTML.
+export function fetchStatusSource(instanceUrl, token, id) {
+  return apiFetch(instanceUrl, `/api/v1/statuses/${id}/source`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// Mitra's StatusUpdateForm only takes status text (+ title/language/
+// media_ids/sensitive); there is no spoiler_text field, so content
+// warnings can't be changed through edits.
+export function editStatus(instanceUrl, token, id, text) {
+  return apiFetch(instanceUrl, `/api/v1/statuses/${id}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ status: text }),
+  })
+}
+
 export function muteAccount(instanceUrl, token, accountId) {
   return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/mute`, {
     method: 'POST',

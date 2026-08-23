@@ -342,6 +342,104 @@ export function CharCounter({ current, max }) {
   return <span className={`char-counter ${cls}`}>{remaining}</span>
 }
 
+// Edit an existing post's text. Loads the raw source (the rendered
+// content is HTML and mustn't be round-tripped), then PUTs it back.
+// Mitra returns the updated status, which onSaved propagates into
+// whatever list the post lives in.
+export function EditDialog({ status, instanceUrl, token, onClose, onSaved }) {
+  const [text, setText] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const textareaRef = useRef(null)
+  const { query: acQuery, suggestions: acSuggestions, selectedIndex: acIndex, handleKeyDown: acKeyDown } = useEmojiAutocomplete(text, setText, textareaRef, [])
+
+  useEffect(() => {
+    let cancelled = false
+    mitra.fetchStatusSource(instanceUrl, token, status.id)
+      .then((source) => {
+        if (!cancelled) setText(source.text || '')
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message || 'Failed to load the post source.')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [status.id])
+
+  async function save() {
+    if (!text.trim()) {
+      setError('Post can\u2019t be empty.')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const updated = await mitra.editStatus(instanceUrl, token, status.id, text.trim())
+      onSaved(updated)
+    } catch (err) {
+      setError(err.message || 'Something went wrong.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="dialog-overlay" onClick={onClose}>
+      <div className="dialog-card" onClick={(e) => e.stopPropagation()}>
+        <div className="dialog-header">
+          <span className="dialog-title">Edit post</span>
+          <button className="icon-btn" onClick={onClose} aria-label="Cancel">
+            <X size={16} />
+          </button>
+        </div>
+        {error && <div className="banner banner-error">{error}</div>}
+        {loading ? (
+          <div className="empty-state">Loading…</div>
+        ) : (
+          <div className="compose-textarea-wrap">
+            <textarea
+              ref={textareaRef}
+              className="compose-textarea"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (acKeyDown(e)) return
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                  e.preventDefault()
+                  save()
+                }
+              }}
+              rows={6}
+              autoFocus
+            />
+            <EmojiDropdown query={acQuery} suggestions={acSuggestions} selectedIndex={acIndex} onSelect={(s) => {
+              const insert = s.type === 'custom' ? `:${s.name}:` : s.char
+              insertAtCaret(text, setText, textareaRef, insert)
+            }} />
+          </div>
+        )}
+        <div className="dialog-actions">
+          <div style={{ flex: 1 }} />
+          <button className="pill-btn" onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button
+            className="pill-btn suggested"
+            onClick={save}
+            disabled={busy || loading}
+            type="button"
+          >
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const POLL_DURATIONS = [
   ['30 minutes', 1800],
   ['1 hour', 3600],

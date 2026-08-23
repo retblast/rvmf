@@ -51,6 +51,7 @@ export function ThreadPanelContent({
   onDelete,
   onMute,
   onBlock,
+  onEdit,
   maxCharacters,
   focusedReplyId,
 }) {
@@ -151,6 +152,7 @@ export function ThreadPanelContent({
                 onHighlightParent={setHighlightedId}
                 currentAccountId={currentAccountId}
                 onDelete={onDelete}
+                onEdit={onEdit}
                 onMute={onMute}
                 onBlock={onBlock}
               />
@@ -181,6 +183,7 @@ export function ThreadPanelContent({
             onHighlightParent={setHighlightedId}
             currentAccountId={currentAccountId}
             onDelete={onDelete}
+            onEdit={onEdit}
             onMute={onMute}
             onBlock={onBlock}
           />
@@ -225,6 +228,7 @@ export function ThreadPanelContent({
               onHighlightParent={setHighlightedId}
               currentAccountId={currentAccountId}
               onDelete={onDelete}
+              onEdit={onEdit}
               onMute={onMute}
               onBlock={onBlock}
             />

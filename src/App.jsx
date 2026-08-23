@@ -18,7 +18,7 @@ import { AppSettingsContext, PickerContext, useLayoutTier } from './hooks'
 import LoginView from './LoginView'
 import { Avatar, MediaLightbox } from './components/Media.jsx'
 import { NotificationRow, PostRow } from './components/Post.jsx'
-import { ComposeDialog } from './components/Compose.jsx'
+import { ComposeDialog, EditDialog } from './components/Compose.jsx'
 import { ThreadPanel, ThreadPanelContent } from './components/ThreadPanel.jsx'
 import { ProfileView } from './components/ProfileView.jsx'
 
@@ -31,6 +31,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [composing, setComposing] = useState(false)
   const [quoteStatus, setQuoteStatus] = useState(null)
+  const [editing, setEditing] = useState(null)
   const [openPickerId, setOpenPickerId] = useState(null)
   const [replyStates, setReplyStates] = useState({})
   const replyStatesRef = useRef(replyStates)
@@ -383,6 +384,21 @@ export default function App() {
     setTimeline((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
   }
 
+  function handleEditStatus(status) {
+    setEditing(status)
+  }
+
+  // After an edit saves, sweep the updated status through every surface
+  // it might appear on — the helpers no-op when the id isn't found.
+  function handleEditSaved(updated) {
+    setEditing(null)
+    updatePost(updated)
+    updateExplorePost(updated)
+    updateBookmarkedPost(updated)
+    updateNotificationStatus(updated)
+    if (sidePanel?.status) updateReplyInPanel(updated)
+  }
+
   // In the bookmarks list, unbookmarking removes the row — that's the
   // natural expectation of a list of things you saved.
   function updateBookmarkedPost(updated) {
@@ -615,6 +631,7 @@ export default function App() {
               onRespondFollowRequest={respondFollowRequest}
               currentAccountId={session.account?.id}
               onDelete={handleDeleteStatus}
+              onEdit={handleEditStatus}
               onMute={handleMuteAccount}
               onBlock={handleBlockAccount}
             />
@@ -637,6 +654,7 @@ export default function App() {
       onQuote={handleQuote}
       currentAccountId={session.account?.id}
       onDelete={handleDeleteStatus}
+      onEdit={handleEditStatus}
       onMute={handleMuteAccount}
       onBlock={handleBlockAccount}
       onClose={() => setProfileAccountId(null)}
@@ -669,6 +687,7 @@ export default function App() {
                   onQuote={handleQuote}
                   currentAccountId={session.account?.id}
                   onDelete={handleDeleteStatus}
+                  onEdit={handleEditStatus}
                   onMute={handleMuteAccount}
                   onBlock={handleBlockAccount}
                 />
@@ -728,6 +747,7 @@ export default function App() {
                   onQuote={handleQuote}
                   currentAccountId={session.account?.id}
                   onDelete={handleDeleteStatus}
+                  onEdit={handleEditStatus}
                   onMute={handleMuteAccount}
                   onBlock={handleBlockAccount}
                 />
@@ -765,6 +785,7 @@ export default function App() {
                   onQuote={handleQuote}
                   currentAccountId={session.account?.id}
                   onDelete={handleDeleteStatus}
+                  onEdit={handleEditStatus}
                   onMute={handleMuteAccount}
                   onBlock={handleBlockAccount}
                 />
@@ -805,6 +826,7 @@ export default function App() {
     onDelete: handleDeleteStatus,
     onMute: handleMuteAccount,
     onBlock: handleBlockAccount,
+    onEdit: handleEditStatus,
     maxCharacters: session.maxCharacters || 500,
     focusedReplyId,
   }
@@ -986,6 +1008,16 @@ export default function App() {
           onPosted={prependPost}
           quoteStatus={quoteStatus}
           maxCharacters={session.maxCharacters || 500}
+        />
+      )}
+
+      {editing && (
+        <EditDialog
+          status={editing}
+          instanceUrl={session.instanceUrl}
+          token={session.token}
+          onClose={() => setEditing(null)}
+          onSaved={handleEditSaved}
         />
       )}
     </PickerContext.Provider>

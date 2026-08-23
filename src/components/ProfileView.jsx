@@ -5,7 +5,7 @@ import { processStatusContent } from '../lib/render.jsx'
 import { Avatar, ProxiedImg } from './Media.jsx'
 import { PostRow } from './Post.jsx'
 
-export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onUpdate, onQuote, currentAccountId, onDelete, onMute, onBlock, onClose }) {
+export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onUpdate, onQuote, currentAccountId, onDelete, onMute, onBlock, onEdit, onClose }) {
   const [account, setAccount] = useState(null)
   const [statuses, setStatuses] = useState([])
   const [loading, setLoading] = useState(true)
@@ -196,6 +196,7 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
                 onDelete={onDelete}
                 onMute={onMute}
                 onBlock={onBlock}
+                onEdit={onEdit}
               />
             ))}
           </div>

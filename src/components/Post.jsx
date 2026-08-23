@@ -13,6 +13,7 @@ import {
   Bell,
   Smile,
   Link,
+  Edit3,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { PickerContext } from '../hooks'
@@ -54,6 +55,7 @@ export function ThreadReply({
   onHighlightParent,
   currentAccountId,
   onDelete,
+  onEdit,
   onMute,
   onBlock,
 }) {
@@ -246,6 +248,7 @@ export function ThreadReply({
               onDelete={onDelete}
               onMute={onMute}
               onBlock={onBlock}
+              onEdit={onEdit}
             />
           </div>
         </div>
@@ -274,6 +277,7 @@ export function ThreadReply({
                 onDelete={onDelete}
                 onMute={onMute}
                 onBlock={onBlock}
+                onEdit={onEdit}
               />
             ))}
           </div>
@@ -520,7 +524,7 @@ export function PollCard({ poll, instanceUrl, token, onUpdated }) {
   )
 }
 
-function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, onBlock }) {
+function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, onBlock, onEdit }) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const ref = useRef(null)
@@ -573,6 +577,12 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
               <Link size={15} />
               {copied ? 'Copied!' : 'Copy link'}
             </button>
+            {isOwn && onEdit && (
+              <button className="boost-dropdown-item" onClick={() => { setOpen(false); onEdit(status) }}>
+                <Edit3 size={15} />
+                Edit
+              </button>
+            )}
             {isOwn && (
               <button className="boost-dropdown-item destructive" onClick={handleDelete}>
                 <X size={15} />
@@ -598,7 +608,7 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
   )
 }
 
-export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onQuote, statusById, depth, highlightedId, onHighlightParent, currentAccountId, onDelete, onMute, onBlock }) {
+export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onQuote, statusById, depth, highlightedId, onHighlightParent, currentAccountId, onDelete, onMute, onBlock, onEdit }) {
   const [busy, setBusy] = useState(false)
   const [mediaHidden, setMediaHidden] = useState(false)
   const { openPickerId, setOpenPickerId } = useContext(PickerContext)
@@ -800,6 +810,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
               onDelete={onDelete}
               onMute={onMute}
               onBlock={onBlock}
+              onEdit={onEdit}
             />
           </div>
         </div>
@@ -873,6 +884,7 @@ export const NotificationRow = memo(function NotificationRow({
   onQuote,
   currentAccountId,
   onDelete,
+  onEdit,
   onMute,
   onBlock,
 }) {
@@ -953,6 +965,7 @@ export const NotificationRow = memo(function NotificationRow({
               onDelete={onDelete}
               onMute={onMute}
               onBlock={onBlock}
+              onEdit={onEdit}
             />
           </div>
         )}
