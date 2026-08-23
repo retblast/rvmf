@@ -1154,6 +1154,42 @@ button {
   text-transform: uppercase;
 }
 
+.parent-preview-media {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.parent-preview-media.blurred {
+  align-items: center;
+  background: var(--accent-bg-subtle);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  justify-content: center;
+  min-height: 44px;
+  padding: 6px;
+}
+
+.parent-preview-cw {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.parent-preview-thumb {
+  border-radius: var(--radius-control);
+  height: 64px;
+  object-fit: cover;
+  width: 64px;
+}
+
+.parent-preview-more {
+  align-items: center;
+  color: var(--text-secondary);
+  display: inline-flex;
+  font-size: 12.5px;
+}
+
 button.settings-menu-link {
   background: none;
   border: none;

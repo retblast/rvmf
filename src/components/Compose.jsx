@@ -203,6 +203,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
             <span className="post-handle">@{account.acct || account.username}</span>
           </div>
           <p className="post-text">{processStatusContent(status, instanceUrl).textNodes}</p>
+          <ParentPreviewMedia status={status} instanceUrl={instanceUrl} />
         </div>
       )}
       {error && <div className="banner banner-error">{error}</div>}
@@ -340,6 +341,48 @@ export function CharCounter({ current, max }) {
   if (current === 0) return null
   const cls = remaining < 0 ? 'over' : remaining < 50 ? 'low' : ''
   return <span className={`char-counter ${cls}`}>{remaining}</span>
+}
+
+// Thumbnail strip of the parent post's media for composer previews.
+// Deliberately not the full MediaGrid: no lightbox wiring down here, and
+// sensitive media stays blurred until clicked (per-preview, local state).
+function ParentPreviewMedia({ status, instanceUrl }) {
+  const [revealed, setRevealed] = useState(false)
+  if (!status) return null
+  const { attachments, sensitive } = processStatusContent(status, instanceUrl)
+  const images = attachments.filter((a) => a.type === 'image').slice(0, 4)
+  const otherCount = attachments.length - images.length
+  if (images.length === 0 && otherCount === 0) return null
+  const blurred = sensitive && !revealed
+  return (
+    <div
+      className={`parent-preview-media${blurred ? ' blurred' : ''}`}
+      onClick={blurred ? (e) => { e.stopPropagation(); setRevealed(true) } : undefined}
+      role={blurred ? 'button' : undefined}
+    >
+      {blurred ? (
+        <span className="parent-preview-cw">{spoilerTextOf(status)} — click to view</span>
+      ) : (
+        <>
+          {images.map((att) => (
+            <ProxiedImg
+              key={att.id}
+              className="parent-preview-thumb"
+              src={att.preview_url || att.url}
+              alt={att.description || ''}
+            />
+          ))}
+          {otherCount > 0 && (
+            <span className="parent-preview-more">+{otherCount} 📎</span>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function spoilerTextOf(status) {
+  return status.spoiler_text || 'Sensitive content'
 }
 
 // Edit an existing post's text. Loads the raw source (the rendered
@@ -677,6 +720,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
               <span className="post-handle">@{replyToStatus.account?.acct || replyToStatus.account?.username}</span>
             </div>
             <p className="post-text">{processStatusContent(replyToStatus, instanceUrl).textNodes}</p>
+            <ParentPreviewMedia status={replyToStatus} instanceUrl={instanceUrl} />
           </div>
         )}
         {quoteStatus && (
