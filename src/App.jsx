@@ -34,6 +34,7 @@ import { ListsView } from './components/ListsView.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { GroupsView } from './components/GroupsView.jsx'
 import { ConversationsView } from './components/ConversationsView.jsx'
+import { AccountSettingsView } from './components/AccountSettingsView.jsx'
 
 export default function App() {
   const { session, beginLogin, logout, authError, completingLogin } = useMitraSession()
@@ -1143,6 +1144,13 @@ export default function App() {
         />
       )}
 
+      {view === 'account' && (
+        <AccountSettingsView
+          instanceUrl={session.instanceUrl}
+          token={session.token}
+        />
+      )}
+
       {view === 'lists' && (
         <ListsView
           instanceUrl={session.instanceUrl}
@@ -1479,6 +1487,14 @@ export default function App() {
                     onClick={() => { setSettingsOpen(false); setView('muted') }}
                   >
                     <span>Muted accounts</span>
+                    <span className="settings-menu-arrow">→</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="settings-menu-row settings-menu-link"
+                    onClick={() => { setSettingsOpen(false); setView('account') }}
+                  >
+                    <span>Account &amp; sessions</span>
                     <span className="settings-menu-arrow">→</span>
                   </button>
                   {notifPolicy && (

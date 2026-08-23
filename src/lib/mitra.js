@@ -576,6 +576,35 @@ export function editStatus(instanceUrl, token, id, text) {
   })
 }
 
+// --- Account security (settings module) ---
+
+// Active OAuth tokens ("sessions"), oldest last. is_current marks the
+// token this request was made with.
+export function fetchSessions(instanceUrl, token) {
+  return apiFetch(instanceUrl, '/api/v1/settings/sessions', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// Revoke a session by its token id. Revoking the current one logs out.
+export function revokeSession(instanceUrl, token, sessionId) {
+  return apiFetch(instanceUrl, `/api/v1/settings/sessions/${sessionId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function changePassword(instanceUrl, token, newPassword) {
+  return apiFetch(instanceUrl, '/api/v1/settings/change_password', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ new_password: newPassword }),
+  })
+}
+
 // Wipe every notification for the current account. Irreversible.
 export function clearNotifications(instanceUrl, token) {
   return apiFetch(instanceUrl, '/api/v1/notifications', {
