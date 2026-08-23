@@ -2689,3 +2689,60 @@ textarea.profile-edit-input {
   color: var(--text-secondary);
   font-style: italic;
 }
+
+/* --- Direct messages --- */
+.dm-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--view-bg);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.dm-row:hover {
+  background: var(--surface);
+}
+
+.dm-avatars {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.dm-avatars > * + * {
+  margin-left: -8px;
+}
+
+.dm-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.dm-topline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dm-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dm-snippet {
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -519,6 +519,18 @@ export function votePoll(instanceUrl, token, pollId, choices) {
   })
 }
 
+// Direct-message inbox: one entry per conversation thread, with
+// participants and the most recent post. Read-only — Mitra has no
+// delete/mark-read conversation endpoints.
+export function fetchConversations(instanceUrl, token, { max_id } = {}) {
+  const params = new URLSearchParams()
+  if (max_id) params.set('max_id', max_id)
+  const qs = params.toString()
+  return apiFetch(instanceUrl, `/api/v1/conversations${qs ? `?${qs}` : ''}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 export function deleteStatus(instanceUrl, token, id) {
   return apiFetch(instanceUrl, `/api/v1/statuses/${id}`, {
     method: 'DELETE',

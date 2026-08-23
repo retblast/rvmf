@@ -7,6 +7,7 @@ import {
   Search,
   Users,
   List,
+  MessageCircle,
   Plus,
   RotateCw,
   LogOut,
@@ -31,6 +32,7 @@ import { applyOsAccent } from './lib/osAccent'
 import { ListsView } from './components/ListsView.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { GroupsView } from './components/GroupsView.jsx'
+import { ConversationsView } from './components/ConversationsView.jsx'
 
 export default function App() {
   const { session, beginLogin, logout, authError, completingLogin } = useMitraSession()
@@ -82,6 +84,7 @@ export default function App() {
   const [bookmarksHasMore, setBookmarksHasMore] = useState(true)
   const [bookmarksLoadingMore, setBookmarksLoadingMore] = useState(false)
   const bookmarksSentinelRef = useRef(null)
+  const [messagesRefreshTick, setMessagesRefreshTick] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [clientName, setClientNameState] = useState(() => mitra.getClientName())
   const [notifPolicy, setNotifPolicy] = useState(null)
@@ -535,6 +538,9 @@ export default function App() {
       loadExplore(exploreFeed)
     } else if (view === 'bookmarks') {
       loadBookmarks()
+    } else if (view === 'messages') {
+      // ConversationsView owns its data; bumping the key remounts it.
+      setMessagesRefreshTick((t) => t + 1)
     } else {
       loadTimeline()
     }
@@ -1148,6 +1154,16 @@ export default function App() {
         />
       )}
 
+      {view === 'messages' && (
+        <ConversationsView
+          key={messagesRefreshTick}
+          instanceUrl={session.instanceUrl}
+          token={session.token}
+          currentAccountId={session.account?.id}
+          onOpenThread={handleOpenThread}
+        />
+      )}
+
       {view === 'bookmarks' && (
         <>
           {bookmarksError && <div className="banner banner-error">{bookmarksError}</div>}
@@ -1262,6 +1278,13 @@ export default function App() {
           >
             <Compass size={14} />
             Explore
+          </button>
+          <button
+            className={`view-switcher-btn${view === 'messages' ? ' active' : ''}`}
+            onClick={() => setView('messages')}
+          >
+            <MessageCircle size={14} />
+            Messages
           </button>
           <button
             className={`view-switcher-btn${view === 'lists' ? ' active' : ''}`}
