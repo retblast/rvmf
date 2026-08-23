@@ -156,7 +156,7 @@ export function CharCounter({ current, max }) {
 // Thumbnail strip of the parent post's media for composer previews.
 // Deliberately not the full MediaGrid: no lightbox wiring down here, and
 // sensitive media stays blurred until clicked (per-preview, local state).
-function ParentPreviewMedia({ status, instanceUrl }) {
+export function ParentPreviewMedia({ status, instanceUrl }) {
   const [revealed, setRevealed] = useState(false)
   if (!status) return null
   const { attachments, sensitive } = processStatusContent(status, instanceUrl)
@@ -349,7 +349,7 @@ export function usePollDraft() {
   }
 }
 
-function PollEditorFields({ poll }) {
+export function PollEditorFields({ poll }) {
   return (
     <div className="poll-editor">
       {poll.options.map((opt, i) => (
