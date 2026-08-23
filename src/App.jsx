@@ -15,8 +15,8 @@ import {
 } from 'lucide-react'
 import { useMitraSession } from './useMitraSession'
 import * as mitra from './lib/mitra'
-import { buildReplyTree, findNode, insertIntoTree, updateTreeNode } from './lib/render.jsx'
-import { AppSettingsContext, PickerContext, useLayoutTier } from './hooks'
+import { buildReplyTree, findNode, insertIntoTree, updateTreeNode, htmlToPlainText as noteToPlainText } from './lib/render.jsx'
+import { AppSettingsContext, PickerContext, useLayoutTier, usePullToRefresh } from './hooks'
 import LoginView from './LoginView'
 import { Avatar, MediaLightbox } from './components/Media.jsx'
 import { NotificationRow, PostRow } from './components/Post.jsx'
@@ -30,6 +30,8 @@ import { MutedAccountsView } from './components/MutedAccountsView.jsx'
 export default function App() {
   const { session, beginLogin, logout, authError, completingLogin } = useMitraSession()
   const tier = useLayoutTier()
+  const [scrollEl, setScrollEl] = useState(null)
+  const refreshRef = useRef(() => {})
   const [view, setView] = useState('home')
   const [timeline, setTimeline] = useState([])
   const [loading, setLoading] = useState(false)
@@ -476,6 +478,11 @@ export default function App() {
       loadTimeline()
     }
   }
+  refreshRef.current = handleRefresh
+
+  // Scroll-down-to-refresh on whichever timeline is showing
+  const { pull, refreshing } = usePullToRefresh(scrollEl, () => refreshRef.current())
+  const showPullIndicator = refreshing || pull > 10
 
   function updatePost(updated) {
     setTimeline((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
@@ -894,7 +901,7 @@ export default function App() {
                         <span className="post-name">{account.display_name || account.username}</span>
                         <span className="post-handle">@{account.acct || account.username}</span>
                       </div>
-                      <span className="directory-bio">{account.note}</span>
+                      <span className="directory-bio">{account.note ? noteToPlainText(account.note) : ''}</span>
                     </button>
                   ))}
                 </div>
@@ -1042,6 +1049,12 @@ export default function App() {
   return (
     <AppSettingsContext.Provider value={{ hoverPreviewsEnabled, fetchClientMedia, instanceUrl: session.instanceUrl, token: session.token }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
+      {showPullIndicator && (
+        <div className={`pull-indicator${refreshing ? ' refreshing' : ''}`} style={pull ? { transform: `translateX(-50%) translateY(${Math.min(pull / 2, 24)}px)` } : undefined}>
+          <RotateCw size={14} className={refreshing ? 'spin' : undefined} />
+          <span>{refreshing ? 'Refreshing…' : pull >= 80 ? 'Release to refresh' : 'Pull to refresh'}</span>
+        </div>
+      )}
       <header className="headerbar">
         <div className="headerbar-brand">
           <Rss size={18} />
@@ -1191,7 +1204,7 @@ export default function App() {
             <div className="section-label">Notifications</div>
             {notificationsBody}
           </aside>
-          <div className="content-scroll scrollbar-thin">{timelineContent}</div>
+          <div className="content-scroll scrollbar-thin" ref={setScrollEl}>{timelineContent}</div>
           <aside className="thread-column scrollbar-thin">
             {sidePanel ? (
               <ThreadPanelContent {...threadPanelProps} />
@@ -1202,12 +1215,12 @@ export default function App() {
         </div>
       ) : tier === 'medium' ? (
         <div className={`main-layout${sidePanel ? ' panel-open' : ''}`}>
-          <div className="content-scroll scrollbar-thin">{timelineContent}</div>
+          <div className="content-scroll scrollbar-thin" ref={setScrollEl}>{timelineContent}</div>
           <ThreadPanel {...threadPanelProps} />
         </div>
       ) : (
         <div className="main-layout">
-          <div className="content-scroll scrollbar-thin">
+          <div className="content-scroll scrollbar-thin" ref={setScrollEl}>
             {sidePanel ? (
               <div className="timeline-wrap">
                 <ThreadPanelContent {...threadPanelProps} backLabel="Back to timeline" />

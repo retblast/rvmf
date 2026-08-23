@@ -730,11 +730,133 @@ button {
   overflow-y: auto;
 }
 
-.dialog-actions {
+/* ---- polls ---- */
+
+.poll-card {
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.poll-option {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  position: relative;
+}
+
+.poll-option-header {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  padding: 7px 12px;
+  position: relative;
+  z-index: 1;
+}
+
+.poll-option-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.poll-option-pct {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.poll-option-bar {
+  bottom: 0;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+}
+
+.poll-option-fill {
+  background: var(--accent-bg-subtle);
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.poll-option.chosen .poll-option-bar .poll-option-fill {
+  background: var(--accent-bg-strong, var(--accent-bg-subtle));
+}
+
+.poll-option.chosen .poll-option-text {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.poll-option-pick {
+  align-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  padding: 7px 12px;
+}
+
+.poll-option-pick:hover {
+  background: var(--accent-bg-subtle);
+}
+
+.poll-option-pick.selected {
+  border-color: var(--accent);
+}
+
+.poll-radio {
+  border: 1.5px solid var(--text-secondary);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 14px;
+  flex-shrink: 0;
+  width: 14px;
+}
+
+.poll-radio.checkbox {
+  border-radius: 4px;
+}
+
+.poll-radio-dot {
+  background: var(--accent);
+  border-radius: inherit;
+  display: block;
+  height: 8px;
+  width: 8px;
+}
+
+.poll-vote-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.poll-footer {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.poll-expired {
+  color: var(--warning, #b58900);
+}
+
+.dialog-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-top: 14px;
+}
+
+/* Keep the submit button pinned to the end even when the toolbar wraps */
+.dialog-actions .pill-btn.suggested {
+  margin-left: auto;
 }
 
 .compose-visibility {
@@ -878,6 +1000,42 @@ button {
   padding: 8px 0;
 }
 
+.search-tabs {
+  margin-bottom: 8px;
+}
+
+.pull-indicator {
+  align-items: center;
+  backdrop-filter: blur(8px);
+  background: var(--window-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  box-shadow: var(--shadow, 0 2px 8px rgba(0, 0, 0, 0.15));
+  color: var(--text-secondary);
+  display: flex;
+  font-size: 12.5px;
+  gap: 6px;
+  left: 50%;
+  padding: 5px 14px;
+  position: fixed;
+  top: 52px;
+  transform: translateX(-50%);
+  transition: transform 0.15s ease;
+  z-index: 50;
+}
+
+.pull-indicator.refreshing {
+  color: var(--accent);
+}
+
+.pull-indicator .spin {
+  animation: pull-spin 0.9s linear infinite;
+}
+
+@keyframes pull-spin {
+  to { transform: rotate(360deg); }
+}
+
 button.settings-menu-link {
   background: none;
   border: none;
@@ -923,6 +1081,18 @@ button.settings-menu-link {
   margin-left: 4px;
   min-width: 16px;
   padding: 2px 5px;
+}
+
+/* Text stand-in for custom emojis that didn't load */
+.img-placeholder {
+  color: var(--accent);
+  font-size: 0.85em;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+span.img-placeholder.custom-emoji {
+  display: inline-block;
 }
 
 .char-counter {

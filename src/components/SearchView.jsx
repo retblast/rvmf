@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Search as SearchIcon } from 'lucide-react'
 import * as mitra from '../lib/mitra'
-import { formatRelativeTime } from '../lib/render.jsx'
+import { formatRelativeTime, htmlToPlainText } from '../lib/render.jsx'
 import { Avatar } from './Media.jsx'
 import { PostRow } from './Post.jsx'
 
@@ -26,6 +26,9 @@ export function SearchView({
   onOpenHashtag,
 }) {
   const [query, setQuery] = useState('')
+  // 'all' hits every category in one request; the tabs just filter what's
+  // displayed (the API call itself is always untyped).
+  const [tab, setTab] = useState('all')
   const [results, setResults] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -60,6 +63,15 @@ export function SearchView({
 
   const hasAny = results && (results.accounts?.length || results.statuses?.length || results.hashtags?.length)
 
+  const showAccounts = tab === 'all' || tab === 'accounts'
+  const showStatuses = tab === 'all' || tab === 'statuses'
+  const showHashtags = tab === 'all' || tab === 'hashtags'
+  const visibleAny = results && (
+    (showAccounts && results.accounts?.length) ||
+    (showStatuses && results.statuses?.length) ||
+    (showHashtags && results.hashtags?.length)
+  )
+
   return (
     <div className="timeline-wrap">
       <div className="search-bar">
@@ -73,6 +85,20 @@ export function SearchView({
           autoFocus
         />
       </div>
+      {query.trim() && (
+        <div className="feed-toggle search-tabs">
+          {[['all', 'All'], ['accounts', 'People'], ['statuses', 'Posts'], ['hashtags', 'Hashtags']].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className={`feed-toggle-btn${tab === key ? ' active' : ''}`}
+              onClick={() => setTab(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       {error && <div className="banner banner-error">{error}</div>}
       {!query.trim() ? (
         <div className="empty-state">Type something to search.</div>
@@ -80,9 +106,11 @@ export function SearchView({
         <div className="empty-state">Searching…</div>
       ) : !hasAny ? (
         <div className="empty-state">No results.</div>
+      ) : !visibleAny ? (
+        <div className="empty-state">No {tab === 'all' ? '' : `${tab} `}results.</div>
       ) : (
         <>
-          {results.accounts?.length > 0 && (
+          {showAccounts && results.accounts?.length > 0 && (
             <>
               <div className="section-label">People</div>
               <div className="timeline-list">
@@ -98,13 +126,13 @@ export function SearchView({
                       <span className="post-name">{account.display_name || account.username}</span>
                       <span className="post-handle">@{account.acct || account.username}</span>
                     </div>
-                    {account.note && <span className="search-account-note">{account.note}</span>}
+                    {account.note && <span className="search-account-note">{htmlToPlainText(account.note)}</span>}
                   </button>
                 ))}
               </div>
             </>
           )}
-          {results.statuses?.length > 0 && (
+          {showStatuses && results.statuses?.length > 0 && (
             <>
               <div className="section-label">Posts</div>
               <div className="timeline-list">
@@ -130,7 +158,7 @@ export function SearchView({
               </div>
             </>
           )}
-          {results.hashtags?.length > 0 && (
+          {showHashtags && results.hashtags?.length > 0 && (
             <>
               <div className="section-label">Hashtags</div>
               <div className="search-hashtags">

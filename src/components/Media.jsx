@@ -49,8 +49,19 @@ export function Avatar({ name, src, large, size, onClick }) {
   )
 }
 
-export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, onLoad, ...rest }) {
+// Renders a lightweight text stand-in while loading or when loading
+// fails — used for custom emojis so a broken image doesn't just vanish.
+function ImgPlaceholder({ text, alt, className }) {
+  return (
+    <span className={`img-placeholder${className ? ` ${className}` : ''}`} title={alt}>
+      :{text}:
+    </span>
+  )
+}
+
+export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, onLoad, fallbackText, ...rest }) {
   const { fetchClientMedia } = useContext(AppSettingsContext)
+  const [directFailed, setDirectFailed] = useState(false)
   const { blobUrl, loading, error } = useClientMedia(
     fetchClientMedia && src ? src : null,
     fetchClientMedia && fallbackSrc ? fallbackSrc : null
@@ -58,13 +69,43 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
   useEffect(() => {
     if (error && onError) onError()
   }, [error, onError])
+  useEffect(() => {
+    setDirectFailed(false)
+  }, [src])
+
+  function handleDirectError(e) {
+    setDirectFailed(true)
+    onError?.(e)
+  }
+
+  const showPlaceholder = Boolean(fallbackText) && (
+    !src ||
+    (fetchClientMedia ? (error || (!blobUrl && loading)) : directFailed)
+  )
+  if (showPlaceholder) {
+    return <ImgPlaceholder text={fallbackText} alt={alt} className={className} />
+  }
+  // Without fallbackText the old behavior stands: render nothing while
+  // pending/failed (callers like Avatar layer their own placeholders).
   if (!src) return null
   if (fetchClientMedia) {
     if (error) return null
     if (!blobUrl) return null
     return <img src={blobUrl} alt={alt || ''} className={className} style={style} onLoad={onLoad} {...rest} />
   }
-  return <img src={safeProxyUrl(src)} alt={alt || ''} className={className} style={style} loading="lazy" onLoad={onLoad} {...rest} />
+  if (directFailed) return null
+  return (
+    <img
+      src={safeProxyUrl(src)}
+      alt={alt || ''}
+      className={className}
+      style={style}
+      loading="lazy"
+      onLoad={onLoad}
+      onError={handleDirectError}
+      {...rest}
+    />
+  )
 }
 
 function MediaItem({ attachment, revealed, onOpenLightbox }) {

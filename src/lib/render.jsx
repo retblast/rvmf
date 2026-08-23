@@ -35,6 +35,40 @@ function htmlToPlainText(html) {
 
 export { htmlToPlainText }
 
+// Renders a display name that contains :custom_emoji: shortcodes as
+// text + inline images. Falls back to plain text when the account has
+// no emojis.
+export function renderEmojiText(text, emojis) {
+  if (!text) return null
+  const emojiList = Array.isArray(emojis) ? emojis : []
+  if (emojiList.length === 0) return text
+  const byShortcode = new Map(emojiList.map((e) => [e.shortcode, e]))
+  const re = /:([a-zA-Z0-9_+-]+):/g
+  const parts = []
+  let lastIndex = 0
+  let match
+  let key = 0
+  while ((match = re.exec(text)) !== null) {
+    const emoji = byShortcode.get(match[1])
+    if (!emoji) continue
+    if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index))
+    parts.push(
+      <ProxiedImg
+        key={`de-${key++}`}
+        className="custom-emoji"
+        src={emoji.static_url || emoji.url}
+        alt={match[0]}
+        title={match[0]}
+        fallbackText={match[1]}
+      />
+    )
+    lastIndex = match.index + match[0].length
+  }
+  if (!parts.length) return text
+  if (lastIndex < text.length) parts.push(text.slice(lastIndex))
+  return parts
+}
+
 // `/context` returns every descendant of a status in one flat call — every
 // depth, not just direct replies. Build that into an actual tree once, up
 // front, so the whole thread can render fully expanded without any further

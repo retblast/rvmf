@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 
 // A handful of cross-cutting display preferences that MediaItem needs deep
 // in the tree (timeline post, nested reply, notification preview, panel —
@@ -13,6 +13,59 @@ export const PickerContext = createContext({ openPickerId: null, setOpenPickerId
 // revoked once the cap is exceeded.
 const CLIENT_MEDIA_CACHE_MAX = 150
 const clientMediaCache = new Map()
+
+// Failed URLs are remembered briefly so scrolling doesn't re-request
+// them every time a row remounts — this is what keeps the dev console
+// from flooding with media-proxy 404s for pruned/broken media.
+const FAILED_URL_TTL_MS = 60_000
+const failedMediaUrls = new Map() // url -> first-failed timestamp
+
+function isUrlKnownFailed(url) {
+  const failedAt = failedMediaUrls.get(url)
+  if (!failedAt) return false
+  if (Date.now() - failedAt > FAILED_URL_TTL_MS) {
+    failedMediaUrls.delete(url)
+    return false
+  }
+  return true
+}
+
+function markUrlFailed(url) {
+  if (!failedMediaUrls.has(url)) failedMediaUrls.set(url, Date.now())
+}
+
+// Concurrent mounts of the same image (timeline + open thread panel,
+// avatar reused across rows) share one request instead of racing.
+// Resolves to a blob object URL, or null when the URL is known-bad.
+const inflightMediaFetches = new Map() // url -> Promise<blobUrl|null>
+
+function requestMediaBlob(fetchBlobFn, url) {
+  const cached = getCachedClientMedia(url)
+  if (cached) return Promise.resolve(cached)
+  if (isUrlKnownFailed(url)) return Promise.resolve(null)
+  let promise = inflightMediaFetches.get(url)
+  if (!promise) {
+    promise = (async () => {
+      try {
+        const blob = await fetchBlobFn(url)
+        if (!blob) {
+          markUrlFailed(url)
+          return null
+        }
+        const blobUrl = URL.createObjectURL(blob)
+        cacheClientMedia(url, blobUrl)
+        return blobUrl
+      } catch {
+        markUrlFailed(url)
+        return null
+      } finally {
+        inflightMediaFetches.delete(url)
+      }
+    })()
+    inflightMediaFetches.set(url, promise)
+  }
+  return promise
+}
 
 function getCachedClientMedia(url) {
   if (!clientMediaCache.has(url)) return undefined
@@ -113,15 +166,10 @@ export function useClientMedia(...args) {
     async function load() {
       for (const u of urls) {
         if (!u) continue
-        try {
-          const blob = await fetchMediaBlob(u)
-          if (!blob) continue
-          const blobUrl = URL.createObjectURL(blob)
-          cacheClientMedia(u, blobUrl)
+        const blobUrl = await requestMediaBlob(fetchMediaBlob, u)
+        if (blobUrl) {
           if (!cancelled) setState({ blobUrl, loading: false, error: false })
           return
-        } catch {
-          // try next URL
         }
       }
       if (resolveUrls && !cancelled) {
@@ -129,19 +177,11 @@ export function useClientMedia(...args) {
           const extra = await resolveUrls()
           for (const u of (extra || [])) {
             if (!u) continue
-            const cached = getCachedClientMedia(u)
-            if (cached) {
-              if (!cancelled) setState({ blobUrl: cached, loading: false, error: false })
-              return
-            }
-            try {
-              const blob = await fetchMediaBlob(u)
-              if (!blob) continue
-              const blobUrl = URL.createObjectURL(blob)
-              cacheClientMedia(u, blobUrl)
+            const blobUrl = await requestMediaBlob(fetchMediaBlob, u)
+            if (blobUrl) {
               if (!cancelled) setState({ blobUrl, loading: false, error: false })
               return
-            } catch {}
+            }
           }
         } catch {}
       }
@@ -183,4 +223,97 @@ export function useLayoutTier() {
   if (width >= WIDE_BREAKPOINT) return 'wide'
   if (width >= NARROW_BREAKPOINT) return 'medium'
   return 'narrow'
+}
+
+const PULL_THRESHOLD = 90
+const PULL_MAX_INDICATOR = 48
+
+// Scroll-down-to-refresh on a scrollable element: when already at the
+// top, further pulling accumulates and past the threshold fires
+// onRefresh. Handles both touch drag and mouse-wheel overscroll.
+export function usePullToRefresh(el, onRefresh) {
+  const [pull, setPull] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
+  const touchState = useRef({ startY: 0, active: false })
+  const onRefreshRef = useRef(onRefresh)
+  onRefreshRef.current = onRefresh
+
+  useEffect(() => {
+    if (!el || refreshing) return undefined
+
+    function endTouch() {
+      touchState.current.active = false
+      setPull((current) => {
+        if (current >= PULL_THRESHOLD) {
+          setRefreshing(true)
+          onRefreshRef.current?.()
+        }
+        return 0
+      })
+    }
+    function onTouchStart(e) {
+      if (el.scrollTop <= 0 && e.touches.length === 1) {
+        touchState.current.startY = e.touches[0].clientY
+        touchState.current.active = true
+      }
+    }
+    function onTouchMove(e) {
+      if (!touchState.current.active) return
+      const delta = e.touches[0].clientY - touchState.current.startY
+      if (delta > 0 && el.scrollTop <= 0) {
+        setPull(Math.min(delta * 0.5, PULL_MAX_INDICATOR + 40))
+      } else {
+        setPull(0)
+      }
+    }
+    function onTouchEnd() {
+      if (!touchState.current.active) return
+      endTouch()
+    }
+
+    let wheelAccum = 0
+    let wheelTimer = null
+    function onWheel(e) {
+      if (el.scrollTop > 0 || e.deltaY <= 0) {
+        wheelAccum = 0
+        setPull(0)
+        return
+      }
+      wheelAccum += e.deltaY
+      setPull(Math.min(wheelAccum * 0.4, PULL_MAX_INDICATOR))
+      clearTimeout(wheelTimer)
+      wheelTimer = setTimeout(() => {
+        if (wheelAccum >= PULL_THRESHOLD) {
+          setRefreshing(true)
+          onRefreshRef.current?.()
+        }
+        wheelAccum = 0
+        setPull(0)
+      }, 250)
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('touchend', onTouchEnd)
+    el.addEventListener('touchcancel', onTouchEnd)
+    el.addEventListener('wheel', onWheel, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchEnd)
+      el.removeEventListener('wheel', onWheel)
+      clearTimeout(wheelTimer)
+    }
+  }, [el, refreshing])
+
+  // Show the spinner briefly regardless of how fast the reload resolves;
+  // feels deliberate instead of flickery.
+  useEffect(() => {
+    if (!refreshing) return undefined
+    const t = setTimeout(() => setRefreshing(false), 1500)
+    return () => clearTimeout(t)
+  }, [refreshing])
+
+  return { pull, refreshing }
 }

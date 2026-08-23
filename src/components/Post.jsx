@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { PickerContext } from '../hooks'
-import { formatRelativeTime, htmlToPlainText, processStatusContent } from '../lib/render.jsx'
+import { formatRelativeTime, htmlToPlainText, processStatusContent, renderEmojiText } from '../lib/render.jsx'
 import { Avatar, MediaGrid, ProxiedImg } from './Media.jsx'
 import { COMMON_EMOJI } from './Emoji.jsx'
 
@@ -66,7 +66,7 @@ export function ThreadReply({
   const setShowPicker = (open) => setOpenPickerId(open ? node.status.id : null)
   const status = node.status
   const account = status.account || {}
-  const name = account.display_name || account.username || 'Unknown'
+  const name = renderEmojiText(account.display_name || account.username || 'Unknown', account.emojis)
   const content = processStatusContent(status, instanceUrl)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
 
@@ -406,7 +406,7 @@ function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote }) {
 export function QuoteCard({ status, instanceUrl, onOpenThread }) {
   if (!status) return null
   const account = status.account || {}
-  const name = account.display_name || account.username || 'Unknown'
+  const name = renderEmojiText(account.display_name || account.username || 'Unknown', account.emojis)
   const content = processStatusContent(status, instanceUrl)
   return (
     <div className="quote-card" onClick={(e) => { e.stopPropagation(); onOpenThread(status) }}>
@@ -503,14 +503,8 @@ export function PollCard({ poll, instanceUrl, token, onUpdated }) {
         ))
       )}
       {error && <div className="banner banner-error">{error}</div>}
-      <div className="poll-footer">
-        <span className="poll-meta">
-          {votes_count} vote{votes_count !== 1 ? 's' : ''}
-          {voters_count != null && voters_count !== votes_count && ` · ${voters_count} voter${voters_count !== 1 ? 's' : ''}`}
-          {timeLeft() && <> · {timeLeft()}</>}
-          {expired && <span className="poll-expired"> · Ended</span>}
-        </span>
-        {!showResults && (
+      {!showResults && (
+        <div className="poll-vote-row">
           <button
             className="pill-btn suggested"
             onClick={submitVote}
@@ -518,7 +512,15 @@ export function PollCard({ poll, instanceUrl, token, onUpdated }) {
           >
             {busy ? 'Voting…' : 'Vote'}
           </button>
-        )}
+        </div>
+      )}
+      <div className="poll-footer">
+        <span className="poll-meta">
+          {votes_count} vote{votes_count !== 1 ? 's' : ''}
+          {voters_count != null && voters_count !== votes_count && ` · ${voters_count} voter${voters_count !== 1 ? 's' : ''}`}
+          {timeLeft() && <> · {timeLeft()}</>}
+          {expired && <span className="poll-expired"> · Ended</span>}
+        </span>
       </div>
     </div>
   )
@@ -617,7 +619,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   const showPicker = openPickerId === status.id
   const setShowPicker = (open) => setOpenPickerId(open ? status.id : null)
   const account = status.account || {}
-  const displayName = account.display_name || account.username || 'Unknown'
+  const displayName = renderEmojiText(account.display_name || account.username || 'Unknown', account.emojis)
   const booster = isBoost ? post.account : null
   const content = processStatusContent(status, instanceUrl)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
@@ -844,7 +846,9 @@ function notificationVerb(type, notification) {
       const emojiName = notification?.emoji || notification?.reaction?.content || '🧩'
       const emoji = emojiUrl
         ? <ProxiedImg src={emojiUrl} alt={emojiName} className="inline-custom-emoji" />
-        : emojiName
+        : String(emojiName).startsWith(':')
+          ? <ProxiedImg alt={emojiName} className="inline-custom-emoji" fallbackText={String(emojiName).replaceAll(':', '')} />
+          : emojiName
       return <>reacted with {emoji} to your post</>
     }
     default:
@@ -889,7 +893,7 @@ export const NotificationRow = memo(function NotificationRow({
   onBlock,
 }) {
   const account = notification.account || {}
-  const name = account.display_name || account.username || 'Unknown'
+  const name = renderEmojiText(account.display_name || account.username || 'Unknown', account.emojis)
   const Icon = notificationIcon(notification.type)
   const [responding, setResponding] = useState(false)
   const [responded, setResponded] = useState(null)
