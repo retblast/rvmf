@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowLeft, X } from 'lucide-react'
 import { PostRow, ThreadReply } from './Post.jsx'
-import { ReplyComposerFields } from './Compose.jsx'
+import { ReplyComposerFields } from './ReplyComposer.jsx'
 
 const EASE = [0.32, 0.72, 0, 1]
 
@@ -73,7 +73,7 @@ export function ThreadPanelContent({
     return map
   }, [status, state])
 
-  const composingStatus = composingStatusId ? (statusById.get(composingStatusId) || null) : null
+  const composing = Boolean(composingStatusId)
 
   const [highlightedId, setHighlightedId] = useState(null)
 
@@ -82,6 +82,15 @@ export function ThreadPanelContent({
     const el = document.querySelector(`[data-status-id="${focusedReplyId}"]`)
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [focusedReplyId])
+
+  // Rendered inline by the focal post or whichever reply is targeted
+  const composerProps = {
+    instanceUrl,
+    token,
+    onClose: onCancelCompose,
+    onPosted: onReplyPosted,
+    maxCharacters,
+  }
 
   if (panel?.mode === 'compose') {
     return (
@@ -103,7 +112,7 @@ export function ThreadPanelContent({
     <motion.div key={status?.id || 'empty'}>
       <div className="thread-panel-header">
         <span className="dialog-title">
-          {composingStatus ? 'Reply' : (
+          {composing ? 'Reply' : (
             <>
               {backLabel && (
                 <button className="icon-btn thread-back-btn" aria-label={backLabel} onClick={onClose}>
@@ -114,7 +123,7 @@ export function ThreadPanelContent({
             </>
           )}
         </span>
-        {composingStatus ? (
+        {composing ? (
           <button className="icon-btn" aria-label="Cancel reply" onClick={onCancelCompose}>
             <X size={16} />
           </button>
@@ -169,6 +178,8 @@ export function ThreadPanelContent({
         >
           <PostRow
             post={status}
+            composerFor={composingStatusId}
+            composerProps={{ ...composerProps, status }}
             instanceUrl={instanceUrl}
             token={token}
             onUpdate={onUpdateReply}
@@ -189,18 +200,6 @@ export function ThreadPanelContent({
           />
         </motion.div>
       )}
-      {composingStatus && (
-        <div className="inline-reply-composer">
-          <ReplyComposerFields
-            status={composingStatus}
-            instanceUrl={instanceUrl}
-            token={token}
-            onClose={onCancelCompose}
-            onPosted={onReplyPosted}
-            maxCharacters={maxCharacters}
-          />
-        </div>
-      )}
       <motion.div
         className="thread-panel-replies"
         variants={staggerDownVariants}
@@ -214,6 +213,8 @@ export function ThreadPanelContent({
             <ThreadReply
               node={node}
               depth={state.ancestors.length + 1}
+              composerFor={composingStatusId}
+              composerProps={composerProps}
               instanceUrl={instanceUrl}
               token={token}
               onUpdate={onUpdateReply}

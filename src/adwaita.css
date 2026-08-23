@@ -2296,8 +2296,14 @@ button.mention-link {
 }
 
 .inline-reply-composer {
-  padding: 12px 16px;
+  padding: 8px 12px 12px 44px;
   border-bottom: 1px solid var(--border);
+}
+
+/* Focal post's composer spans full width (no avatar column to indent) */
+.thread-panel-focal .inline-reply-composer,
+.post-row > .inline-reply-composer {
+  padding-left: 16px;
 }
 
 .inline-reply-composer .thread-panel-header {

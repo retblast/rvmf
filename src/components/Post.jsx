@@ -20,6 +20,7 @@ import { PickerContext, useEscapeKey } from '../hooks'
 import { formatRelativeTime, htmlToPlainText, processStatusContent, renderEmojiText } from '../lib/render.jsx'
 import { Avatar, MediaGrid, ProxiedImg } from './Media.jsx'
 import { COMMON_EMOJI } from './Emoji.jsx'
+import { ReplyComposerFields } from './ReplyComposer.jsx'
 
 // A status as returned by the timeline can itself be a boost: in that case
 // `post.account` is whoever boosted it, and the actual post — content,
@@ -64,6 +65,8 @@ export function ThreadReply({
   onEdit,
   onMute,
   onBlock,
+  composerFor,
+  composerProps,
 }) {
   const [busy, setBusy] = useState(false)
   const [mediaHidden, setMediaHidden] = useState(false)
@@ -284,6 +287,11 @@ export function ThreadReply({
           </div>
         </div>
       </div>
+      {composerFor === status.id && composerProps && (
+        <div className="inline-reply-composer">
+          <ReplyComposerFields status={status} {...composerProps} />
+        </div>
+      )}
       {node.children.length > 0 && (
         <div className="inline-replies-wrap">
           <div className="inline-replies-track" onClick={(e) => e.stopPropagation()}>
@@ -309,6 +317,8 @@ export function ThreadReply({
                 onMute={onMute}
                 onBlock={onBlock}
                 onEdit={onEdit}
+                composerFor={composerFor}
+                composerProps={composerProps}
               />
             ))}
           </div>
@@ -644,7 +654,7 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
   )
 }
 
-export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onQuote, statusById, depth, highlightedId, onHighlightParent, currentAccountId, onDelete, onMute, onBlock, onEdit }) {
+export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onQuote, statusById, depth, highlightedId, onHighlightParent, currentAccountId, onDelete, onMute, onBlock, onEdit, composerFor, composerProps }) {
   const [busy, setBusy] = useState(false)
   const [mediaHidden, setMediaHidden] = useState(false)
   const { openPickerId, setOpenPickerId } = useContext(PickerContext)
@@ -859,6 +869,11 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
           </div>
         </div>
       </div>
+      {composerFor === status.id && composerProps && (
+        <div className="inline-reply-composer">
+          <ReplyComposerFields status={status} {...composerProps} />
+        </div>
+      )}
     </div>
   )
 })
