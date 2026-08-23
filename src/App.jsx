@@ -13,6 +13,7 @@ import {
   LogOut,
   Globe,
   Settings,
+  Trash2,
 } from 'lucide-react'
 import { useMitraSession } from './useMitraSession'
 import * as mitra from './lib/mitra'
@@ -89,6 +90,7 @@ export default function App() {
   const [clientName, setClientNameState] = useState(() => mitra.getClientName())
   const [notifPolicy, setNotifPolicy] = useState(null)
   const [defaultVisibility, setDefaultVisibility] = useState('public')
+  const [clearingNotifications, setClearingNotifications] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
 
@@ -165,6 +167,21 @@ export default function App() {
       } catch { /* ignore */ }
       return next
     })
+  }
+
+  async function handleClearNotifications() {
+    if (!session || clearingNotifications) return
+    if (!window.confirm('Clear all notifications? This cannot be undone.')) return
+    setClearingNotifications(true)
+    try {
+      await mitra.clearNotifications(session.instanceUrl, session.token)
+      setNotifications([])
+      setNotifUnread(0)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setClearingNotifications(false)
+    }
   }
 
   // Persist the posting default on the account (SharedClientConfig) so
@@ -1229,7 +1246,20 @@ export default function App() {
 
       {tier !== 'wide' && view === 'notifications' && (
         <>
-          <div className="section-label">Notifications</div>
+          <div className="section-label-row">
+            <div className="section-label">Notifications</div>
+            {notifications.length > 0 && (
+              <button
+                className="icon-btn"
+                aria-label="Clear all notifications"
+                title="Clear all"
+                onClick={handleClearNotifications}
+                disabled={clearingNotifications}
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
           <ErrorBoundary>{notificationsBody}</ErrorBoundary>
         </>
       )}
@@ -1483,7 +1513,20 @@ export default function App() {
       {tier === 'wide' ? (
         <div className="app-shell">
           <aside className="notif-column scrollbar-thin">
+            <div className="section-label-row">
             <div className="section-label">Notifications</div>
+            {notifications.length > 0 && (
+              <button
+                className="icon-btn"
+                aria-label="Clear all notifications"
+                title="Clear all"
+                onClick={handleClearNotifications}
+                disabled={clearingNotifications}
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
             <ErrorBoundary>{notificationsBody}</ErrorBoundary>
           </aside>
           <div className="content-scroll scrollbar-thin" ref={setScrollEl}><ErrorBoundary>{timelineContent}</ErrorBoundary></div>

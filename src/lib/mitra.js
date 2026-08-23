@@ -576,6 +576,14 @@ export function editStatus(instanceUrl, token, id, text) {
   })
 }
 
+// Wipe every notification for the current account. Irreversible.
+export function clearNotifications(instanceUrl, token) {
+  return apiFetch(instanceUrl, '/api/v1/notifications', {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 export function muteAccount(instanceUrl, token, accountId) {
   return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/mute`, {
     method: 'POST',

@@ -2746,3 +2746,14 @@ textarea.profile-edit-input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.section-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.section-label-row .section-label {
+  flex: 1;
+}
