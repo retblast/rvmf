@@ -393,6 +393,10 @@ button {
   color: var(--accent);
 }
 
+.action-btn.bookmarked {
+  color: var(--accent);
+}
+
 /* ---- boost dropdown ---- */
 
 .boost-dropdown-wrap {

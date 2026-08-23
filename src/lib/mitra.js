@@ -312,6 +312,22 @@ export function setReblogged(instanceUrl, token, id, reblogged) {
   })
 }
 
+export function setBookmarked(instanceUrl, token, id, bookmarked) {
+  const action = bookmarked ? 'unbookmark' : 'bookmark'
+  return apiFetch(instanceUrl, `/api/v1/statuses/${id}/${action}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function fetchBookmarks(instanceUrl, token, { max_id } = {}) {
+  const params = new URLSearchParams({ limit: '20' })
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/bookmarks?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 export function addReaction(instanceUrl, token, statusId, emoji) {
   return apiFetch(instanceUrl, `/api/v1/pleroma/statuses/${statusId}/reactions/${encodeURIComponent(emoji)}`, {
     method: 'PUT',

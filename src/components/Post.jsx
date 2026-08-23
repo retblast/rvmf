@@ -3,6 +3,7 @@ import {
   MessageCircle,
   Repeat2,
   Star,
+  Bookmark,
   MoreHorizontal,
   X,
   EyeOff,
@@ -69,6 +70,19 @@ export function ThreadReply({
 
   function handlePollUpdated(poll) {
     onUpdate({ ...status, poll })
+  }
+
+  async function toggleBookmark() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const updated = await mitra.setBookmarked(instanceUrl, token, status.id, status.bookmarked)
+      onUpdate(updated)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function toggleReaction(statusId, emoji, alreadyReacted) {
@@ -186,6 +200,14 @@ export function ThreadReply({
             >
               <Star size={15} fill={status.favourited ? 'currentColor' : 'none'} />
               {!compact && <span>{status.favourites_count}</span>}
+            </button>
+            <button
+              className={`action-btn${status.bookmarked ? ' bookmarked' : ''}`}
+              aria-label="Bookmark"
+              onClick={toggleBookmark}
+              disabled={busy}
+            >
+              <Bookmark size={15} fill={status.bookmarked ? 'currentColor' : 'none'} />
             </button>
             {!compact && (
               <>
@@ -598,6 +620,19 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
     onUpdate(isBoost ? { ...post, reblog: newStatus } : newStatus)
   }
 
+  async function toggleBookmark() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const updated = await mitra.setBookmarked(instanceUrl, token, status.id, status.bookmarked)
+      onUpdate(isBoost ? { ...post, reblog: updated } : updated)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function toggleReaction(statusId, emoji, alreadyReacted) {
     try {
       const updated = alreadyReacted
@@ -723,6 +758,14 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
             >
               <Star size={15} fill={status.favourited ? 'currentColor' : 'none'} />
               <span>{status.favourites_count}</span>
+            </button>
+            <button
+              className={`action-btn${status.bookmarked ? ' bookmarked' : ''}`}
+              aria-label="Bookmark"
+              onClick={toggleBookmark}
+              disabled={busy}
+            >
+              <Bookmark size={15} fill={status.bookmarked ? 'currentColor' : 'none'} />
             </button>
             <button
               className="action-btn"

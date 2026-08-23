@@ -4,6 +4,7 @@ import {
   Home,
   Bell,
   Compass,
+  Bookmark,
   Plus,
   RotateCw,
   LogOut,
@@ -50,6 +51,12 @@ export default function App() {
   const [exploreHasMore, setExploreHasMore] = useState({ federated: true, local: true })
   const [exploreLoadingMore, setExploreLoadingMore] = useState(false)
   const exploreSentinelRef = useRef(null)
+  const [bookmarks, setBookmarks] = useState([])
+  const [bookmarksLoading, setBookmarksLoading] = useState(false)
+  const [bookmarksError, setBookmarksError] = useState('')
+  const [bookmarksHasMore, setBookmarksHasMore] = useState(true)
+  const [bookmarksLoadingMore, setBookmarksLoadingMore] = useState(false)
+  const bookmarksSentinelRef = useRef(null)
   const [hoverPreviewsEnabled, setHoverPreviewsEnabled] = useState(() => {
     try {
       return localStorage.getItem('mitra-hover-previews') !== 'false'
@@ -254,6 +261,59 @@ export default function App() {
     }
   }, [view, exploreFeed, exploreTimelines, loadExplore])
 
+  const loadBookmarks = useCallback(async () => {
+    if (!session) return
+    setBookmarksLoading(true)
+    setBookmarksError('')
+    setBookmarksHasMore(true)
+    try {
+      const items = await mitra.fetchBookmarks(session.instanceUrl, session.token)
+      setBookmarks(items)
+    } catch (err) {
+      setBookmarksError(err.message || 'Failed to load bookmarks.')
+    } finally {
+      setBookmarksLoading(false)
+    }
+  }, [session])
+
+  const loadMoreBookmarks = useCallback(async () => {
+    if (!session || bookmarksLoadingMore || !bookmarksHasMore) return
+    if (bookmarks.length === 0) return
+    setBookmarksLoadingMore(true)
+    try {
+      const lastId = bookmarks[bookmarks.length - 1]?.id
+      if (!lastId) return
+      const more = await mitra.fetchBookmarks(session.instanceUrl, session.token, { max_id: lastId })
+      setBookmarks((prev) => [...prev, ...more])
+      if (more.length < 20) setBookmarksHasMore(false)
+    } catch {
+      // silently fail
+    } finally {
+      setBookmarksLoadingMore(false)
+    }
+  }, [session, bookmarksLoadingMore, bookmarksHasMore, bookmarks])
+
+  useEffect(() => {
+    if (view === 'bookmarks') {
+      loadBookmarks()
+    }
+  }, [view, loadBookmarks])
+
+  // Bookmarks infinite scroll observer
+  useEffect(() => {
+    if (view !== 'bookmarks') return
+    const sentinel = bookmarksSentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMoreBookmarks()
+      },
+      { rootMargin: '200px' }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [view, loadMoreBookmarks, bookmarks.length])
+
   // Explore infinite scroll observer
   useEffect(() => {
     if (view !== 'explore') return
@@ -312,6 +372,8 @@ export default function App() {
     } else if (view === 'explore') {
       setExploreHasMore((prev) => ({ ...prev, [exploreFeed]: true }))
       loadExplore(exploreFeed)
+    } else if (view === 'bookmarks') {
+      loadBookmarks()
     } else {
       loadTimeline()
     }
@@ -319,6 +381,16 @@ export default function App() {
 
   function updatePost(updated) {
     setTimeline((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+  }
+
+  // In the bookmarks list, unbookmarking removes the row — that's the
+  // natural expectation of a list of things you saved.
+  function updateBookmarkedPost(updated) {
+    if (!updated.bookmarked) {
+      setBookmarks((prev) => prev.filter((p) => p.id !== updated.id))
+      return
+    }
+    setBookmarks((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
   }
 
   function prependPost(post) {
@@ -669,6 +741,43 @@ export default function App() {
         </>
       )}
 
+      {view === 'bookmarks' && (
+        <>
+          {bookmarksError && <div className="banner banner-error">{bookmarksError}</div>}
+          <div className="section-label">Bookmarks</div>
+          {bookmarksLoading && bookmarks.length === 0 ? (
+            <div className="empty-state">Loading…</div>
+          ) : bookmarks.length === 0 ? (
+            <div className="empty-state">Nothing here yet.</div>
+          ) : (
+            <div className="timeline-list">
+              {bookmarks.map((post) => (
+                <PostRow
+                  key={post.id}
+                  post={post}
+                  instanceUrl={session.instanceUrl}
+                  token={session.token}
+                  onUpdate={updateBookmarkedPost}
+                  onOpenThread={handleOpenThread}
+                  onComposeReply={handleComposeReply}
+                  onOpenLightbox={setLightboxAttachment}
+                  onOpenProfile={handleOpenProfile}
+                  onQuote={handleQuote}
+                  currentAccountId={session.account?.id}
+                  onDelete={handleDeleteStatus}
+                  onMute={handleMuteAccount}
+                  onBlock={handleBlockAccount}
+                />
+              ))}
+            </div>
+          )}
+          {bookmarksLoadingMore && <div className="empty-state">Loading…</div>}
+          {bookmarksHasMore && !bookmarksLoadingMore && bookmarks.length > 0 && (
+            <div ref={bookmarksSentinelRef} className="scroll-sentinel" />
+          )}
+        </>
+      )}
+
       {tier !== 'wide' && view === 'notifications' && (
         <>
           <div className="section-label">Notifications</div>
@@ -737,6 +846,13 @@ export default function App() {
           >
             <Compass size={14} />
             Explore
+          </button>
+          <button
+            className={`view-switcher-btn${view === 'bookmarks' ? ' active' : ''}`}
+            onClick={() => setView('bookmarks')}
+          >
+            <Bookmark size={14} />
+            Bookmarks
           </button>
         </div>
 
