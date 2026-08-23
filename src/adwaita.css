@@ -2539,3 +2539,26 @@ textarea:focus-visible {
   --accent-fg: var(--os-accent-fg);
   --accent-bg-subtle: color-mix(in srgb, var(--os-accent) 14%, var(--window-bg));
 }
+
+/* Hover peek over spoilered media: accent outline + CW label so it's
+   obvious you're looking at hidden content */
+.media-hover-preview.peek-sensitive {
+  border: 1px solid var(--accent);
+}
+
+.peek-tag {
+  background: var(--accent);
+  border-radius: var(--radius-control);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  left: 6px;
+  max-width: calc(100% - 12px);
+  overflow: hidden;
+  padding: 2px 8px;
+  position: absolute;
+  text-overflow: ellipsis;
+  top: 6px;
+  white-space: nowrap;
+  z-index: 1;
+}

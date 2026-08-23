@@ -232,12 +232,17 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
   )
 }
 
-function MediaItem({ attachment, revealed, onOpenLightbox }) {
+function MediaItem({ attachment, revealed, spoilerText, onOpenLightbox }) {
   const { type, url, preview_url: previewUrl, remote_url: remoteUrl, description } = attachment
   const remoteFallback = attachment._remote_fallback || null
-  const { hoverPreviewsEnabled, fetchClientMedia, instanceUrl, token } = useContext(AppSettingsContext)
+  const { hoverPreviewsEnabled, fetchClientMedia, alwaysSensitive, instanceUrl, token } = useContext(AppSettingsContext)
   const { pos, track, clear } = useCursorPreview()
-  const hoverEnabled = revealed && hoverPreviewsEnabled
+  // Hover peeks work on spoilered media too — the floating preview only
+  // exists while the cursor stays on the thumbnail. Exception: strict
+  // 'mark all media as sensitive' mode, where unrevealed media must not
+  // be exposed by a stray mousemove.
+  const canPeekSpoiler = revealed || !alwaysSensitive
+  const hoverEnabled = canPeekSpoiler && hoverPreviewsEnabled
 
   const resolveAtt = useCallback(async () => {
     if (!instanceUrl || !attachment.id || typeof attachment.id === 'string' && attachment.id.startsWith('quarantined-')) return []
@@ -304,7 +309,8 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
           {imgError && <div className="media-error-overlay"><span>Failed to load</span></div>}
         </button>
         {hoverEnabled && pos && imgBlob && (
-          <div className="media-hover-preview" style={{ left: pos.x, top: pos.y }}>
+          <div className={"media-hover-preview" + (revealed ? '' : ' peek-sensitive')} style={{ left: pos.x, top: pos.y }}>
+            {revealed ? null : <span className='peek-tag'>{spoilerText || 'Sensitive'}</span>}
             <img src={imgBlob} alt={description || ''} />
           </div>
         )}
@@ -334,7 +340,8 @@ function MediaItem({ attachment, revealed, onOpenLightbox }) {
           {vidError && <div className="media-error-overlay"><span>Failed to load</span></div>}
         </div>
         {hoverEnabled && pos && previewUrl && (
-          <div className="media-hover-preview" style={{ left: pos.x, top: pos.y }}>
+          <div className={"media-hover-preview" + (revealed ? '' : ' peek-sensitive')} style={{ left: pos.x, top: pos.y }}>
+            {revealed ? null : <span className='peek-tag'>{spoilerText || 'Sensitive'}</span>}
             <img src={safeProxyUrl(previewUrl)} alt={description || ''} />
           </div>
         )}
@@ -388,6 +395,7 @@ export function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox,
             key={att.id}
             attachment={att}
             revealed={revealed}
+            spoilerText={spoilerText}
             onOpenLightbox={() => onOpenLightbox({ attachment: att, attachments: shown, index: idx })}
           />
         ))}
