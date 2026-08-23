@@ -152,6 +152,26 @@ export default function App() {
     })
   }
 
+  // Only meaningful when strict sensitive mode hides everything: allow
+  // hover previews to peek at unrevealed media.
+  const [peekSpoilerMedia, setPeekSpoilerMedia] = useState(() => {
+    try {
+      return localStorage.getItem('mitra-peek-spoiler') === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  function togglePeekSpoilerMedia() {
+    setPeekSpoilerMedia((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('mitra-peek-spoiler', String(next))
+      } catch { /* persistence unavailable */ }
+      return next
+    })
+  }
+
   function toggleFetchClientMedia() {
     setFetchClientMedia((prev) => {
       const next = !prev
@@ -1218,7 +1238,7 @@ export default function App() {
   }
 
   return (
-    <AppSettingsContext.Provider value={{ hoverPreviewsEnabled, fetchClientMedia, alwaysSensitive, instanceUrl: session.instanceUrl, token: session.token }}>
+    <AppSettingsContext.Provider value={{ hoverPreviewsEnabled, fetchClientMedia, alwaysSensitive, peekSpoilerMedia, instanceUrl: session.instanceUrl, token: session.token }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
       {showPullIndicator && (
         <div className={`pull-indicator${refreshing ? ' refreshing' : ''}`} style={pull ? { transform: `translateX(-50%) translateY(${Math.min(pull / 2, 24)}px)` } : undefined}>
@@ -1339,6 +1359,16 @@ export default function App() {
                       onChange={toggleAlwaysSensitive}
                     />
                   </label>
+                  {alwaysSensitive && hoverPreviewsEnabled && (
+                    <label className="settings-menu-row settings-menu-subrow">
+                      <span>Reveal media on hover (peek)</span>
+                      <input
+                        type="checkbox"
+                        checked={peekSpoilerMedia}
+                        onChange={togglePeekSpoilerMedia}
+                      />
+                    </label>
+                  )}
                   <label className="settings-menu-row">
                     <span>Use system accent color</span>
                     <input

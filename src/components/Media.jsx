@@ -235,13 +235,13 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
 function MediaItem({ attachment, revealed, spoilerText, onOpenLightbox }) {
   const { type, url, preview_url: previewUrl, remote_url: remoteUrl, description } = attachment
   const remoteFallback = attachment._remote_fallback || null
-  const { hoverPreviewsEnabled, fetchClientMedia, alwaysSensitive, instanceUrl, token } = useContext(AppSettingsContext)
+  const { hoverPreviewsEnabled, fetchClientMedia, alwaysSensitive, peekSpoilerMedia, instanceUrl, token } = useContext(AppSettingsContext)
   const { pos, track, clear } = useCursorPreview()
-  // Hover peeks work on spoilered media too — the floating preview only
-  // exists while the cursor stays on the thumbnail. Exception: strict
-  // 'mark all media as sensitive' mode, where unrevealed media must not
-  // be exposed by a stray mousemove.
-  const canPeekSpoiler = revealed || !alwaysSensitive
+  // Hover peeks work on spoilered media — the floating preview only
+  // exists while the cursor stays on the thumbnail. In strict 'mark all
+  // media as sensitive' mode peeking requires its own explicit toggle,
+  // since those users opted out of accidental exposure.
+  const canPeekSpoiler = revealed || !alwaysSensitive || peekSpoilerMedia
   const hoverEnabled = canPeekSpoiler && hoverPreviewsEnabled
 
   const resolveAtt = useCallback(async () => {
