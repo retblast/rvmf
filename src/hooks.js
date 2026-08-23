@@ -34,6 +34,8 @@ function markUrlFailed(url) {
   if (!failedMediaUrls.has(url)) failedMediaUrls.set(url, Date.now())
 }
 
+export { isUrlKnownFailed, markUrlFailed }
+
 // Concurrent mounts of the same image (timeline + open thread panel,
 // avatar reused across rows) share one request instead of racing.
 // Resolves to a blob object URL, or null when the URL is known-bad.

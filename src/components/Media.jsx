@@ -13,7 +13,10 @@ import {
   safeProxyUrl,
   useCursorPreview,
   useClientMedia,
+  isUrlKnownFailed,
+  markUrlFailed,
 } from '../hooks'
+import { lookupEmojiUrl } from '../lib/emojiRegistry.js'
 
 // The initials circle is always the base layer; the photo overlays it once
 // loaded. That way initials double as both the loading placeholder and the
@@ -59,17 +62,93 @@ function ImgPlaceholder({ text, alt, className }) {
   )
 }
 
+// Direct-mode escalation ladder for images with a fallbackText shortcode
+// (i.e. custom emojis): origin URL -> dev proxy -> instance emoji
+// registry -> ':name:' placeholder. Each candidate is remembered in the
+// shared negative cache so remounts don't re-request known-dead URLs.
+function useDirectEmojiSrc(src, fallbackText) {
+  const { instanceUrl, token } = useContext(AppSettingsContext)
+  // step: 0 origin | 1 proxy | 2 resolving registry | 3 override origin |
+  //       4 override proxy | 5 dead
+  const [step, setStep] = useState(0)
+  const [overrideSrc, setOverrideSrc] = useState(null)
+
+  useEffect(() => {
+    setStep(0)
+    setOverrideSrc(null)
+  }, [src])
+
+  useEffect(() => {
+    if (step !== 2) return undefined
+    let cancelled = false
+    if (!fallbackText || !instanceUrl) {
+      setStep(5)
+      return undefined
+    }
+    lookupEmojiUrl(instanceUrl, fallbackText)
+      .then((url) => {
+        if (cancelled) return
+        if (url && url !== src) {
+          setOverrideSrc(url)
+          setStep(3)
+        } else {
+          setStep(5)
+        }
+      })
+      .catch(() => { if (!cancelled) setStep(5) })
+    return () => { cancelled = true }
+  }, [step, src, fallbackText, instanceUrl])
+
+  function advance() {
+    if (!src) { setStep(5); return }
+    if (step === 0) {
+      markUrlFailed(src)
+      if (isUrlKnownFailed(safeProxyUrl(src))) {
+        setStep(fallbackText ? 2 : 5)
+      } else {
+        setStep(1)
+      }
+    } else if (step === 1 || step === 3 || step === 4) {
+      const current = step === 1 ? safeProxyUrl(src)
+        : step === 3 ? overrideSrc
+        : safeProxyUrl(overrideSrc)
+      markUrlFailed(current)
+      if (step === 1 && fallbackText) {
+        setStep(2)
+      } else if (step === 3) {
+        setStep(isUrlKnownFailed(safeProxyUrl(overrideSrc)) ? 5 : 4)
+      } else {
+        setStep(5)
+      }
+    } else {
+      setStep(5)
+    }
+  }
+
+  let url = null
+  let dead = false
+  switch (step) {
+    case 0: url = src; break
+    case 1: url = safeProxyUrl(src); break
+    case 3: url = overrideSrc; break
+    case 4: url = safeProxyUrl(overrideSrc); break
+    default: dead = true
+  }
+
+  return { url, dead, advance }
+}
+
 export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, onLoad, fallbackText, direct, ...rest }) {
   const { fetchClientMedia } = useContext(AppSettingsContext)
-  // Direct mode escalation: try the origin URL as-is; if the server
-  // rejects browser requests (hotlink protection, CDN rules), retry once
-  // through the dev proxy (server-side fetch, no browser headers), then
-  // give up and show the placeholder.
   const [viaProxy, setViaProxy] = useState(false)
   const [directFailed, setDirectFailed] = useState(false)
   const { blobUrl, loading, error } = useClientMedia(
     !direct && fetchClientMedia && src ? src : null,
     !direct && fetchClientMedia && fallbackSrc ? fallbackSrc : null
+  )
+  const emoji = useDirectEmojiSrc(
+    direct && fallbackText ? src : null,
+    direct ? fallbackText : null
   )
   useEffect(() => {
     if (error && onError) onError()
@@ -80,6 +159,10 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
   }, [src])
 
   function handleDirectError(e) {
+    if (direct && emoji.url) {
+      emoji.advance()
+      return
+    }
     if (direct && !viaProxy) {
       setViaProxy(true)
       return
@@ -91,7 +174,7 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
 
   const showPlaceholder = Boolean(fallbackText) && (
     !src ||
-    (direct ? directFailed : (fetchClientMedia ? (error || (!blobUrl && loading)) : directFailed))
+    (direct ? emoji.dead : (fetchClientMedia ? (error || (!blobUrl && loading)) : directFailed))
   )
   if (showPlaceholder) {
     return <ImgPlaceholder text={fallbackText} alt={alt} className={className} />
@@ -99,6 +182,21 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
   // Without fallbackText the old behavior stands: render nothing while
   // pending/failed (callers like Avatar layer their own placeholders).
   if (!src) return null
+  if (direct && fallbackText) {
+    if (emoji.dead || !emoji.url) return null
+    return (
+      <img
+        src={emoji.url}
+        alt={alt || ''}
+        className={className}
+        style={style}
+        loading="lazy"
+        onLoad={onLoad}
+        onError={handleDirectError}
+        {...rest}
+      />
+    )
+  }
   if (direct) {
     if (directFailed) return null
     return (
