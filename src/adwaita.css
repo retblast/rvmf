@@ -2528,3 +2528,14 @@ textarea:focus-visible {
   0% { background-color: var(--accent-bg-subtle); }
   100% { background-color: transparent; }
 }
+
+/* ---- OS/browser accent integration ----
+   main.jsx detects the platform accent (CSS system color 'AccentColor')
+   and sets --os-accent/--os-accent-fg on :root when present. These rules
+   sit last so they win over every theme scope above; derived tones are
+   mixed from the live accent so light/dark backgrounds both work. */
+:root.os-accent {
+  --accent: var(--os-accent);
+  --accent-fg: var(--os-accent-fg);
+  --accent-bg-subtle: color-mix(in srgb, var(--os-accent) 14%, var(--window-bg));
+}
