@@ -230,6 +230,23 @@ export function useLayoutTier() {
 const PULL_THRESHOLD = 90
 const PULL_MAX_INDICATOR = 48
 
+// Close-on-Escape for popup components (dropdowns, pickers). Child
+// components register before App's global chain, so stopping immediate
+// propagation here keeps the big popups from also reacting.
+export function useEscapeKey(onEscape, active = true) {
+  useEffect(() => {
+    if (!active) return undefined
+    function onKey(e) {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      onEscape()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onEscape, active])
+}
+
 // Scroll-down-to-refresh on a scrollable element: when already at the
 // top, further pulling accumulates and past the threshold fires
 // onRefresh. Handles both touch drag and mouse-wheel overscroll.

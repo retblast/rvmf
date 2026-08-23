@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ProxiedImg } from './Media.jsx'
+import { useEscapeKey } from '../hooks'
 
 export const COMMON_EMOJI = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥', '💯', '🤔', '👏', '💀']
 
@@ -157,6 +158,7 @@ export function EmojiDropdown({ query, suggestions, selectedIndex, onSelect }) {
 
 export function EmojiPicker({ customEmojis, onSelect, onClose }) {
   const ref = useRef(null)
+  useEscapeKey(onClose)
   useEffect(() => {
     function handleClick(e) {
       if (ref.current && !ref.current.contains(e.target)) onClose()

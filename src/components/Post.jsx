@@ -16,7 +16,7 @@ import {
   Edit3,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
-import { PickerContext } from '../hooks'
+import { PickerContext, useEscapeKey } from '../hooks'
 import { formatRelativeTime, htmlToPlainText, processStatusContent, renderEmojiText } from '../lib/render.jsx'
 import { Avatar, MediaGrid, ProxiedImg } from './Media.jsx'
 import { COMMON_EMOJI } from './Emoji.jsx'
@@ -380,6 +380,7 @@ function ReactionPicker({ status, instanceUrl, token, onReact, onClose }) {
 function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
+  useEscapeKey(() => setOpen(false), open)
 
   useEffect(() => {
     if (!open) return
@@ -554,6 +555,7 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const ref = useRef(null)
+  useEscapeKey(() => setOpen(false), open)
 
   useEffect(() => {
     if (!open) return

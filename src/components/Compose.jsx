@@ -8,7 +8,7 @@ import {
   BarChart2,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
-import { processStatusContent } from '../lib/render.jsx'
+import { processStatusContent, renderEmojiText } from '../lib/render.jsx'
 import { QuoteCard } from './Post.jsx'
 import {
   insertAtCaret,
@@ -550,7 +550,7 @@ function PollEditorFields({ poll }) {
   )
 }
 
-export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus, maxCharacters = 500 }) {
+export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus, replyToStatus, maxCharacters = 500 }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -599,6 +599,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
     setError('')
     try {
       const status = await mitra.postStatus(instanceUrl, token, text.trim(), {
+        inReplyToId: replyToStatus?.id,
         mediaIds,
         visibility,
         quoteId: quoteStatus?.id,
@@ -668,6 +669,16 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
           }} />
           <CharCounter current={text.length} max={maxCharacters} />
         </div>
+        {replyToStatus && (
+          <div className="thread-panel-preview compose-reply-preview">
+            <div className="compose-reply-context">Replying to</div>
+            <div className="post-meta">
+              <span className="post-name">{renderEmojiText(replyToStatus.account?.display_name || replyToStatus.account?.username || 'Unknown', replyToStatus.account?.emojis)}</span>
+              <span className="post-handle">@{replyToStatus.account?.acct || replyToStatus.account?.username}</span>
+            </div>
+            <p className="post-text">{processStatusContent(replyToStatus, instanceUrl).textNodes}</p>
+          </div>
+        )}
         {quoteStatus && (
           <div className="compose-quote-preview">
             <QuoteCard status={quoteStatus} instanceUrl={instanceUrl} onOpenThread={() => {}} />

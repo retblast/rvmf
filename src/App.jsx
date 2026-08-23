@@ -40,6 +40,8 @@ export default function App() {
   const [error, setError] = useState('')
   const [composing, setComposing] = useState(false)
   const [quoteStatus, setQuoteStatus] = useState(null)
+  // Post being replied to in the main composer (context preview + target)
+  const [replyContext, setReplyContext] = useState(null)
   const [editing, setEditing] = useState(null)
   const [openPickerId, setOpenPickerId] = useState(null)
   const [replyStates, setReplyStates] = useState({})
@@ -487,6 +489,37 @@ export default function App() {
   const { pull, refreshing } = usePullToRefresh(scrollEl, () => refreshRef.current())
   const showPullIndicator = refreshing || pull > 10
 
+  // Escape closes the topmost popup. Per-row dropdowns and the lightbox
+  // register their own handlers (and consume the event); this chain
+  // covers the app-level surfaces, innermost first. defaultPrevented
+  // events are left alone so text-area affordances (emoji autocomplete)
+  // can consume Escape without tearing down the whole dialog.
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key !== 'Escape' || e.defaultPrevented) return
+      if (composing) {
+        e.preventDefault()
+        setComposing(false)
+        setQuoteStatus(null)
+        setReplyContext(null)
+      } else if (editing) {
+        e.preventDefault()
+        setEditing(null)
+      } else if (openPickerId) {
+        e.preventDefault()
+        setOpenPickerId(null)
+      } else if (settingsOpen) {
+        e.preventDefault()
+        setSettingsOpen(false)
+      } else if (sidePanel) {
+        e.preventDefault()
+        closeSidePanel()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [composing, editing, openPickerId, settingsOpen, sidePanel])
+
   function updatePost(updated) {
     setTimeline((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
   }
@@ -569,14 +602,30 @@ export default function App() {
     ensureRepliesLoaded(status)
   }
 
-  // Opens the reply-compose slide-out for `status`.
-  function handleComposeReply(status) {
+  // Reply button inside the thread panel: compose inline beneath the
+  // focal post. Only panel-resident statuses can resolve here — the
+  // inline composer looks its preview up in the thread's own tree.
+  function handleComposeReplyInPanel(status) {
     setSidePanel((prev) => {
       if (prev?.mode === 'thread') {
         return { ...prev, composingStatusId: status.id }
       }
       return { mode: 'compose', status, threadRoot: null }
     })
+  }
+
+  // Reply button on timeline/notification/profile rows. When a thread is
+  // occupying the side panel, the inline composer would silently fail
+  // (the target status isn't in that thread's tree) — so bring up the
+  // main composer instead, with the target post shown as context.
+  function handleComposeReply(status) {
+    if (sidePanelRef.current?.mode === 'thread') {
+      setQuoteStatus(null)
+      setReplyContext(status)
+      setComposing(true)
+      return
+    }
+    handleComposeReplyInPanel(status)
   }
 
   function handleCancelCompose() {
@@ -1094,7 +1143,7 @@ export default function App() {
     panel: sidePanel,
     replyStates,
     onOpenThread: handleOpenThread,
-    onComposeReply: handleComposeReply,
+    onComposeReply: handleComposeReplyInPanel,
     onOpenLightbox: setLightboxAttachment,
     onOpenProfile: handleOpenProfile,
     onUpdateReply: updateReplyInPanel,
@@ -1342,9 +1391,10 @@ export default function App() {
         <ComposeDialog
           instanceUrl={session.instanceUrl}
           token={session.token}
-          onClose={() => { setComposing(false); setQuoteStatus(null) }}
+          onClose={() => { setComposing(false); setQuoteStatus(null); setReplyContext(null) }}
           onPosted={prependPost}
           quoteStatus={quoteStatus}
+          replyToStatus={replyContext}
           maxCharacters={session.maxCharacters || 500}
         />
       )}
