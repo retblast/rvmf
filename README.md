@@ -4,6 +4,26 @@ A GNOME/Adwaita-styled Mitra (ActivityPub) client built with React 18 + Vite 5. 
 
 Logs into a real Mitra or Mastodon-compatible instance via OAuth and loads your actual home timeline.
 
+## Why
+
+I built this project because I had stumbled upon the fediverse (need to host an instance someday...) and, because I like Rust, decided to search if there was a server impementation that was written in Rust, and Mitra is exactly that.
+
+There's multiple compatible frontends but most of them don't functionally or aesthetically really please me, and I also remembered that there's this cool thing called "vibecoding" (this project is completely vibecoded, btw) that I haven't really done as a standalone project yet. So, I decided to build this for myself. I also use Linux (NixOS) with GNOME as my DE, so I decided to style it somewhat after Adwaita, GNOME's UI/UX (which I actually need to reconcile eventually haha) language.
+
+Now, there's a little story on how I built it:
+
+- Claude Sonnet 5 built the first iterations of the project (I hadn't used version control yet)
+- ChatGPT 5.6 Luna fixed one bug
+- Afterwards, I used OpenCode with the Big Pickle and Ox Alpha Free (Unlimited) models
+
+A key theme is that I don't have money for a subscription to any service, so all the LLMs/services I've used are on their respective Free tiers.
+
+## TODO
+
+- Testing using the Nix flake. Deploy a local Mitra instance, fill it with various kinds of data, to test the UI (been doing it manually... not very fun.)
+- Make the LLMs eat up the GNOME HIG and whatever related resources to overhaul the look and feel of the app.
+- Wire up testing for all the features we have
+
 ## Features
 
 ### Core
