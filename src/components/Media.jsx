@@ -281,6 +281,7 @@ function ImageMedia({ attachment, description, showImg, imgSrc, imgLoading, imgE
       className={`media-item media-image${showPlaceholder ? ' media-loading' : ''}${imgError ? ' media-error' : ''}`}
       onClick={() => onOpenLightbox(attachment)}
       aria-label={description || 'Open image'}
+      title={description || undefined}
     >
       {attachment.blurhash && !imgError && (
         <div className="media-blurhash-wrap" style={aspectRatio ? { aspectRatio: `${aspectRatio}` } : undefined}>
@@ -568,12 +569,19 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
         </button>
       )}
       {displaySrc ? (
-        <img
-          className="lightbox-image"
-          src={displaySrc}
-          alt={attachment.description || ''}
-          onClick={(e) => e.stopPropagation()}
-        />
+        <>
+          <img
+            className="lightbox-image"
+            src={displaySrc}
+            alt={attachment.description || ''}
+            onClick={(e) => e.stopPropagation()}
+          />
+          {attachment.description && (
+            <div className="lightbox-caption" onClick={(e) => e.stopPropagation()}>
+              {attachment.description}
+            </div>
+          )}
+        </>
       ) : error ? (
         <div className="lightbox-image media-error" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <span>Failed to load</span>

@@ -1788,6 +1788,22 @@ span.img-placeholder.custom-emoji {
   cursor: default;
 }
 
+/* Alt text / description shown under the lightboxed image */
+.lightbox-caption {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 80vw;
+  background: rgba(0, 0, 0, 0.7);
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 6px 12px;
+  border-radius: 6px;
+  text-align: center;
+}
+
 .lightbox-close {
   position: fixed;
   top: 16px;

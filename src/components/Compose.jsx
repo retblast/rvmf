@@ -81,12 +81,17 @@ export function useMediaUploads(instanceUrl, token) {
     setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, description } : u)))
   }
 
-  // Called on blur with the input's final value.
+  // Called on blur with the input's final value. No dirty-checking
+  // against state here: onChange already synced u.description before
+  // blur fires, so comparing would always be equal and never send.
   function commitDescription(key, description) {
     if (!instanceUrl || !token) return
     const target = uploads.find((u) => u.key === key)
-    if (!target?.mediaId || target.description === description) return
+    if (!target?.mediaId) return
     mitra.updateMediaDescription(instanceUrl, token, target.mediaId, description)
+      .then(() => {
+        descriptionsRef.current[key] = description
+      })
       .catch(() => {})
   }
 

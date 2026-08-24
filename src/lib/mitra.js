@@ -206,12 +206,12 @@ export function fetchContext(instanceUrl, token, statusId) {
   })
 }
 
-// excludeTypes: notification types to filter out server-side
-// (exclude_types[]), e.g. ['reblog', 'follow'].
-export function fetchNotifications(instanceUrl, token, { max_id, excludeTypes } = {}) {
+// NOTE: Mitra does not support Mastodon's exclude_types[] / types[]
+// params here — GET /notifications takes only min_id/max_id/limit.
+// Type filtering happens client-side (see NOTIF_FILTERS in App).
+export function fetchNotifications(instanceUrl, token, { max_id } = {}) {
   const params = new URLSearchParams({ limit: '30' })
   if (max_id) params.set('max_id', max_id)
-  for (const type of excludeTypes || []) params.append('exclude_types[]', type)
   return apiFetch(instanceUrl, `/api/v1/notifications?${params.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
   })

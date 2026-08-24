@@ -342,16 +342,14 @@ export default function App() {
     setNotificationsError('')
     setNotificationsHasMore(true)
     try {
-      const items = await mitra.fetchNotifications(session.instanceUrl, session.token, {
-        excludeTypes: notifExcluded,
-      })
+      const items = await mitra.fetchNotifications(session.instanceUrl, session.token)
       setNotifications(items)
     } catch (err) {
       setNotificationsError(err.message || 'Failed to load notifications.')
     } finally {
       setNotificationsLoading(false)
     }
-  }, [session, notifExcluded])
+  }, [session])
 
   const loadMoreNotifications = useCallback(async () => {
     if (!session || notificationsLoadingMore || !notificationsHasMore) return
@@ -360,10 +358,7 @@ export default function App() {
     try {
       const lastId = notifications[notifications.length - 1]?.id
       if (!lastId) return
-      const more = await mitra.fetchNotifications(session.instanceUrl, session.token, {
-        max_id: lastId,
-        excludeTypes: notifExcluded,
-      })
+      const more = await mitra.fetchNotifications(session.instanceUrl, session.token, { max_id: lastId })
       setNotifications((prev) => [...prev, ...more])
       if (more.length < 30) setNotificationsHasMore(false)
     } catch {
@@ -371,7 +366,7 @@ export default function App() {
     } finally {
       setNotificationsLoadingMore(false)
     }
-  }, [session, notificationsLoadingMore, notificationsHasMore, notifications, notifExcluded])
+  }, [session, notificationsLoadingMore, notificationsHasMore, notifications])
 
   // Notifications infinite scroll observer (active in the tab view and
   // in the wide tier's permanent column — same sentinel either way).
@@ -929,12 +924,12 @@ export default function App() {
     if (!session) return
     const interval = setInterval(() => {
       mitra
-        .fetchNotifications(session.instanceUrl, session.token, { excludeTypes: notifExcluded })
+        .fetchNotifications(session.instanceUrl, session.token)
         .then((items) => setNotifications(items))
         .catch(() => {})
     }, 5000)
     return () => clearInterval(interval)
-  }, [view, tier, session, notifExcluded])
+  }, [view, tier, session])
 
   // After a reply posts successfully, insert it into the correct position in
   // the already-loaded tree so it shows up immediately, then swap the panel
@@ -1019,6 +1014,11 @@ export default function App() {
     )
   }
 
+  // Mitra has no exclude_types[] query param, so chip filtering happens
+  // here at render time. The unread badge and marker sync above still
+  // use the full list — hiding a category doesn't mark it read.
+  const visibleNotifications = notifications.filter((n) => !notifExcluded.includes(n.type))
+
   const notificationsBody = (
     <>
       <div className="notif-filters" role="group" aria-label="Notification filters">
@@ -1041,10 +1041,12 @@ export default function App() {
         <div className="empty-state">Loading…</div>
       ) : notifications.length === 0 ? (
         <div className="empty-state">Nothing here yet.</div>
+      ) : visibleNotifications.length === 0 ? (
+        <div className="empty-state">All notifications are filtered out.</div>
       ) : (
         <>
           <div className="timeline-list">
-            {notifications.map((n) => (
+            {visibleNotifications.map((n) => (
               <NotificationRow
                 key={n.id}
                 notification={n}
