@@ -27,7 +27,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
   const textareaRef = useRef(null)
   const [customEmojis, setCustomEmojis] = useState([])
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
-  const { uploads, addFiles, removeUpload, mediaIds, isUploading } = useMediaUploads(
+  const { uploads, addFiles, editDescription, commitDescription, removeUpload, mediaIds, isUploading } = useMediaUploads(
     instanceUrl,
     token
   )
@@ -154,7 +154,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
         <CharCounter current={text.length} max={maxCharacters} />
       </div>
       {poll.enabled && <PollEditorFields poll={poll} />}
-      <MediaUploadStrip uploads={uploads} onRemove={removeUpload} />
+      <MediaUploadStrip uploads={uploads} onRemove={removeUpload} onEditDescription={editDescription} onCommitDescription={commitDescription} />
       <div className="dialog-actions">
         <input
           ref={fileInputRef}

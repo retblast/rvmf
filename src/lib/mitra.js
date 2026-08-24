@@ -173,6 +173,24 @@ export function fetchHomeTimeline(instanceUrl, token, { max_id } = {}) {
   })
 }
 
+// Invalidate the token server-side so "Log out" actually ends the
+// session instead of only forgetting it locally. Fire-and-forget from
+// the caller — failures (offline, already revoked) don't block logout.
+export function revokeToken(instanceUrl, token) {
+  return apiFetch(instanceUrl, '/oauth/revoke', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  })
+}
+
+// Single post by id — used to keep an open thread's focal post fresh.
+export function fetchStatus(instanceUrl, token, statusId) {
+  return apiFetch(instanceUrl, `/api/v1/statuses/${statusId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 export function fetchPublicTimeline(instanceUrl, token, local, { max_id } = {}) {
   const params = new URLSearchParams({ limit: '30' })
   if (local) params.set('local', 'true')
@@ -188,8 +206,21 @@ export function fetchContext(instanceUrl, token, statusId) {
   })
 }
 
-export function fetchNotifications(instanceUrl, token) {
-  return apiFetch(instanceUrl, '/api/v1/notifications?limit=30', {
+// excludeTypes: notification types to filter out server-side
+// (exclude_types[]), e.g. ['reblog', 'follow'].
+export function fetchNotifications(instanceUrl, token, { max_id, excludeTypes } = {}) {
+  const params = new URLSearchParams({ limit: '30' })
+  if (max_id) params.set('max_id', max_id)
+  for (const type of excludeTypes || []) params.append('exclude_types[]', type)
+  return apiFetch(instanceUrl, `/api/v1/notifications?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function fetchFavourites(instanceUrl, token, { max_id } = {}) {
+  const params = new URLSearchParams({ limit: '20' })
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/favourites?${params.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
 }
@@ -317,6 +348,18 @@ export async function uploadMedia(instanceUrl, token, file, description) {
   }
 
   return attachment
+}
+
+// Set or change an attachment's alt text after upload.
+export function updateMediaDescription(instanceUrl, token, mediaId, description) {
+  return apiFetch(instanceUrl, `/api/v1/media/${mediaId}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ description }),
+  })
 }
 
 export function setFavourited(instanceUrl, token, id, favourited) {

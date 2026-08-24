@@ -75,6 +75,16 @@ export function useMitraSession() {
   }, [])
 
   const logout = useCallback(() => {
+    // Invalidate the token server-side so the session can't be reused,
+    // best-effort — logout proceeds even if the request fails. Read from
+    // localStorage rather than state: state may already be stale here.
+    try {
+      const raw = localStorage.getItem(SESSION_KEY)
+      const current = raw ? JSON.parse(raw) : null
+      if (current?.instanceUrl && current?.token) {
+        mitra.revokeToken(current.instanceUrl, current.token).catch(() => {})
+      }
+    } catch { /* persistence unavailable */ }
     setSession(null)
     saveSession(null)
   }, [])

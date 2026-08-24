@@ -35,6 +35,20 @@ import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { GroupsView } from './components/GroupsView.jsx'
 import { ConversationsView } from './components/ConversationsView.jsx'
 import { AccountSettingsView } from './components/AccountSettingsView.jsx'
+import { FavouritesView } from './components/FavouritesView.jsx'
+
+// Server-side notification filters (exclude_types[]). A group counts as
+// "off" when any of its types is excluded; groups never overlap.
+const NOTIF_FILTERS = [
+  ['Mentions', ['mention']],
+  ['Boosts', ['reblog']],
+  ['Quotes', ['quote']],
+  ['Favourites', ['favourite']],
+  ['Reactions', ['pleroma:emoji_reaction']],
+  ['Follows', ['follow', 'follow_request']],
+  ['Polls', ['poll']],
+  ['Edits', ['update']],
+]
 
 export default function App() {
   const { session, beginLogin, logout, authError, completingLogin } = useMitraSession()
@@ -64,6 +78,19 @@ export default function App() {
   const [notifications, setNotifications] = useState([])
   const [notificationsLoading, setNotificationsLoading] = useState(false)
   const [notificationsError, setNotificationsError] = useState('')
+  // Server-side notification filtering (exclude_types[]) — persisted so
+  // the mute choices survive reloads.
+  const [notifExcluded, setNotifExcluded] = useState(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('mitra-notif-excluded'))
+      return Array.isArray(raw) ? raw : []
+    } catch {
+      return []
+    }
+  })
+  const [notificationsHasMore, setNotificationsHasMore] = useState(true)
+  const [notificationsLoadingMore, setNotificationsLoadingMore] = useState(false)
+  const notifSentinelRef = useRef(null)
   // Server-synced read position for notifications (markers API). Compared
   // against notification created_at timestamps — reliable regardless of
   // how the server assigns ids.
@@ -87,6 +114,7 @@ export default function App() {
   const [bookmarksLoadingMore, setBookmarksLoadingMore] = useState(false)
   const bookmarksSentinelRef = useRef(null)
   const [messagesRefreshTick, setMessagesRefreshTick] = useState(0)
+  const [favouritesRefreshTick, setFavouritesRefreshTick] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [clientName, setClientNameState] = useState(() => mitra.getClientName())
   const [notifPolicy, setNotifPolicy] = useState(null)
@@ -295,19 +323,70 @@ export default function App() {
     return () => observer.disconnect()
   }, [view, loadMoreTimeline, timeline.length])
 
+  function toggleNotifFilter(types) {
+    setNotifExcluded((prev) => {
+      const isOn = !types.some((t) => prev.includes(t))
+      const next = isOn
+        ? [...prev, ...types.filter((t) => !prev.includes(t))]
+        : prev.filter((t) => !types.includes(t))
+      try {
+        localStorage.setItem('mitra-notif-excluded', JSON.stringify(next))
+      } catch { /* persistence unavailable */ }
+      return next
+    })
+  }
+
   const loadNotifications = useCallback(async () => {
     if (!session) return
     setNotificationsLoading(true)
     setNotificationsError('')
+    setNotificationsHasMore(true)
     try {
-      const items = await mitra.fetchNotifications(session.instanceUrl, session.token)
+      const items = await mitra.fetchNotifications(session.instanceUrl, session.token, {
+        excludeTypes: notifExcluded,
+      })
       setNotifications(items)
     } catch (err) {
       setNotificationsError(err.message || 'Failed to load notifications.')
     } finally {
       setNotificationsLoading(false)
     }
-  }, [session])
+  }, [session, notifExcluded])
+
+  const loadMoreNotifications = useCallback(async () => {
+    if (!session || notificationsLoadingMore || !notificationsHasMore) return
+    if (notifications.length === 0) return
+    setNotificationsLoadingMore(true)
+    try {
+      const lastId = notifications[notifications.length - 1]?.id
+      if (!lastId) return
+      const more = await mitra.fetchNotifications(session.instanceUrl, session.token, {
+        max_id: lastId,
+        excludeTypes: notifExcluded,
+      })
+      setNotifications((prev) => [...prev, ...more])
+      if (more.length < 30) setNotificationsHasMore(false)
+    } catch {
+      // silently fail — user can scroll again to retry
+    } finally {
+      setNotificationsLoadingMore(false)
+    }
+  }, [session, notificationsLoadingMore, notificationsHasMore, notifications, notifExcluded])
+
+  // Notifications infinite scroll observer (active in the tab view and
+  // in the wide tier's permanent column — same sentinel either way).
+  useEffect(() => {
+    const sentinel = notifSentinelRef.current
+    if (!sentinel) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMoreNotifications()
+      },
+      { rootMargin: '200px' }
+    )
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [loadMoreNotifications, notifications.length])
 
   // Restore the notifications read marker once per session so the unread
   // count on the tab is accurate.
@@ -584,6 +663,9 @@ export default function App() {
     } else if (view === 'messages') {
       // ConversationsView owns its data; bumping the key remounts it.
       setMessagesRefreshTick((t) => t + 1)
+    } else if (view === 'favourites') {
+      // Same pattern as messages: FavouritesView owns its data.
+      setFavouritesRefreshTick((t) => t + 1)
     } else {
       loadTimeline()
     }
@@ -825,6 +907,18 @@ export default function App() {
           }))
         })
         .catch(() => {})
+      // Keep the focal post itself fresh too — counts and flags on the
+      // tree come from /context, but the root's own state doesn't.
+      mitra
+        .fetchStatus(session.instanceUrl, session.token, statusId)
+        .then((fresh) => {
+          setSidePanel((prev) =>
+            prev?.mode === 'thread' && prev.status?.id === fresh.id
+              ? { ...prev, status: fresh }
+              : prev
+          )
+        })
+        .catch(() => {})
     }, 5000)
     return () => clearInterval(interval)
   }, [sidePanel, session])
@@ -835,12 +929,12 @@ export default function App() {
     if (!session) return
     const interval = setInterval(() => {
       mitra
-        .fetchNotifications(session.instanceUrl, session.token)
+        .fetchNotifications(session.instanceUrl, session.token, { excludeTypes: notifExcluded })
         .then((items) => setNotifications(items))
         .catch(() => {})
     }, 5000)
     return () => clearInterval(interval)
-  }, [view, tier, session])
+  }, [view, tier, session, notifExcluded])
 
   // After a reply posts successfully, insert it into the correct position in
   // the already-loaded tree so it shows up immediately, then swap the panel
@@ -927,33 +1021,52 @@ export default function App() {
 
   const notificationsBody = (
     <>
+      <div className="notif-filters" role="group" aria-label="Notification filters">
+        {NOTIF_FILTERS.map(([label, types]) => {
+          const isOff = types.some((t) => notifExcluded.includes(t))
+          return (
+            <button
+              key={label}
+              type="button"
+              className={`notif-filter-chip${isOff ? ' off' : ''}`}
+              onClick={() => toggleNotifFilter(types)}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </div>
       {notificationsError && <div className="banner banner-error">{notificationsError}</div>}
       {notificationsLoading && notifications.length === 0 ? (
         <div className="empty-state">Loading…</div>
       ) : notifications.length === 0 ? (
         <div className="empty-state">Nothing here yet.</div>
       ) : (
-        <div className="timeline-list">
-          {notifications.map((n) => (
-            <NotificationRow
-              key={n.id}
-              notification={n}
-              instanceUrl={session.instanceUrl}
-              token={session.token}
-              onUpdateStatus={updateNotificationStatus}
-              onOpenThread={handleOpenThread}
-              onComposeReply={handleComposeReply}
-              onOpenLightbox={setLightboxAttachment}
-              onOpenProfile={handleOpenProfile}
-              onRespondFollowRequest={respondFollowRequest}
-              currentAccountId={session.account?.id}
-              onDelete={handleDeleteStatus}
-              onEdit={handleEditStatus}
-              onMute={handleMuteAccount}
-              onBlock={handleBlockAccount}
-            />
-          ))}
-        </div>
+        <>
+          <div className="timeline-list">
+            {notifications.map((n) => (
+              <NotificationRow
+                key={n.id}
+                notification={n}
+                instanceUrl={session.instanceUrl}
+                token={session.token}
+                onUpdateStatus={updateNotificationStatus}
+                onOpenThread={handleOpenThread}
+                onComposeReply={handleComposeReply}
+                onOpenLightbox={setLightboxAttachment}
+                onOpenProfile={handleOpenProfile}
+                onRespondFollowRequest={respondFollowRequest}
+                currentAccountId={session.account?.id}
+                onDelete={handleDeleteStatus}
+                onEdit={handleEditStatus}
+                onMute={handleMuteAccount}
+                onBlock={handleBlockAccount}
+              />
+            ))}
+          </div>
+          {notificationsHasMore && <div ref={notifSentinelRef} className="scroll-sentinel" />}
+          {notificationsLoadingMore && <div className="empty-state">Loading…</div>}
+        </>
       )}
     </>
   )
@@ -1214,6 +1327,24 @@ export default function App() {
         />
       )}
 
+      {view === 'favourites' && (
+        <FavouritesView
+          key={favouritesRefreshTick}
+          instanceUrl={session.instanceUrl}
+          token={session.token}
+          onOpenThread={handleOpenThread}
+          onComposeReply={handleComposeReply}
+          onOpenLightbox={setLightboxAttachment}
+          onOpenProfile={handleOpenProfile}
+          onQuote={handleQuote}
+          currentAccountId={session.account?.id}
+          onDelete={handleDeleteStatus}
+          onEdit={handleEditStatus}
+          onMute={handleMuteAccount}
+          onBlock={handleBlockAccount}
+        />
+      )}
+
       {view === 'bookmarks' && (
         <>
           {bookmarksError && <div className="banner banner-error">{bookmarksError}</div>}
@@ -1466,7 +1597,7 @@ export default function App() {
                       value={defaultVisibility}
                       onChange={(e) => handleDefaultVisibilityChange(e.target.value)}
                     >
-                      {['public', 'unlisted', 'private', 'direct'].map((v) => (
+                      {['public', 'unlisted', 'private', 'subscribers', 'direct'].map((v) => (
                         <option key={v} value={v}>{mitraVisibilityLabel(v)}</option>
                       ))}
                     </select>
@@ -1481,6 +1612,14 @@ export default function App() {
                       maxLength={32}
                     />
                   </div>
+                  <button
+                    type="button"
+                    className="settings-menu-row settings-menu-link"
+                    onClick={() => { setSettingsOpen(false); setView('favourites') }}
+                  >
+                    <span>Favourites</span>
+                    <span className="settings-menu-arrow">→</span>
+                  </button>
                   <button
                     type="button"
                     className="settings-menu-row settings-menu-link"

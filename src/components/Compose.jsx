@@ -25,6 +25,9 @@ import { insertAtCaret,
 // to clear before posting.
 export function useMediaUploads(instanceUrl, token) {
   const [uploads, setUploads] = useState([])
+  // Mirror of the latest typed alt text per upload key, readable from
+  // async callbacks without state-peeking races.
+  const descriptionsRef = useRef({})
 
   useEffect(() => {
     return () => {
@@ -41,7 +44,7 @@ export function useMediaUploads(instanceUrl, token) {
         const previewUrl = URL.createObjectURL(file)
         setUploads((prev) => [
           ...prev,
-          { key, file, previewUrl, mediaId: null, uploading: true, error: '' },
+          { key, file, previewUrl, description: '', mediaId: null, uploading: true, error: '' },
         ])
         mitra
           .uploadMedia(instanceUrl, token, file)
@@ -51,6 +54,13 @@ export function useMediaUploads(instanceUrl, token) {
                 u.key === key ? { ...u, uploading: false, mediaId: attachment.id } : u
               )
             )
+            // Alt text typed while the upload was still in flight never
+            // got a mediaId to target — push it up now.
+            const pending = descriptionsRef.current[key]
+            if (pending && instanceUrl && token) {
+              mitra.updateMediaDescription(instanceUrl, token, attachment.id, pending)
+                .catch(() => {})
+            }
           })
           .catch((err) => {
             setUploads((prev) =>
@@ -64,7 +74,24 @@ export function useMediaUploads(instanceUrl, token) {
       })
   }
 
+  // Local state updates as the user types; the server copy is synced on
+  // blur (commitDescription below sends only when it has a mediaId).
+  function editDescription(key, description) {
+    descriptionsRef.current[key] = description
+    setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, description } : u)))
+  }
+
+  // Called on blur with the input's final value.
+  function commitDescription(key, description) {
+    if (!instanceUrl || !token) return
+    const target = uploads.find((u) => u.key === key)
+    if (!target?.mediaId || target.description === description) return
+    mitra.updateMediaDescription(instanceUrl, token, target.mediaId, description)
+      .catch(() => {})
+  }
+
   function removeUpload(key) {
+    delete descriptionsRef.current[key]
     setUploads((prev) => {
       const target = prev.find((u) => u.key === key)
       if (target) URL.revokeObjectURL(target.previewUrl)
@@ -75,34 +102,45 @@ export function useMediaUploads(instanceUrl, token) {
   const mediaIds = uploads.filter((u) => u.mediaId).map((u) => u.mediaId)
   const isUploading = uploads.some((u) => u.uploading)
 
-  return { uploads, addFiles, removeUpload, mediaIds, isUploading }
+  return { uploads, addFiles, editDescription, commitDescription, removeUpload, mediaIds, isUploading }
 }
 
-export function MediaUploadStrip({ uploads, onRemove }) {
+export function MediaUploadStrip({ uploads, onRemove, onEditDescription, onCommitDescription }) {
   if (uploads.length === 0) return null
   return (
     <div className="upload-strip">
       {uploads.map((u) => (
         <div className="upload-thumb" key={u.key}>
-          {u.file.type.startsWith('image/') ? (
-            <img src={u.previewUrl} alt="" />
-          ) : u.file.type.startsWith('video/') ? (
-            <video src={u.previewUrl} muted />
-          ) : (
-            <div className="upload-thumb-generic">
-              <Paperclip size={16} />
-            </div>
-          )}
-          {u.uploading && <div className="upload-thumb-status">Uploading…</div>}
-          {u.error && <div className="upload-thumb-status error">Failed</div>}
-          <button
-            type="button"
-            className="upload-thumb-remove"
-            onClick={() => onRemove(u.key)}
-            aria-label="Remove attachment"
-          >
-            <X size={12} />
-          </button>
+          <div className="upload-thumb-media">
+            {u.file.type.startsWith('image/') ? (
+              <img src={u.previewUrl} alt="" />
+            ) : u.file.type.startsWith('video/') ? (
+              <video src={u.previewUrl} muted />
+            ) : (
+              <div className="upload-thumb-generic">
+                <Paperclip size={16} />
+              </div>
+            )}
+            {u.uploading && <div className="upload-thumb-status">Uploading…</div>}
+            {u.error && <div className="upload-thumb-status error">Failed</div>}
+            <button
+              type="button"
+              className="upload-thumb-remove"
+              onClick={() => onRemove(u.key)}
+              aria-label="Remove attachment"
+            >
+              <X size={12} />
+            </button>
+          </div>
+          <input
+            type="text"
+            className="upload-thumb-alt"
+            placeholder="Describe…"
+            value={u.description}
+            onChange={(e) => onEditDescription?.(u.key, e.target.value)}
+            onBlur={(e) => onCommitDescription?.(u.key, e.target.value)}
+            aria-label="Media description"
+          />
         </div>
       ))}
     </div>
@@ -119,12 +157,16 @@ export function visibilityLabel(v) {
       return 'Followers only'
     case 'direct':
       return 'Direct message'
+    case 'subscribers':
+      return 'Subscribers only'
+    case 'conversation':
+      return 'Conversation'
     default:
       return v
   }
 }
 
-const VISIBILITY_OPTIONS = ['public', 'unlisted', 'private', 'direct']
+const VISIBILITY_OPTIONS = ['public', 'unlisted', 'private', 'subscribers', 'direct']
 
 // Renders the standard visibility options, plus whatever non-standard
 // value is currently set (e.g. Mitra's 'subscribers') so it displays
@@ -418,7 +460,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
   const textareaRef = useRef(null)
   const [customEmojis, setCustomEmojis] = useState([])
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
-  const { uploads, addFiles, removeUpload, mediaIds, isUploading } = useMediaUploads(
+  const { uploads, addFiles, editDescription, commitDescription, removeUpload, mediaIds, isUploading } = useMediaUploads(
     instanceUrl,
     token
   )
@@ -548,7 +590,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
           </div>
         )}
         {poll.enabled && <PollEditorFields poll={poll} />}
-        <MediaUploadStrip uploads={uploads} onRemove={removeUpload} />
+        <MediaUploadStrip uploads={uploads} onRemove={removeUpload} onEditDescription={editDescription} onCommitDescription={commitDescription} />
         <div className="dialog-actions">
           <input
             ref={fileInputRef}
