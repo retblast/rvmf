@@ -2232,6 +2232,13 @@ button.mention-link {
   color: #e01b24;
 }
 
+/* Amber-tinted offline notice shown above the headerbar */
+.banner.banner-offline {
+  background: rgba(255, 190, 10, 0.15);
+  border-color: rgba(255, 190, 10, 0.5);
+  color: var(--text-primary);
+}
+
 /* ---- main layout: timeline + thread side panel (medium/narrow tiers) ---- */
 
 .main-layout {

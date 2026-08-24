@@ -17,16 +17,35 @@ function getRedirectUri() {
   return `${window.location.origin}${window.location.pathname}`
 }
 
-async function apiFetch(instanceUrl, path, options = {}) {
-  let res
-  try {
-    res = await fetch(`${instanceUrl}${path}`, options)
-  } catch {
-    throw new Error(
-      "Couldn't reach that instance. Check the address, and that it allows requests from this origin (CORS)."
-    )
-  }
+// Flaky-connection behavior for all API calls:
+// - Every request carries an abort timeout, so a dead connection can't
+//   leave a spinner up forever (reads 20s, writes 60s — big payloads
+//   like base64 avatars legitimately take longer).
+// - Read-only requests auto-retry twice with backoff on network errors
+//   and transient server responses (429/5xx). Writes never auto-retry:
+//   they aren't safely replayable.
+const READ_TIMEOUT_MS = 20_000
+const WRITE_TIMEOUT_MS = 60_000
+const RETRYABLE_STATUS = new Set([429, 502, 503, 504])
+const READ_ATTEMPTS = 3 // initial try + 2 retries
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function fetchWithTimeout(instanceUrl, path, options, timeoutMs) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(`${instanceUrl}${path}`, { ...options, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+// Shared response handling: HTTP errors become Error with the server's
+// message; 204s become null; everything else parses as JSON.
+async function parseResponse(res) {
   if (!res.ok) {
     let detail = res.statusText
     try {
@@ -37,9 +56,44 @@ async function apiFetch(instanceUrl, path, options = {}) {
     }
     throw new Error(`${detail} (${res.status})`)
   }
-
   if (res.status === 204) return null
   return res.json()
+}
+
+async function apiFetch(instanceUrl, path, options = {}) {
+  const method = (options.method || 'GET').toUpperCase()
+  const isRead = method === 'GET' || method === 'HEAD'
+  const maxAttempts = isRead ? READ_ATTEMPTS : 1
+
+  let lastRes = null
+  let timedOut = false
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) await sleep(800 * 2 ** (attempt - 1))
+    try {
+      const res = await fetchWithTimeout(
+        instanceUrl,
+        path,
+        options,
+        isRead ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS
+      )
+      if (res.ok || !RETRYABLE_STATUS.has(res.status)) {
+        return await parseResponse(res)
+      }
+      // 429/5xx on a read — maybe transient, try again
+      lastRes = res
+    } catch {
+      timedOut = true
+    }
+  }
+
+  if (lastRes) return parseResponse(lastRes) // throws the HTTP error
+  if (timedOut) {
+    throw new Error('Request timed out — the instance took too long to answer.')
+  }
+  throw new Error(
+    "Couldn't reach that instance. Check the address, and that it allows requests from this origin (CORS)."
+  )
 }
 
 function loadAppCredentials(instanceUrl) {
@@ -292,11 +346,13 @@ export async function uploadMedia(instanceUrl, token, file, description) {
 
   let res
   try {
-    res = await fetch(`${instanceUrl}/api/v2/media`, {
+    // Uploads legitimately take a while on slow links — 5 minutes,
+    // not the default write timeout.
+    res = await fetchWithTimeout(instanceUrl, '/api/v2/media', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: form,
-    })
+    }, 300_000)
   } catch {
     throw new Error("Couldn't reach the instance to upload this file.")
   }
@@ -636,7 +692,7 @@ export function editStatus(instanceUrl, token, id, text) {
 async function apiText(instanceUrl, path, options = {}) {
   let res
   try {
-    res = await fetch(`${instanceUrl}${path}`, options)
+    res = await fetchWithTimeout(instanceUrl, path, options, 30_000)
   } catch {
     throw new Error("Couldn't reach that instance.")
   }

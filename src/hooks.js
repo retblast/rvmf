@@ -129,7 +129,12 @@ export function useClientMedia(...args) {
     if (token && instanceUrl && url.startsWith(instanceUrl)) {
       headers['Authorization'] = `Bearer ${token}`
     }
-    return fetch(proxyUrl(url), { headers })
+    // Timeout so a dead connection can't pin a media slot on blurhash
+    // forever — the negative cache remembers the failure briefly.
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 30_000)
+    return fetch(proxyUrl(url), { headers, signal: controller.signal })
+      .finally(() => clearTimeout(timer))
   }
 
   // An "ok" response can still be garbage: when an origin prunes a file it

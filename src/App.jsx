@@ -373,6 +373,26 @@ export default function App() {
     return () => observer.disconnect()
   }, [loadMoreNotifications, notifications.length])
 
+  // Flaky-connection awareness: while the browser reports itself offline,
+  // all polling pauses and an amber banner explains why; coming back
+  // online refreshes the current view and notifications immediately.
+  const [online, setOnline] = useState(() => navigator.onLine)
+  useEffect(() => {
+    function goOffline() { setOnline(false) }
+    function goOnline() {
+      setOnline(true)
+      if (!session) return
+      refreshRef.current()
+      if (view === 'notifications' || tier === 'wide') loadNotifications()
+    }
+    window.addEventListener('offline', goOffline)
+    window.addEventListener('online', goOnline)
+    return () => {
+      window.removeEventListener('offline', goOffline)
+      window.removeEventListener('online', goOnline)
+    }
+  }, [session, view, tier, loadNotifications])
+
   // Restore the notifications read marker once per session so the unread
   // count on the tab is accurate.
   useEffect(() => {
@@ -898,6 +918,7 @@ export default function App() {
     if (sidePanel?.mode !== 'thread' || !sidePanel.status) return
     const statusId = sidePanel.status.id
     const interval = setInterval(() => {
+      if (!navigator.onLine) return // paused while offline; reconnect refreshes
       refreshContext(statusId)
       // Keep the focal post itself fresh too — counts and flags on the
       // tree come from /context, but the root's own state doesn't.
@@ -920,6 +941,7 @@ export default function App() {
     if (view !== 'notifications' && tier !== 'wide') return
     if (!session) return
     const interval = setInterval(() => {
+      if (!navigator.onLine) return // paused while offline; reconnect refreshes
       mitra
         .fetchNotifications(session.instanceUrl, session.token)
         .then((items) => setNotifications(items))
@@ -938,6 +960,7 @@ export default function App() {
   useEffect(() => {
     if (!session || view !== 'home') return
     const interval = setInterval(() => {
+      if (!navigator.onLine) return // paused while offline; reconnect refreshes
       const posts = timelineRef.current.slice(0, 30)
       if (posts.length === 0) return
       mitra
@@ -1055,7 +1078,14 @@ export default function App() {
           )
         })}
       </div>
-      {notificationsError && <div className="banner banner-error">{notificationsError}</div>}
+      {notificationsError && (
+        <>
+          <div className="banner banner-error">{notificationsError}</div>
+          <div className="empty-state">
+            <button className="pill-btn suggested" onClick={loadNotifications}>Retry</button>
+          </div>
+        </>
+      )}
       {notificationsLoading && notifications.length === 0 ? (
         <div className="empty-state">Loading…</div>
       ) : notifications.length === 0 ? (
@@ -1132,7 +1162,14 @@ export default function App() {
     <div className="timeline-wrap">
       {view === 'home' && (
         <>
-          {error && <div className="banner banner-error">{error}</div>}
+          {error && (
+            <>
+              <div className="banner banner-error">{error}</div>
+              <div className="empty-state">
+                <button className="pill-btn suggested" onClick={loadTimeline}>Retry</button>
+              </div>
+            </>
+          )}
           <div className="section-label">Home timeline</div>
           {loading && timeline.length === 0 ? (
             <div className="empty-state">Loading…</div>
@@ -1172,7 +1209,14 @@ export default function App() {
 
       {view === 'explore' && (
         <>
-          {exploreError && <div className="banner banner-error">{exploreError}</div>}
+          {exploreError && (
+            <>
+              <div className="banner banner-error">{exploreError}</div>
+              <div className="empty-state">
+                <button className="pill-btn suggested" onClick={() => loadExplore(exploreFeed)}>Retry</button>
+              </div>
+            </>
+          )}
           <div className="explore-header">
             <div className="section-label" style={{ paddingBottom: 0 }}>
               Explore
@@ -1370,7 +1414,14 @@ export default function App() {
 
       {view === 'bookmarks' && (
         <>
-          {bookmarksError && <div className="banner banner-error">{bookmarksError}</div>}
+          {bookmarksError && (
+            <>
+              <div className="banner banner-error">{bookmarksError}</div>
+              <div className="empty-state">
+                <button className="pill-btn suggested" onClick={loadBookmarks}>Retry</button>
+              </div>
+            </>
+          )}
           <div className="section-label">Bookmarks</div>
           {bookmarksLoading && bookmarks.length === 0 ? (
             <div className="empty-state">Loading…</div>
@@ -1455,6 +1506,11 @@ export default function App() {
   return (
     <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, defaultVisibility, instanceUrl: session.instanceUrl, token: session.token }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
+      {!online && (
+        <div className="banner banner-offline">
+          You&apos;re offline — updates paused. Content is from cache.
+        </div>
+      )}
       {showPullIndicator && (
         <div className={`pull-indicator${refreshing ? ' refreshing' : ''}`} style={pull ? { transform: `translateX(-50%) translateY(${Math.min(pull / 2, 24)}px)` } : undefined}>
           <RotateCw size={14} className={refreshing ? 'spin' : undefined} />
