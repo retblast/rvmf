@@ -1065,6 +1065,15 @@ button {
   to { transform: rotate(360deg); }
 }
 
+/* Generic spinner for backfill buttons etc. */
+.spin {
+  animation: pull-spin 0.9s linear infinite;
+}
+
+@keyframes pull-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ---- lists & groups ---- */
 
 .lists-create-row {
@@ -2518,6 +2527,92 @@ textarea:focus-visible {
 .profile-stats strong {
   color: var(--text-primary);
   font-weight: 700;
+}
+
+/* Clickable stat (followers/following/subscribers) */
+.profile-stat-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.profile-stat-link:hover {
+  text-decoration: underline;
+}
+
+.profile-stat-link.active {
+  color: var(--accent);
+}
+
+/* "Load older posts from origin" backfill buttons */
+.backfill-btn {
+  margin: 0 16px 10px;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Follow tuning popover on profiles */
+.follow-options-dropdown {
+  min-width: 230px;
+}
+
+.profile-edit-toggles-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+/* Who-favourited / who-boosted popover */
+.accounts-popover {
+  min-width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.accounts-popover-heading {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  padding: 6px 12px 2px;
+}
+
+.accounts-popover-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.accounts-popover-list .search-account-row {
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+
+/* Count that opens the who-did-this popover; sits beside its icon */
+.action-count-btn {
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.action-count-btn:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.action-btn-group {
+  display: flex;
+  align-items: center;
 }
 
 .profile-tabs {

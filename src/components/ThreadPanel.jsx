@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ArrowLeft, X } from 'lucide-react'
+import { ArrowLeft, LoaderCircle, X } from 'lucide-react'
+import * as mitra from '../lib/mitra'
 import { PostRow, ThreadReply } from './Post.jsx'
 import { ReplyComposerFields } from './ReplyComposer.jsx'
 
@@ -42,6 +43,7 @@ export function ThreadPanelContent({
   onUpdateReply,
   onClose,
   onCancelCompose,
+  onRefreshContext,
   instanceUrl,
   token,
   onReplyPosted,
@@ -58,6 +60,23 @@ export function ThreadPanelContent({
   const status = panel?.status
   const state = status ? replyStates[status.id] : null
   const composingStatusId = panel?.composingStatusId || null
+  const [backfilling, setBackfilling] = useState(false)
+
+  // Remote posts only show the replies this instance has seen; this asks
+  // it to pull the conversation from the origin server, then refreshes.
+  const isRemote = Boolean(status?.account?.acct?.includes('@'))
+  async function backfillConversation() {
+    if (!status || backfilling) return
+    setBackfilling(true)
+    try {
+      await mitra.loadConversation(instanceUrl, token, status.id, true)
+      onRefreshContext?.(status.id)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBackfilling(false)
+    }
+  }
 
   const statusById = useMemo(() => {
     const map = new Map()
@@ -208,6 +227,17 @@ export function ThreadPanelContent({
       >
         {state?.loading && <div className="reply-loading">Loading replies…</div>}
         {state?.error && <div className="banner banner-error">{state.error}</div>}
+        {isRemote && (
+          <button
+            type="button"
+            className="pill-btn backfill-btn"
+            onClick={backfillConversation}
+            disabled={backfilling}
+          >
+            <LoaderCircle size={13} className={backfilling ? 'spin' : undefined} style={{ marginRight: 4 }} />
+            {backfilling ? 'Fetching from origin…' : 'Load missing replies from origin'}
+          </button>
+        )}
         {state?.items?.map((node) => (
           <motion.div key={node.status.id} variants={descendantItemVariants} data-status-id={node.status.id} className={focusedReplyId === node.status.id ? 'focused-reply' : undefined}>
             <ThreadReply

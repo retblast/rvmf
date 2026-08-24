@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import * as mitra from '../lib/mitra'
 import { formatRelativeTime } from '../lib/render.jsx'
+import { Avatar } from './Media.jsx'
 
 function downloadCsv(filename, csv) {
   const blob = new Blob([csv], { type: 'text/csv' })
@@ -187,10 +188,59 @@ function PortabilityCard({ instanceUrl, token }) {
   )
 }
 
+// Follow requests you've sent that haven't been accepted yet. Display
+// only — Mitra has no withdraw endpoint; unfollowing the account is the
+// implicit cancel.
+function OutgoingRequestsCard({ instanceUrl, token, onOpenProfile }) {
+  const [requests, setRequests] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    mitra.fetchOutgoingFollowRequests(instanceUrl, token)
+      .then((list) => { if (!cancelled) setRequests(list || []) })
+      .catch((err) => { if (!cancelled) setError(err.message || 'Failed to load.') })
+    return () => { cancelled = true }
+  }, [instanceUrl, token])
+
+  return (
+    <div className="account-card">
+      <div className="account-card-heading">Sent follow requests</div>
+      {error && <div className="banner banner-error">{error}</div>}
+      {!requests ? (
+        <div className="empty-state">Loading…</div>
+      ) : requests.length === 0 ? (
+        <div className="poll-meta">No pending requests.</div>
+      ) : (
+        <div className="session-list">
+          {requests.map((account) => (
+            <button
+              type="button"
+              key={account.id}
+              className="search-account-row"
+              onClick={() => onOpenProfile?.(account)}
+            >
+              <Avatar name={account.display_name || account.username} src={account.avatar} />
+              <div className="search-account-names">
+                <span className="post-name">{account.display_name || account.username}</span>
+                <span className="post-handle">@{account.acct || account.username}</span>
+              </div>
+              <span className="post-time">{formatRelativeTime(account.created_at)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="poll-meta">
+        Waiting on protected accounts to approve. Unfollowing withdraws a request.
+      </div>
+    </div>
+  )
+}
+
 // Account security: password change and active session management.
 // Reached from the settings menu; Mitra's settings module backs both
 // (/v1/settings/change_password, /v1/settings/sessions).
-export function AccountSettingsView({ instanceUrl, token }) {
+export function AccountSettingsView({ instanceUrl, token, onOpenProfile }) {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [pwBusy, setPwBusy] = useState(false)
@@ -326,6 +376,8 @@ export function AccountSettingsView({ instanceUrl, token }) {
           Sessions are login tokens — apps you&rsquo;ve signed in with. Revoking one signs that app out.
         </div>
       </form>
+
+      <OutgoingRequestsCard instanceUrl={instanceUrl} token={token} onOpenProfile={onOpenProfile} />
 
       <PortabilityCard instanceUrl={instanceUrl} token={token} />
     </div>

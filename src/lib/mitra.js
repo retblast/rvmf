@@ -800,10 +800,18 @@ export function fetchRelationships(instanceUrl, token, accountIds) {
   })
 }
 
-export function followAccount(instanceUrl, token, accountId) {
+// options: { reblogs, replies } — whether to receive the account's
+// reposts/replies in the home timeline. Both default true server-side.
+export function followAccount(instanceUrl, token, accountId, options = {}) {
+  const body = {}
+  if (options.reblogs != null) body.reblogs = options.reblogs
+  if (options.replies != null) body.replies = options.replies
   return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/follow`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
+    headers: Object.keys(body).length > 0
+      ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+      : { Authorization: `Bearer ${token}` },
+    ...(Object.keys(body).length > 0 ? { body: JSON.stringify(body) } : {}),
   })
 }
 
@@ -811,6 +819,96 @@ export function unfollowAccount(instanceUrl, token, accountId) {
   return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/unfollow`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// Only works on your own followers; the target stops following you
+// without being notified.
+export function removeFromFollowers(instanceUrl, token, accountId) {
+  return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/remove_from_followers`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// Paginated with max_id over relationship ids; limit maxes at 40.
+export function fetchFollowers(instanceUrl, token, accountId, { max_id } = {}) {
+  const params = new URLSearchParams({ limit: '40' })
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/followers?${params.toString()}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+}
+
+export function fetchFollowing(instanceUrl, token, accountId, { max_id } = {}) {
+  const params = new URLSearchParams({ limit: '40' })
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/following?${params.toString()}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+}
+
+// Returns Subscription[] — { id, sender: Account, expires_at }. Only
+// meaningful on accounts with Monero subscriptions enabled.
+export function fetchSubscribers(instanceUrl, token, accountId, { max_id } = {}) {
+  const params = new URLSearchParams({ limit: '40' })
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/subscribers?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// Which of the user's lists contain this account — one call, replacing
+// a fetch-all-members loop per list.
+export function fetchAccountLists(instanceUrl, token, accountId) {
+  return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/lists`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// Ask the instance to fetch the remote account's posts (or pinned posts,
+// collection='featured') from its origin server. 204 on success.
+export function loadRemoteActivities(instanceUrl, token, accountId, collection = 'outbox') {
+  return apiFetch(instanceUrl, `/api/v1/accounts/${accountId}/load_activities`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ collection }),
+  })
+}
+
+export function fetchFavouritedBy(instanceUrl, token, statusId, { max_id } = {}) {
+  const params = new URLSearchParams({ limit: '40' })
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/statuses/${statusId}/favourited_by?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function fetchRebloggedBy(instanceUrl, token, statusId, { max_id } = {}) {
+  const params = new URLSearchParams({ limit: '40' })
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/statuses/${statusId}/reblogged_by?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// Follow requests this account has sent that haven't been accepted yet.
+export function fetchOutgoingFollowRequests(instanceUrl, token, { max_id } = {}) {
+  const params = new URLSearchParams({ limit: '40' })
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/follow_requests/outgoing?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// Ask the instance to pull replies/conversation for a remote post from
+// its origin server. useContext=true tries the whole conversation, not
+// just direct replies. 204 on success — refetch /context afterwards.
+export function loadConversation(instanceUrl, token, statusId, useContext = false) {
+  return apiFetch(instanceUrl, `/api/v1/statuses/${statusId}/load_conversation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ use_context: useContext }),
   })
 }
 

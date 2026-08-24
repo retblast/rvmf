@@ -1,4 +1,4 @@
-import { memo, useContext, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import {
   MessageCircle,
   Repeat2,
@@ -72,6 +72,8 @@ export function ThreadReply({
 }) {
   const [busy, setBusy] = useState(false)
   const [mediaHidden, setMediaHidden] = useState(false)
+  // null | { kind: 'favourited_by' | 'reblogged_by' } — who-did-this popover
+  const [accountsView, setAccountsView] = useState(null)
   const { openPickerId, setOpenPickerId } = useContext(PickerContext)
   const showPicker = openPickerId === node.status.id
   const setShowPicker = (open) => setOpenPickerId(open ? node.status.id : null)
@@ -233,17 +235,27 @@ export function ThreadReply({
                 busy={busy}
                 onBoost={toggleReblog}
                 onQuote={() => onQuote(status)}
+                onShowReblogs={compact ? undefined : () => setAccountsView({ kind: 'reblogged_by' })}
               />
             )}
-            <button
-              className={`action-btn${status.favourited ? ' favorited' : ''}`}
-              aria-label="Favorite"
-              onClick={toggleFavourite}
-              disabled={busy}
-            >
-              <Star size={15} fill={status.favourited ? 'currentColor' : 'none'} />
-              {!compact && <span>{status.favourites_count}</span>}
-            </button>
+            {/* Buttons can't nest — the "who favourited" count is a sibling */}
+            <div className="action-btn-group">
+              <button
+                className={`action-btn${status.favourited ? ' favorited' : ''}`}
+                aria-label="Favorite"
+                onClick={toggleFavourite}
+                disabled={busy}
+              >
+                <Star size={15} fill={status.favourited ? 'currentColor' : 'none'} />
+              </button>
+              {!compact && (
+                <CountButton
+                  count={status.favourites_count}
+                  title="Who favourited"
+                  onClick={() => setAccountsView({ kind: 'favourited_by' })}
+                />
+              )}
+            </div>
             <button
               className={`action-btn${status.bookmarked ? ' bookmarked' : ''}`}
               aria-label="Bookmark"
@@ -292,6 +304,19 @@ export function ThreadReply({
               onEdit={onEdit}
               onUpdate={onUpdate}
             />
+            {accountsView && (
+              <>
+                <div className="boost-dropdown-backdrop" onClick={(e) => { e.stopPropagation(); setAccountsView(null) }} />
+                <AccountsPopover
+                  kind={accountsView.kind}
+                  statusId={status.id}
+                  instanceUrl={instanceUrl}
+                  token={token}
+                  onClose={() => setAccountsView(null)}
+                  onOpenProfile={onOpenProfile}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -403,8 +428,74 @@ function ReactionPicker({ status, instanceUrl, token, onReact, onClose }) {
   )
 }
 
-function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote }) {
-  const [open, setOpen] = useState(false)
+// Popover listing the accounts behind a favourite/boost count. Fetches
+// once per open; rows open profiles via onOpenProfile.
+function AccountsPopover({ kind, statusId, instanceUrl, token, onClose, onOpenProfile }) {
+  const [accounts, setAccounts] = useState(null)
+  const [error, setError] = useState('')
+  useEscapeKey(onClose)
+
+  const fetchPage = useCallback(() => (
+    kind === 'favourited_by'
+      ? mitra.fetchFavouritedBy(instanceUrl, token, statusId)
+      : mitra.fetchRebloggedBy(instanceUrl, token, statusId)
+  ), [kind, instanceUrl, token, statusId])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchPage()
+      .then((list) => { if (!cancelled) setAccounts(list || []) })
+      .catch((err) => { if (!cancelled) setError(err.message || 'Failed to load.') })
+    return () => { cancelled = true }
+  }, [fetchPage])
+
+  return (
+    <div className="boost-dropdown accounts-popover" onClick={(e) => e.stopPropagation()}>
+      <div className="accounts-popover-heading">{kind === 'favourited_by' ? 'Favourited by' : 'Boosted by'}</div>
+      {error && <div className="banner banner-error">{error}</div>}
+      {!accounts && !error ? (
+        <span className="poll-meta">Loading…</span>
+      ) : accounts?.length === 0 ? (
+        <span className="poll-meta">Nobody yet.</span>
+      ) : (
+        <div className="accounts-popover-list">
+          {(accounts || []).map((account) => (
+            <button
+              type="button"
+              key={account.id}
+              className="search-account-row"
+              onClick={() => { onClose(); onOpenProfile?.(account) }}
+            >
+              <Avatar name={account.display_name || account.username} src={account.avatar} />
+              <div className="search-account-names">
+                <span className="post-name">{account.display_name || account.username}</span>
+                <span className="post-handle">@{account.acct || account.username}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Count span that doubles as a "who did this" button; hidden when the
+// count is zero (or in compact mode).
+function CountButton({ count, title, onClick }) {
+  if (!(count > 0)) return null
+  return (
+    <button
+      type="button"
+      className="action-count-btn"
+      title={title}
+      onClick={(e) => { e.stopPropagation(); onClick() }}
+    >
+      {count}
+    </button>
+  )
+}
+
+function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote, onShowReblogs }) {  const [open, setOpen] = useState(false)
   const ref = useRef(null)
   useEscapeKey(() => setOpen(false), open)
 
@@ -419,6 +510,11 @@ function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote }) {
 
   return (
     <div className="boost-dropdown-wrap" ref={ref}>
+      {/* Sibling, not child: buttons can't nest. Tucked against the
+          trigger with a negative margin so it still reads as its label. */}
+      {onShowReblogs && !open && (
+        <CountButton count={reblogsCount} title="Who boosted" onClick={onShowReblogs} />
+      )}
       <button
         className={`action-btn boost-trigger${reblogged ? ' boosted' : ''}`}
         aria-label="Boost or quote"
@@ -426,7 +522,6 @@ function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote }) {
         disabled={busy}
       >
         <Repeat2 size={15} />
-        {reblogsCount > 0 && <span>{reblogsCount}</span>}
       </button>
       {open && (
         <>
@@ -692,6 +787,8 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
 export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onQuote, statusById, depth, highlightedId, onHighlightParent, currentAccountId, onDelete, onMute, onBlock, onEdit, composerFor, composerProps }) {
   const [busy, setBusy] = useState(false)
   const [mediaHidden, setMediaHidden] = useState(false)
+  // null | { kind: 'favourited_by' | 'reblogged_by' } — who-did-this popover
+  const [accountsView, setAccountsView] = useState(null)
   const { openPickerId, setOpenPickerId } = useContext(PickerContext)
   const isBoost = Boolean(post.reblog)
   const status = unwrapStatus(post)
@@ -852,17 +949,25 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
                 busy={busy}
                 onBoost={toggleReblog}
                 onQuote={() => onQuote(status)}
+                onShowReblogs={() => setAccountsView({ kind: 'reblogged_by' })}
               />
             )}
-            <button
-              className={`action-btn${status.favourited ? ' favorited' : ''}`}
-              aria-label="Favorite"
-              onClick={toggleFavourite}
-              disabled={busy}
-            >
-              <Star size={15} fill={status.favourited ? 'currentColor' : 'none'} />
-              <span>{status.favourites_count}</span>
-            </button>
+            {/* Buttons can't nest — the "who favourited" count is a sibling */}
+            <div className="action-btn-group">
+              <button
+                className={`action-btn${status.favourited ? ' favorited' : ''}`}
+                aria-label="Favorite"
+                onClick={toggleFavourite}
+                disabled={busy}
+              >
+                <Star size={15} fill={status.favourited ? 'currentColor' : 'none'} />
+              </button>
+              <CountButton
+                count={status.favourites_count}
+                title="Who favourited"
+                onClick={() => setAccountsView({ kind: 'favourited_by' })}
+              />
+            </div>
             <button
               className={`action-btn${status.bookmarked ? ' bookmarked' : ''}`}
               aria-label="Bookmark"
@@ -907,6 +1012,19 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
               onEdit={onEdit}
               onUpdate={onUpdate}
             />
+            {accountsView && (
+              <>
+                <div className="boost-dropdown-backdrop" onClick={(e) => { e.stopPropagation(); setAccountsView(null) }} />
+                <AccountsPopover
+                  kind={accountsView.kind}
+                  statusId={status.id}
+                  instanceUrl={instanceUrl}
+                  token={token}
+                  onClose={() => setAccountsView(null)}
+                  onOpenProfile={onOpenProfile}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>

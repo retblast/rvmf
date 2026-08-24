@@ -741,6 +741,22 @@ export default function App() {
   // stale cache, so what's shown is actually current. Every thread opens
   // through this, unconditionally — the OP, a notification's status, a
   // reply, a reply to a reply, all the same path, all the same panel.
+  // Force-refetch the reply tree for a thread root. Shared by the
+  // auto-refresh interval, the post-reply refresh, and the "load missing
+  // replies from origin" backfill button.
+  const refreshContext = useCallback((rootId) => {
+    if (!session || !rootId) return
+    mitra.fetchContext(session.instanceUrl, session.token, rootId)
+      .then((context) => {
+        const tree = buildReplyTree(context.descendants, rootId)
+        setReplyStates((prev) => ({
+          ...prev,
+          [rootId]: { loading: false, error: '', items: tree, ancestors: context.ancestors },
+        }))
+      })
+      .catch(() => {})
+  }, [session])
+
   const ensureRepliesLoaded = useCallback(
     (status) => {
       setReplyStates((prev) => {
@@ -892,16 +908,7 @@ export default function App() {
     if (sidePanel?.mode !== 'thread' || !sidePanel.status) return
     const statusId = sidePanel.status.id
     const interval = setInterval(() => {
-      mitra
-        .fetchContext(session.instanceUrl, session.token, statusId)
-        .then((context) => {
-          const tree = buildReplyTree(context.descendants, statusId)
-          setReplyStates((prev) => ({
-            ...prev,
-            [statusId]: { loading: false, error: '', items: tree, ancestors: context.ancestors },
-          }))
-        })
-        .catch(() => {})
+      refreshContext(statusId)
       // Keep the focal post itself fresh too — counts and flags on the
       // tree come from /context, but the root's own state doesn't.
       mitra
@@ -916,7 +923,7 @@ export default function App() {
         .catch(() => {})
     }, 5000)
     return () => clearInterval(interval)
-  }, [sidePanel, session])
+  }, [sidePanel, session, refreshContext])
 
   // Auto-refresh notifications every 5 seconds (silent)
   useEffect(() => {
@@ -962,17 +969,7 @@ export default function App() {
     setTimeout(() => {
       const panel = sidePanelRef.current
       const rootId = panel?.threadRoot?.id || panel?.status?.id
-      if (rootId && session) {
-        mitra.fetchContext(session.instanceUrl, session.token, rootId)
-          .then((context) => {
-            const tree = buildReplyTree(context.descendants, rootId)
-            setReplyStates((prev2) => ({
-              ...prev2,
-              [rootId]: { loading: false, error: '', items: tree, ancestors: context.ancestors },
-            }))
-          })
-          .catch(() => {})
-      }
+      if (rootId) refreshContext(rootId)
     }, 1500)
   }
 
@@ -1263,6 +1260,7 @@ export default function App() {
         <AccountSettingsView
           instanceUrl={session.instanceUrl}
           token={session.token}
+          onOpenProfile={(account) => { setView('home'); handleOpenProfile(account) }}
         />
       )}
 
@@ -1420,6 +1418,7 @@ export default function App() {
     token: session.token,
     onReplyPosted: handleReplyPosted,
     onCancelCompose: handleCancelCompose,
+    onRefreshContext: refreshContext,
     onQuote: handleQuote,
     currentAccountId: session.account?.id,
     onDelete: handleDeleteStatus,
