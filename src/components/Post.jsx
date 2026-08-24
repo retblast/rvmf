@@ -495,7 +495,8 @@ function CountButton({ count, title, onClick }) {
   )
 }
 
-function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote, onShowReblogs }) {  const [open, setOpen] = useState(false)
+function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote, onShowReblogs }) {
+  const [open, setOpen] = useState(false)
   const ref = useRef(null)
   useEscapeKey(() => setOpen(false), open)
 
@@ -510,11 +511,6 @@ function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote, onShow
 
   return (
     <div className="boost-dropdown-wrap" ref={ref}>
-      {/* Sibling, not child: buttons can't nest. Tucked against the
-          trigger with a negative margin so it still reads as its label. */}
-      {onShowReblogs && !open && (
-        <CountButton count={reblogsCount} title="Who boosted" onClick={onShowReblogs} />
-      )}
       <button
         className={`action-btn boost-trigger${reblogged ? ' boosted' : ''}`}
         aria-label="Boost or quote"
@@ -523,6 +519,11 @@ function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote, onShow
       >
         <Repeat2 size={15} />
       </button>
+      {/* Sibling, not child: buttons can't nest. Rendered after the icon
+          so the row still reads icon-then-count like every other action. */}
+      {onShowReblogs && !open && (
+        <CountButton count={reblogsCount} title="Who boosted" onClick={onShowReblogs} />
+      )}
       {open && (
         <>
           <div className="boost-dropdown-backdrop" onClick={() => setOpen(false)} />
