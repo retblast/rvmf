@@ -18,7 +18,7 @@
           ];
 
           shellHook = ''
-            echo "mitra-frontend dev shell — node $(node -v), npm $(npm -v)"
+            echo "rvmf dev shell — node $(node -v), npm $(npm -v)"
             if [ ! -d node_modules ]; then
               echo "Running npm install..."
               npm install
@@ -27,7 +27,7 @@
         };
 
         packages.default = pkgs.buildNpmPackage {
-          pname = "mitra-frontend";
+          pname = "rvmf";
           version = "0.1.0";
           src = ./.;
 

@@ -1,3 +1,5 @@
+import { storageGet } from './storage.js'
+
 // OS/browser accent integration.
 //
 // The web platform's only window into the OS accent is the CSS system
@@ -72,9 +74,5 @@ export function applyOsAccent(enabled) {
 }
 
 export function osAccentPreferred() {
-  try {
-    return localStorage.getItem('mitra-use-os-accent') !== 'false'
-  } catch {
-    return true
-  }
+  return storageGet('use-os-accent') !== 'false'
 }

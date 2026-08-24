@@ -71,7 +71,7 @@ export default function LoginView({ onBeginLogin, error: externalError, completi
       <header className="headerbar">
         <div className="headerbar-brand">
           <Favicon size={18} />
-          Mitra
+          rvmf
         </div>
       </header>
 

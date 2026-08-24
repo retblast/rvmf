@@ -30,6 +30,7 @@ import { HashtagFeed } from './components/HashtagFeed.jsx'
 import { MutedAccountsView } from './components/MutedAccountsView.jsx'
 import InstanceIcon from './components/InstanceIcon.jsx'
 import { applyOsAccent } from './lib/osAccent'
+import { storageGet, storageSet } from './lib/storage.js'
 import { ListsView } from './components/ListsView.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { GroupsView } from './components/GroupsView.jsx'
@@ -92,7 +93,7 @@ export default function App() {
   // the mute choices survive reloads.
   const [notifExcluded, setNotifExcluded] = useState(() => {
     try {
-      const raw = JSON.parse(localStorage.getItem('mitra-notif-excluded'))
+      const raw = JSON.parse(storageGet('notif-excluded'))
       return Array.isArray(raw) ? raw : []
     } catch {
       return []
@@ -137,36 +138,22 @@ export default function App() {
   const homeSentinelRef = useRef(null)
 
   const [fetchClientMedia, setFetchClientMedia] = useState(() => {
-    try {
-      return localStorage.getItem('mitra-fetch-client-media') !== 'false'
-    } catch {
-      return true
-    }
+    return storageGet('fetch-client-media') !== 'false'
   })
 
   const [alwaysSensitive, setAlwaysSensitive] = useState(() => {
-    try {
-      return localStorage.getItem('mitra-always-sensitive') === 'true'
-    } catch {
-      return false
-    }
+    return storageGet('always-sensitive') === 'true'
   })
 
   const [useOsAccent, setUseOsAccent] = useState(() => {
-    try {
-      return localStorage.getItem('mitra-use-os-accent') !== 'false'
-    } catch {
-      return true
-    }
+    return storageGet('use-os-accent') !== 'false'
   })
 
   function toggleUseOsAccent() {
     setUseOsAccent((prev) => {
       const next = !prev
       applyOsAccent(next)
-      try {
-        localStorage.setItem('mitra-use-os-accent', String(next))
-      } catch { /* persistence unavailable */ }
+      storageSet('use-os-accent', String(next))
       return next
     })
   }
@@ -174,9 +161,7 @@ export default function App() {
   function toggleAlwaysSensitive() {
     setAlwaysSensitive((prev) => {
       const next = !prev
-      try {
-        localStorage.setItem('mitra-always-sensitive', String(next))
-      } catch { /* persistence unavailable */ }
+      storageSet('always-sensitive', String(next))
       return next
     })
   }
@@ -184,19 +169,13 @@ export default function App() {
   // Only meaningful when strict sensitive mode hides everything: allow
   // hover previews to peek at unrevealed media.
   const [peekSpoilerMedia, setPeekSpoilerMedia] = useState(() => {
-    try {
-      return localStorage.getItem('mitra-peek-spoiler') === 'true'
-    } catch {
-      return false
-    }
+    return storageGet('peek-spoiler') === 'true'
   })
 
   function togglePeekSpoilerMedia() {
     setPeekSpoilerMedia((prev) => {
       const next = !prev
-      try {
-        localStorage.setItem('mitra-peek-spoiler', String(next))
-      } catch { /* persistence unavailable */ }
+      storageSet('peek-spoiler', String(next))
       return next
     })
   }
@@ -204,9 +183,7 @@ export default function App() {
   function toggleFetchClientMedia() {
     setFetchClientMedia((prev) => {
       const next = !prev
-      try {
-        localStorage.setItem('mitra-fetch-client-media', String(next))
-      } catch { /* ignore */ }
+      storageSet('fetch-client-media', String(next))
       return next
     })
   }
@@ -246,11 +223,7 @@ export default function App() {
   }
 
   const [themeMode, setThemeMode] = useState(() => {
-    try {
-      return localStorage.getItem('mitra-theme-mode') || 'system'
-    } catch {
-      return 'system'
-    }
+    return storageGet('theme-mode') || 'system'
   })
 
   useEffect(() => {
@@ -260,9 +233,7 @@ export default function App() {
     } else {
       root.dataset.theme = themeMode
     }
-    try {
-      localStorage.setItem('mitra-theme-mode', themeMode)
-    } catch { /* persistence unavailable */ }
+    storageSet('theme-mode', themeMode)
   }, [themeMode])
 
   // Browser tab favicon follows the instance; restored when logged out.
@@ -346,9 +317,7 @@ export default function App() {
       const next = isOn
         ? [...prev, ...types.filter((t) => !prev.includes(t))]
         : prev.filter((t) => !types.includes(t))
-      try {
-        localStorage.setItem('mitra-notif-excluded', JSON.stringify(next))
-      } catch { /* persistence unavailable */ }
+      storageSet('notif-excluded', JSON.stringify(next))
       return next
     })
   }
@@ -1492,7 +1461,7 @@ export default function App() {
         <div className="headerbar-brand">
           <InstanceIcon instanceUrl={session.instanceUrl} />
           <div>
-            Mitra
+            rvmf
             <div className="headerbar-subtitle">
               {session.instanceUrl.replace(/^https?:\/\//, '')}
             </div>

@@ -1,22 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
 import * as mitra from './lib/mitra'
+import { storageGet, storageSet, storageRemove } from './lib/storage.js'
 
-const SESSION_KEY = 'mitra-session'
+const SESSION_KEY = 'session'
 
 function loadSession() {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
+  const raw = storageGet(SESSION_KEY)
+  return raw ? JSON.parse(raw) : null
 }
 
 function saveSession(session) {
   if (session) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+    storageSet(SESSION_KEY, JSON.stringify(session))
   } else {
-    localStorage.removeItem(SESSION_KEY)
+    storageRemove(SESSION_KEY)
   }
 }
 
@@ -77,9 +74,9 @@ export function useMitraSession() {
   const logout = useCallback(() => {
     // Invalidate the token server-side so the session can't be reused,
     // best-effort — logout proceeds even if the request fails. Read from
-    // localStorage rather than state: state may already be stale here.
+    // storage rather than state: state may already be stale here.
     try {
-      const raw = localStorage.getItem(SESSION_KEY)
+      const raw = storageGet(SESSION_KEY)
       const current = raw ? JSON.parse(raw) : null
       if (current?.instanceUrl && current?.token) {
         mitra.revokeToken(current.instanceUrl, current.token).catch(() => {})

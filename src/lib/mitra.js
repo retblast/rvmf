@@ -1,5 +1,9 @@
-const APP_STORAGE_PREFIX = 'mitra-app:'
-const PENDING_LOGIN_KEY = 'mitra-pending-login'
+import { storageGet, storageSet, storageRemove, sessionGet, sessionSet, sessionRemove } from './storage.js'
+
+// App credentials are per-instance, so the instance URL is part of the
+// key: rvmf-app:https://instance.example
+const APP_STORAGE_PREFIX = 'app:'
+const PENDING_LOGIN_KEY = 'pending-login'
 
 export function normalizeInstanceUrl(input) {
   let url = input.trim()
@@ -39,35 +43,27 @@ async function apiFetch(instanceUrl, path, options = {}) {
 }
 
 function loadAppCredentials(instanceUrl) {
-  try {
-    const raw = localStorage.getItem(APP_STORAGE_PREFIX + instanceUrl)
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
+  const raw = storageGet(APP_STORAGE_PREFIX + instanceUrl)
+  return raw ? JSON.parse(raw) : null
 }
 
 function saveAppCredentials(instanceUrl, creds) {
-  localStorage.setItem(APP_STORAGE_PREFIX + instanceUrl, JSON.stringify(creds))
+  storageSet(APP_STORAGE_PREFIX + instanceUrl, JSON.stringify(creds))
 }
 
-const CLIENT_NAME_KEY = 'mitra-client-name'
+const CLIENT_NAME_KEY = 'client-name'
 
 export function getClientName() {
-  try {
-    return localStorage.getItem(CLIENT_NAME_KEY) || 'Mitra'
-  } catch {
-    return 'Mitra'
-  }
+  return storageGet(CLIENT_NAME_KEY) || 'rvmf'
 }
 
 export function setClientName(name) {
-  const trimmed = (name || 'Mitra').trim() || 'Mitra'
-  localStorage.setItem(CLIENT_NAME_KEY, trimmed)
+  const trimmed = (name || 'rvmf').trim() || 'rvmf'
+  storageSet(CLIENT_NAME_KEY, trimmed)
 }
 
 export function clearAppCredentials(instanceUrl) {
-  localStorage.removeItem(APP_STORAGE_PREFIX + instanceUrl)
+  storageRemove(APP_STORAGE_PREFIX + instanceUrl)
 }
 
 async function registerApp(instanceUrl, redirectUri) {
@@ -102,7 +98,7 @@ export async function beginLogin(rawInstanceUrl) {
   const redirectUri = getRedirectUri()
   const appCreds = await getOrRegisterApp(instanceUrl, redirectUri)
 
-  sessionStorage.setItem(
+  sessionSet(
     PENDING_LOGIN_KEY,
     JSON.stringify({ instanceUrl, clientId: appCreds.clientId, clientSecret: appCreds.clientSecret })
   )
@@ -117,16 +113,12 @@ export async function beginLogin(rawInstanceUrl) {
 }
 
 export function getPendingLogin() {
-  try {
-    const raw = sessionStorage.getItem(PENDING_LOGIN_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
+  const raw = sessionGet(PENDING_LOGIN_KEY)
+  return raw ? JSON.parse(raw) : null
 }
 
 export function clearPendingLogin() {
-  sessionStorage.removeItem(PENDING_LOGIN_KEY)
+  sessionRemove(PENDING_LOGIN_KEY)
 }
 
 /**
