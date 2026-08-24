@@ -236,7 +236,8 @@ export default function App() {
     storageSet('theme-mode', themeMode)
   }, [themeMode])
 
-  // Browser tab favicon follows the instance; restored when logged out.
+  // Browser tab follows the instance: favicon and a "rvmf on <host>"
+  // title; both restored to plain "rvmf" when logged out.
   const defaultFaviconRef = useRef(null)
   useEffect(() => {
     let link = document.querySelector("link[rel~='icon']")
@@ -249,6 +250,9 @@ export default function App() {
     link.href = session
       ? `${session.instanceUrl}/favicon.ico`
       : defaultFaviconRef.current
+    document.title = session
+      ? `rvmf on ${session.instanceUrl.replace(/^https?:\/\//, '')}`
+      : 'rvmf'
   }, [session])
 
   const loadTimeline = useCallback(async () => {
