@@ -166,6 +166,8 @@ export function ThreadPanelContent({
               <ThreadReply
                 node={{ status: ancestor, children: [] }}
                 depth={state.ancestors.indexOf(ancestor)}
+                composerFor={composingStatusId}
+                composerProps={composerProps}
                 instanceUrl={instanceUrl}
                 token={token}
                 onUpdate={onUpdateReply}
