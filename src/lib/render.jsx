@@ -354,18 +354,34 @@ function extractQuarantinedImages(text, instanceUrl, posterAcct) {
 
   const quarantinedUrls = []
   const posterRecoveryUrls = []
+
+  // Shared host-classification: '' means "strip this URL and collect it",
+  // null means "leave the token alone". Used by both passes below so the
+  // rules can't drift between markdown-wrapped and bare URLs.
+  const classifyUrl = (url) => {
+    const linkHost = hostOf(url)
+    if (linkHost === instanceHost) {
+      quarantinedUrls.push(url)
+      return ''
+    }
+    if (posterHost && linkHost === posterHost) {
+      posterRecoveryUrls.push(url)
+      return ''
+    }
+    return null
+  }
+
+  // htmlToPlainText preserves <a> elements as [label](href) tokens, so a
+  // quarantined image usually arrives wrapped — strip the whole token and
+  // keep only the inner URL, or an empty-label residue ("[]()") would
+  // survive as visible text. Bare image URLs (never anchor-wrapped) are
+  // handled by the original pass.
   const cleanedText = text
+    .replace(/!?\[[^\]\n]*\]\((https?:\/\/[^\s)]+?\.(?:jpe?g|png|gif|webp|avif)(?:\?[^\s)]*)?)\)/gi, (token, url) => {
+      return classifyUrl(url) ?? token
+    })
     .replace(IMAGE_URL_RE, (match) => {
-      const linkHost = hostOf(match)
-      if (linkHost === instanceHost) {
-        quarantinedUrls.push(match)
-        return ''
-      }
-      if (posterHost && linkHost === posterHost) {
-        posterRecoveryUrls.push(match)
-        return ''
-      }
-      return match
+      return classifyUrl(match) ?? match
     })
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
