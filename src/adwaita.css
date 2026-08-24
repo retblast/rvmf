@@ -1327,6 +1327,27 @@ span.img-placeholder.custom-emoji {
   background: var(--bg-hover);
 }
 
+/* @mention suggestions reuse the emoji dropdown chrome */
+.mention-dropdown-item {
+  justify-content: flex-start;
+}
+
+.mention-dropdown .mention-names {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.3;
+  min-width: 0;
+}
+
+.mention-dropdown .mention-names .post-handle {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
 .emoji-dropdown-item .emoji-char {
   font-size: 18px;
   width: 24px;

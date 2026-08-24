@@ -17,6 +17,7 @@ import { insertAtCaret,
   EmojiDropdown,
   EmojiPicker,
 } from './Emoji.jsx'
+import { useMentionAutocomplete, MentionDropdown } from './Mention.jsx'
 
 // Manages a compose dialog's attached files: upload starts the moment a
 // file is picked (not at submit time), each tracked independently so one
@@ -254,6 +255,7 @@ export function EditDialog({ status, instanceUrl, token, onClose, onSaved }) {
   const [error, setError] = useState('')
   const textareaRef = useRef(null)
   const { query: acQuery, suggestions: acSuggestions, selectedIndex: acIndex, handleKeyDown: acKeyDown } = useEmojiAutocomplete(text, setText, textareaRef, [])
+  const mn = useMentionAutocomplete(text, setText, textareaRef, instanceUrl, token)
 
   useEffect(() => {
     let cancelled = false
@@ -308,6 +310,7 @@ export function EditDialog({ status, instanceUrl, token, onClose, onSaved }) {
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
                 if (acKeyDown(e)) return
+                if (mn.handleKeyDown(e)) return
                 if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
                   e.preventDefault()
                   save()
@@ -320,6 +323,7 @@ export function EditDialog({ status, instanceUrl, token, onClose, onSaved }) {
               const insert = s.type === 'custom' ? `:${s.name}:` : s.char
               insertAtCaret(text, setText, textareaRef, insert)
             }} />
+            <MentionDropdown query={mn.query} suggestions={mn.suggestions} selectedIndex={mn.selectedIndex} onSelect={(i) => mn.acceptSelection(i)} />
           </div>
         )}
         <div className="dialog-actions">
@@ -475,6 +479,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
     typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `draft-${Date.now()}-${Math.random()}`
   )
   const { query: acQuery, suggestions: acSuggestions, selectedIndex: acIndex, handleKeyDown: acKeyDown } = useEmojiAutocomplete(text, setText, textareaRef, customEmojis)
+  const mn = useMentionAutocomplete(text, setText, textareaRef, instanceUrl, token)
 
   useEffect(() => {
     mitra.fetchCustomEmojis(instanceUrl).then((emojis) => setCustomEmojis(emojis || [])).catch(() => {})
@@ -552,6 +557,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (acKeyDown(e)) return
+              if (mn.handleKeyDown(e)) return
               if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
                 e.preventDefault()
                 submit()
@@ -576,6 +582,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
             const insert = s.type === 'custom' ? `:${s.name}:` : s.char
             insertAtCaret(text, setText, textareaRef, insert)
           }} />
+          <MentionDropdown query={mn.query} suggestions={mn.suggestions} selectedIndex={mn.selectedIndex} onSelect={(i) => mn.acceptSelection(i)} />
           <CharCounter current={text.length} max={maxCharacters} />
         </div>
         {replyToStatus && (

@@ -16,6 +16,7 @@ import {
   EmojiDropdown,
   EmojiPicker,
 } from './Emoji.jsx'
+import { useMentionAutocomplete, MentionDropdown } from './Mention.jsx'
 
 export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted, maxCharacters = 500 }) {
   const [text, setText] = useState('')
@@ -43,6 +44,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
   // server-configured default.
   const [visibility, setVisibility] = useState(status?.visibility || defaultVisibility || 'public')
   const { query: acQuery, suggestions: acSuggestions, selectedIndex: acIndex, handleKeyDown: acKeyDown } = useEmojiAutocomplete(text, setText, textareaRef, customEmojis)
+  const mn = useMentionAutocomplete(text, setText, textareaRef, instanceUrl, token)
 
   useEffect(() => {
     mitra.fetchCustomEmojis(instanceUrl).then((emojis) => setCustomEmojis(emojis || [])).catch(() => {})
@@ -127,6 +129,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (acKeyDown(e)) return
+            if (mn.handleKeyDown(e)) return
             if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
               e.preventDefault()
               submit()
@@ -151,6 +154,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
           const insert = s.type === 'custom' ? `:${s.name}:` : s.char
           insertAtCaret(text, setText, textareaRef, insert)
         }} />
+        <MentionDropdown query={mn.query} suggestions={mn.suggestions} selectedIndex={mn.selectedIndex} onSelect={(i) => mn.acceptSelection(i)} />
         <CharCounter current={text.length} max={maxCharacters} />
       </div>
       {poll.enabled && <PollEditorFields poll={poll} />}

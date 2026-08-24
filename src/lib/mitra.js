@@ -435,6 +435,14 @@ export function search(instanceUrl, token, q, { type, limit = 20, offset = 0 } =
   })
 }
 
+// Username-prefix lookup backing @autocomplete in composers.
+export function searchAccounts(instanceUrl, token, q, { limit = 8 } = {}) {
+  const params = new URLSearchParams({ q, limit: String(limit) })
+  return apiFetch(instanceUrl, `/api/v1/accounts/search?${params.toString()}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+}
+
 // Public feed of posts carrying a given hashtag
 export function fetchHashtagTimeline(instanceUrl, token, hashtag, { max_id } = {}) {
   const params = new URLSearchParams({ limit: '20' })
