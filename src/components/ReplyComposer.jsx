@@ -5,10 +5,15 @@ import {
   Smile,
   ImagePlus,
   BarChart2,
+  FileText,
+  Heading1,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { processStatusContent } from '../lib/render.jsx'
-import { useMediaUploads, MediaUploadStrip, CharCounter, VisibilitySelect, usePollDraft, PollEditorFields, ParentPreviewMedia } from './Compose.jsx'
+import {
+  useMediaUploads, MediaUploadStrip, CharCounter, VisibilitySelect, LanguageSelect,
+  usePollDraft, PollEditorFields, ParentPreviewMedia, useStatusPreview, StatusPreviewPane,
+} from './Compose.jsx'
 import { AppSettingsContext } from '../hooks'
 import {
   insertAtCaret,
@@ -41,8 +46,17 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
   const name = account.display_name || account.username || 'Unknown'
   const { defaultVisibility } = useContext(AppSettingsContext)
   // Replies inherit the parent's visibility; fresh posts start at the
-  // server-configured default.
+  // server-configured default. Conversation parents lock it entirely.
   const [visibility, setVisibility] = useState(status?.visibility || defaultVisibility || 'public')
+  const conversationLocked = status?.visibility === 'conversation'
+  useEffect(() => {
+    if (conversationLocked) setVisibility('conversation')
+  }, [conversationLocked])
+  const [showTitle, setShowTitle] = useState(false)
+  const [title, setTitle] = useState('')
+  const [language, setLanguage] = useState('')
+  const [showPreview, setShowPreview] = useState(false)
+  const preview = useStatusPreview(showPreview, text, instanceUrl, token)
   const { query: acQuery, suggestions: acSuggestions, selectedIndex: acIndex, handleKeyDown: acKeyDown } = useEmojiAutocomplete(text, setText, textareaRef, customEmojis)
   const mn = useMentionAutocomplete(text, setText, textareaRef, instanceUrl, token)
 
@@ -83,6 +97,8 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
         spoilerText: showCW ? spoilerText : undefined,
         poll: poll.params,
         idempotencyKey: draftKeyRef.current,
+        title: showTitle && title.trim() ? title.trim() : undefined,
+        language: language || undefined,
       })
       onPosted(status.id, reply)
     } catch (err) {
@@ -121,6 +137,16 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
           autoFocus
         />
       )}
+      {showTitle && (
+        <input
+          className="compose-title-input"
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Title…"
+          maxLength={200}
+        />
+      )}
       <div className="compose-textarea-wrap">
         <textarea
           ref={textareaRef}
@@ -157,6 +183,12 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
         <MentionDropdown query={mn.query} suggestions={mn.suggestions} selectedIndex={mn.selectedIndex} onSelect={(i) => mn.acceptSelection(i)} />
         <CharCounter current={text.length} max={maxCharacters} />
       </div>
+      {showPreview && <StatusPreviewPane nodes={preview.nodes} error={preview.error} />}
+      {conversationLocked && (
+        <div className="poll-meta">
+          Conversation replies stay visible only to conversation participants.
+        </div>
+      )}
       {poll.enabled && <PollEditorFields poll={poll} />}
       <MediaUploadStrip uploads={uploads} onRemove={removeUpload} onEditDescription={editDescription} onCommitDescription={commitDescription} />
       <div className="dialog-actions">
@@ -189,6 +221,24 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
           <Eye size={16} />
         </button>
         <button
+          className={`icon-btn${showTitle ? ' active' : ''}`}
+          type="button"
+          aria-label="Title"
+          title="Add a title"
+          onClick={() => setShowTitle((v) => !v)}
+        >
+          <Heading1 size={16} />
+        </button>
+        <button
+          className={`icon-btn${showPreview ? ' active' : ''}`}
+          type="button"
+          aria-label="Preview"
+          title="Markdown preview"
+          onClick={() => setShowPreview((v) => !v)}
+        >
+          <FileText size={16} />
+        </button>
+        <button
           className={`icon-btn${poll.enabled ? ' active' : ''}`}
           type="button"
           aria-label="Add poll"
@@ -215,7 +265,8 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
               />
             )}
           </div>
-          <VisibilitySelect value={visibility} onChange={setVisibility} />
+          <VisibilitySelect value={visibility} onChange={setVisibility} locked={conversationLocked} />
+          <LanguageSelect value={language} onChange={setLanguage} />
         <div style={{ flex: 1 }} />
         <button className="pill-btn" onClick={onClose} type="button">
           Cancel

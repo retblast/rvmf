@@ -309,7 +309,10 @@ export function respondFollowRequest(instanceUrl, token, accountId, action) {
 }
 
 export function postStatus(instanceUrl, token, text, options = {}) {
-  const { inReplyToId, visibility = 'public', mediaIds, quoteId, spoilerText, poll, idempotencyKey } = options
+  const {
+    inReplyToId, visibility = 'public', mediaIds, quoteId, spoilerText, poll, idempotencyKey,
+    title, language, groupId,
+  } = options
   const body = { status: text, visibility }
   if (inReplyToId) body.in_reply_to_id = inReplyToId
   if (quoteId) body.quote_id = quoteId
@@ -319,6 +322,9 @@ export function postStatus(instanceUrl, token, text, options = {}) {
     body.sensitive = true
     body.spoiler_text = spoilerText
   }
+  if (title) body.title = title
+  if (language) body.language = language
+  if (groupId) body.group_id = groupId
   return apiFetch(instanceUrl, '/api/v1/statuses', {
     method: 'POST',
     headers: {
@@ -329,6 +335,19 @@ export function postStatus(instanceUrl, token, text, options = {}) {
       ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
     },
     body: JSON.stringify(body),
+  })
+}
+
+// Server-side markdown rendering for the composer's preview pane.
+// Returns { content: '<p>rendered HTML</p>' }.
+export function previewStatus(instanceUrl, token, text) {
+  return apiFetch(instanceUrl, '/api/v1/statuses/preview', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ status: text }),
   })
 }
 
@@ -592,6 +611,38 @@ export function createGroup(instanceUrl, token, name, description) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
+  })
+}
+
+// Raw markdown description of a group profile, for editing.
+export function fetchGroupSource(instanceUrl, token, groupId) {
+  return apiFetch(instanceUrl, `/api/v1/groups/${groupId}/source`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function updateGroupDescription(instanceUrl, token, groupId, description) {
+  return apiFetch(instanceUrl, `/api/v1/groups/${groupId}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ description }),
+  })
+}
+
+export function deleteGroup(instanceUrl, token, groupId) {
+  return apiFetch(instanceUrl, `/api/v1/groups/${groupId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+// Returns Affiliation[] — { account: Account, affiliation: 'admin' | … }.
+export function fetchGroupMembers(instanceUrl, token, groupId) {
+  return apiFetch(instanceUrl, `/api/v1/groups/${groupId}/members`, {
+    headers: { Authorization: `Bearer ${token}` },
   })
 }
 

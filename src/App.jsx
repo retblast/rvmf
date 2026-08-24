@@ -72,6 +72,9 @@ export default function App() {
   const [error, setError] = useState('')
   const [composing, setComposing] = useState(false)
   const [quoteStatus, setQuoteStatus] = useState(null)
+  // Group the open composer is addressing, when "Post to this group" was
+  // used — cleared with the dialog.
+  const [composerGroup, setComposerGroup] = useState(null)
   // Post being replied to in the main composer (context preview + target)
   const [replyContext, setReplyContext] = useState(null)
   const [editing, setEditing] = useState(null)
@@ -913,6 +916,11 @@ export default function App() {
     setComposing(true)
   }
 
+  function handlePostToGroup(group) {
+    setComposerGroup(group)
+    setComposing(true)
+  }
+
   // Auto-refresh the thread panel every 5 seconds (silent, no loading flash)
   useEffect(() => {
     if (sidePanel?.mode !== 'thread' || !sidePanel.status) return
@@ -1357,6 +1365,7 @@ export default function App() {
           onOpenLightbox={setLightboxAttachment}
           onOpenProfile={handleOpenProfile}
           onQuote={handleQuote}
+          onPostToGroup={handlePostToGroup}
           currentAccountId={session.account?.id}
           onDelete={handleDeleteStatus}
           onMute={handleMuteAccount}
@@ -1810,11 +1819,13 @@ export default function App() {
         <ComposeDialog
           instanceUrl={session.instanceUrl}
           token={session.token}
-          onClose={() => { setComposing(false); setQuoteStatus(null); setReplyContext(null) }}
+          onClose={() => { setComposing(false); setQuoteStatus(null); setReplyContext(null); setComposerGroup(null) }}
           onPosted={prependPost}
           quoteStatus={quoteStatus}
           replyToStatus={replyContext}
           maxCharacters={session.maxCharacters || 500}
+          groupId={composerGroup?.id || null}
+          groupName={composerGroup ? (composerGroup.display_name || composerGroup.acct || composerGroup.username) : null}
         />
       )}
 

@@ -6,6 +6,8 @@ import {
   Smile,
   ImagePlus,
   BarChart2,
+  FileText,
+  Heading1,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { processStatusContent, renderEmojiText } from '../lib/render.jsx'
@@ -177,7 +179,7 @@ const VISIBILITY_OPTIONS = ['public', 'unlisted', 'private', 'subscribers', 'dir
 // Renders the standard visibility options, plus whatever non-standard
 // value is currently set (e.g. Mitra's 'subscribers') so it displays
 // instead of leaving the select blank.
-export function VisibilitySelect({ value, onChange }) {
+export function VisibilitySelect({ value, onChange, locked = false }) {
   const options = VISIBILITY_OPTIONS.includes(value)
     ? VISIBILITY_OPTIONS
     : [value, ...VISIBILITY_OPTIONS]
@@ -186,12 +188,78 @@ export function VisibilitySelect({ value, onChange }) {
       className="compose-visibility-select"
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      aria-label="Visibility"
+      disabled={locked}
+      aria-label={locked ? 'Visibility (locked by the conversation)' : 'Visibility'}
+      title={locked ? 'Conversation replies stay inside the conversation' : undefined}
     >
       {options.map((v) => (
         <option key={v} value={v}>{visibilityLabel(v)}</option>
       ))}
     </select>
+  )
+}
+
+const POST_LANGUAGES = [
+  ['', 'Language…'],
+  ['en', 'English'], ['de', 'German'], ['fr', 'French'], ['es', 'Spanish'],
+  ['it', 'Italian'], ['pt', 'Portuguese'], ['nl', 'Dutch'], ['pl', 'Polish'],
+  ['ru', 'Russian'], ['uk', 'Ukrainian'], ['tr', 'Turkish'],
+  ['ja', 'Japanese'], ['ko', 'Korean'], ['zh', 'Chinese'],
+]
+
+export function LanguageSelect({ value, onChange }) {
+  return (
+    <select
+      className="compose-visibility-select"
+      aria-label="Post language"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {POST_LANGUAGES.map(([code, label]) => (
+        <option key={code || 'none'} value={code}>{label}</option>
+      ))}
+    </select>
+  )
+}
+
+// Debounced server-side rendering of composer text (markdown → HTML via
+// /statuses/preview), then through the same safe rich-text pipeline post
+// bodies use — never raw HTML injection.
+export function useStatusPreview(enabled, text, instanceUrl, token) {
+  const [state, setState] = useState({ nodes: null, error: '' })
+
+  useEffect(() => {
+    if (!enabled) return undefined
+    let cancelled = false
+    const timer = setTimeout(() => {
+      mitra.previewStatus(instanceUrl, token, text)
+        .then((out) => {
+          if (cancelled) return
+          setState({
+            nodes: processStatusContent({ content: out.content || '' }, instanceUrl).textNodes,
+            error: '',
+          })
+        })
+        .catch((err) => {
+          if (!cancelled) setState({ nodes: null, error: err.message || 'Preview failed.' })
+        })
+    }, 350)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [enabled, text, instanceUrl, token])
+
+  return state
+}
+
+export function StatusPreviewPane({ nodes, error }) {
+  if (error) return <div className="banner banner-error">{error}</div>
+  if (!nodes) {
+    return <div className="compose-preview compose-preview-empty">Rendering preview…</div>
+  }
+  return (
+    <div className="compose-preview">
+      <div className="compose-preview-context">Preview</div>
+      <p className="post-text">{nodes}</p>
+    </div>
   )
 }
 
@@ -455,7 +523,7 @@ export function PollEditorFields({ poll }) {
   )
 }
 
-export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus, replyToStatus, maxCharacters = 500 }) {
+export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus, replyToStatus, maxCharacters = 500, groupId = null, groupName = null }) {
   const { defaultVisibility } = useContext(AppSettingsContext)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
@@ -469,6 +537,11 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
   const textareaRef = useRef(null)
   const [customEmojis, setCustomEmojis] = useState([])
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  // Optional title (toggled), language tag, and markdown preview pane.
+  const [showTitle, setShowTitle] = useState(false)
+  const [title, setTitle] = useState('')
+  const [language, setLanguage] = useState('')
+  const [showPreview, setShowPreview] = useState(false)
   const { uploads, addFiles, editDescription, commitDescription, removeUpload, mediaIds, isUploading } = useMediaUploads(
     instanceUrl,
     token
@@ -480,10 +553,18 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
   )
   const { query: acQuery, suggestions: acSuggestions, selectedIndex: acIndex, handleKeyDown: acKeyDown } = useEmojiAutocomplete(text, setText, textareaRef, customEmojis)
   const mn = useMentionAutocomplete(text, setText, textareaRef, instanceUrl, token)
+  const preview = useStatusPreview(showPreview, text, instanceUrl, token)
+  // Conversation posts can only be replied to inside the conversation —
+  // the server rejects anything else, so lock the selector.
+  const conversationLocked = replyToStatus?.visibility === 'conversation'
 
   useEffect(() => {
     mitra.fetchCustomEmojis(instanceUrl).then((emojis) => setCustomEmojis(emojis || [])).catch(() => {})
   }, [instanceUrl])
+
+  useEffect(() => {
+    if (conversationLocked) setVisibility('conversation')
+  }, [conversationLocked])
 
   // Polls and media attachments are mutually exclusive
   useEffect(() => {
@@ -519,6 +600,9 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
         spoilerText: showCW ? spoilerText : undefined,
         poll: poll.params,
         idempotencyKey: draftKeyRef.current,
+        title: showTitle && title.trim() ? title.trim() : undefined,
+        language: language || undefined,
+        groupId: groupId || undefined,
       })
       onPosted(status)
       onClose()
@@ -539,6 +623,19 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
           </button>
         </div>
         {error && <div className="banner banner-error">{error}</div>}
+        {groupId && groupName && (
+          <div className="compose-reply-context">Posting to {groupName}</div>
+        )}
+        {showTitle && (
+          <input
+            className="compose-title-input"
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Title…"
+            maxLength={200}
+          />
+        )}
         {showCW && (
           <input
             className="compose-cw-input"
@@ -585,6 +682,14 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
           <MentionDropdown query={mn.query} suggestions={mn.suggestions} selectedIndex={mn.selectedIndex} onSelect={(i) => mn.acceptSelection(i)} />
           <CharCounter current={text.length} max={maxCharacters} />
         </div>
+        {showPreview && (
+          <StatusPreviewPane nodes={preview.nodes} error={preview.error} />
+        )}
+        {conversationLocked && (
+          <div className="poll-meta">
+            Conversation replies stay visible only to conversation participants.
+          </div>
+        )}
         {replyToStatus && (
           <div className="thread-panel-preview compose-reply-preview">
             <div className="compose-reply-context">Replying to</div>
@@ -633,6 +738,24 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
             <Eye size={16} />
           </button>
           <button
+            className={`icon-btn${showTitle ? ' active' : ''}`}
+            type="button"
+            aria-label="Title"
+            title="Add a title"
+            onClick={() => setShowTitle((v) => !v)}
+          >
+            <Heading1 size={16} />
+          </button>
+          <button
+            className={`icon-btn${showPreview ? ' active' : ''}`}
+            type="button"
+            aria-label="Preview"
+            title="Markdown preview"
+            onClick={() => setShowPreview((v) => !v)}
+          >
+            <FileText size={16} />
+          </button>
+          <button
             className={`icon-btn${poll.enabled ? ' active' : ''}`}
             type="button"
             aria-label="Add poll"
@@ -659,7 +782,8 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
               />
             )}
           </div>
-          <VisibilitySelect value={visibility} onChange={setVisibility} />
+          <VisibilitySelect value={visibility} onChange={setVisibility} locked={conversationLocked} />
+          <LanguageSelect value={language} onChange={setLanguage} />
           <div style={{ flex: 1, minWidth: 0 }} />
           <button className="pill-btn" onClick={onClose} type="button">
             Cancel
