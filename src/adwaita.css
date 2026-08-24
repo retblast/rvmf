@@ -2196,6 +2196,21 @@ button.mention-link {
   text-decoration: line-through;
 }
 
+/* Server notification policy: 'accept' | 'drop' badges */
+.notif-policy-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--hover-overlay);
+  color: var(--text-secondary);
+}
+
+.notif-policy-badge.drop {
+  background: rgba(224, 27, 36, 0.15);
+  color: #e01b24;
+}
+
 /* ---- main layout: timeline + thread side panel (medium/narrow tiers) ---- */
 
 .main-layout {

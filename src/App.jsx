@@ -50,6 +50,16 @@ const NOTIF_FILTERS = [
   ['Edits', ['update']],
 ]
 
+// Server-side notification policy rules (GET /v2/notifications/policy).
+// Values are 'accept' | 'drop' and can't be changed from the API — the
+// instance decides them.
+const NOTIF_POLICY_RULES = [
+  ['for_not_following', "From people you don't follow"],
+  ['for_not_followers', "From people not following you"],
+  ['for_new_accounts', 'From brand-new accounts'],
+  ['for_private_mentions', 'From direct mentions'],
+]
+
 export default function App() {
   const { session, beginLogin, logout, authError, completingLogin } = useMitraSession()
   const tier = useLayoutTier()
@@ -1640,12 +1650,21 @@ export default function App() {
                   {notifPolicy && (
                     <div className="settings-menu-section">
                       <span className="settings-menu-heading">Filtered notifications (server)</span>
-                      {Object.entries(notifPolicy).filter(([, v]) => typeof v === 'boolean').map(([key, value]) => (
-                        <label key={key} className="settings-menu-row settings-menu-subrow">
-                          <span>{key.replace(/_/g, ' ')}</span>
-                          <input type="checkbox" checked={value} disabled />
-                        </label>
-                      ))}
+                      {/* Mitra's policy values are 'accept' | 'drop' — which
+                          notifications the instance filters before you ever
+                          see them. Server-decided, so display-only. */}
+                      {NOTIF_POLICY_RULES.map(([key, label]) => {
+                        const value = notifPolicy[key]
+                        if (!value) return null
+                        return (
+                          <div key={key} className="settings-menu-row settings-menu-subrow">
+                            <span>{label}</span>
+                            <span className={`notif-policy-badge${value === 'drop' ? ' drop' : ''}`}>
+                              {value}
+                            </span>
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
