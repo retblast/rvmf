@@ -36,6 +36,8 @@ function mediaProxyPlugin() {
             headers,
             redirect: 'follow',
           })
+          // Client gave up while the upstream request was in flight.
+          if (res.headersSent || res.destroyed) return
           const ct = proxyRes.headers.get('content-type') || 'application/octet-stream'
           res.writeHead(proxyRes.status, {
             'Content-Type': ct,
@@ -44,8 +46,21 @@ function mediaProxyPlugin() {
           const body = await proxyRes.arrayBuffer()
           res.end(Buffer.from(body))
         } catch {
-          res.writeHead(502, { 'Content-Type': 'text/plain' })
-          res.end('Proxy fetch failed')
+          // Spotty connections fail anywhere in here — including after
+          // headers are already out (upstream dying mid-download).
+          // Writing new headers at that point crashes the whole dev
+          // server, so only send the 502 when it's still possible, and
+          // otherwise just tear the socket down like any dead stream.
+          if (res.headersSent || res.destroyed) {
+            res.destroy()
+            return
+          }
+          try {
+            res.writeHead(502, { 'Content-Type': 'text/plain' })
+            res.end('Proxy fetch failed')
+          } catch {
+            res.destroy()
+          }
         }
       })
     },
