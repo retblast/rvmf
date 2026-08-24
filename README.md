@@ -28,32 +28,36 @@ A key theme is that I don't have money for a subscription to any service, so all
 
 ### Core
 
-- **Home timeline** with boost unwrapping, infinite scroll (IntersectionObserver), per-post favouriting/boosting/bookmarking, and pull-to-refresh.
-- **Thread view** — every post opens a thread panel (slide-out at medium width, permanent column when wide, in-place swap on narrow) with the full ancestor + descendant tree from `/context`, built into a nested tree client-side. Auto-refreshes every 5 seconds. Replies compose inline beneath the post being replied to; after posting, the reply is inserted into the tree immediately and scrolled into view.
+- **Home timeline** with boost unwrapping, infinite scroll (IntersectionObserver), per-post favouriting/boosting/bookmarking, and pull-to-refresh. Visible posts poll for fresh state every 5 seconds, so counts and flags stay live everywhere at once.
+- **Thread view** — every post opens a thread panel (slide-out at medium width, permanent column when wide, in-place swap on narrow) with the full ancestor + descendant tree from `/context`, built into a nested tree client-side. Auto-refreshes every 5 seconds (tree *and* the focal post). Replies compose inline beneath any post in the thread; after posting, the reply is inserted into the tree immediately and scrolled into view. Remote threads can pull missing replies from their origin server.
 - **Explore** — federated and local public timelines, plus a profile directory ("People") with infinite scroll.
 - **Search** — debounced search across people, posts, and hashtags (`/api/v2/search`), with display tabs that filter results. Works around Mitra's untyped-search parser by sending typed requests per category.
-- **Notifications** — follows, follow requests (accept/reject), boosts, favourites, mentions, emoji reactions, quotes, edits. Auto-refreshes every 5 seconds while visible. Unread badge driven by the server-side markers API so the read position syncs across devices. Clear-all supported.
+- **Notifications** — follows, follow requests (accept/reject), boosts, favourites, mentions, emoji reactions, quotes, edits. Auto-refreshes every 5 seconds while visible. Unread badge driven by the server-side markers API so the read position syncs across devices. Clear-all supported. Filter chips hide categories client-side (Mitra has no `exclude_types` param); hidden categories never count as read.
 - **Messages** — direct-message inbox: one row per conversation with participants and a snippet of the latest post. Clicking opens that post's thread.
 - **Lists** — create, rename, delete lists (Mitra custom feeds); add/remove members from any profile; per-list timelines.
-- **Groups** — browse your followed groups, open their timelines, and create new ones.
+- **Groups** — browse followed and moderated groups, open their timelines, post directly into a group, create new ones, edit descriptions, browse members (admin badges), and delete groups (type-to-confirm).
+- **Favourites** — dedicated favourites view with infinite scroll; un-favouriting removes the row.
 - **Bookmarks** — dedicated bookmarks view with infinite scroll; unbookmarking removes the row.
 - **Hashtags** — hashtag links inside posts open the tag's public feed inline, with back navigation.
 
 ### Compose & Reply
 
-- **New post** — modal dialog with server-reported character limit (`max_characters` from `/api/v2/instance`, default 500), content warning toggle, visibility selector (Public / Unlisted / Followers only / Direct — non-standard values like `subscribers` still display), media upload (up to 4 files with live thumbnails, uploads start immediately and are tracked independently), image paste from clipboard, emoji picker, and Ctrl+Enter to submit.
+- **New post** — modal dialog with server-reported character limit (`max_characters` from `/api/v2/instance`, default 500), optional title, language tag, content warning toggle, visibility selector (Public / Unlisted / Followers only / Subscribers / Direct — non-standard values still display), media upload (up to 4 files with live thumbnails and per-file alt-text editing, uploads start immediately and are tracked independently), image paste from clipboard, emoji picker, and Ctrl+Enter to submit.
+- **Markdown preview** — toggleable server-rendered preview (`/statuses/preview`) in the compose, reply, and edit dialogs, rendered through the same safe rich-text pipeline as post bodies.
 - **Polls** — build polls in the composer: 2–8 options, duration presets, multiple-choice support. Polls and media attachments are mutually exclusive.
-- **Emoji** — `:shortcode:` autocomplete while typing, plus a picker with common unicode emoji and your instance's custom emoji. Custom emoji render inline everywhere (names, post text, reactions).
+- **Emoji & mentions** — `:shortcode:` autocomplete plus an `@` account autocomplete backed by `/accounts/search`; a picker with common unicode emoji and your instance's custom emoji. Custom emoji render inline everywhere (names, post text, reactions).
 - **Idempotent posting** — every draft carries an `Idempotency-Key`, so double-submits and retry-after-timeout can't create duplicate posts.
-- **Reply** — inline composer inside the thread panel beneath the target post. Inherits the parent post's visibility by default. Shows a preview of the post being replied to.
+- **Reply** — inline composer inside the thread panel beneath the target post. Inherits the parent post's visibility by default; conversation-type parents lock visibility entirely. Shows a preview of the post being replied to.
 - **Quote** — boost dropdown includes a "Quote" option that opens the compose dialog with the quoted post attached.
+- **Group posting** — "Post to this group" addresses the composer at a group (`group_id`), with context shown in the dialog.
 - **Default visibility** — seeded from server preferences (`posting:default:visibility`) and persisted back via `update_credentials`, so it applies across devices and clients.
 
 ### Posts & Interactions
 
-- **Media** — images, video, GIFV, audio playback. Full-screen lightbox with keyboard navigation (arrows, Escape). Sensitive content blur with click-to-reveal.
-- **Media resilience** — images decode from blurhash placeholders while loading; remote media falls back through signed-proxy URL decoding, original-origin recovery, and ActivityPub document lookup when proxies break. The dev server proxies all media to sidestep CORS.
-- **Quarantined-image recovery** — when an instance disables inline embedding of remote media, image links are extracted back out of the post text and rendered as blurred attachments again.
+- **Media** — images, video, GIFV, audio playback. Full-screen lightbox with keyboard navigation (arrows, Escape) and alt text shown as a caption. Sensitive content blur with click-to-reveal; alt text also appears on thumbnail hover.
+- **Media resilience** — images decode from blurhash placeholders while loading; remote media falls back through signed-proxy URL decoding, original-origin recovery, and ActivityPub document lookup when proxies break. The dev server proxies all media to sidestep CORS (and survives flaky connections without dying).
+- **Who favourited / boosted** — count badges open popovers listing the accounts behind them.
+- **Quarantined-image recovery** — when an instance disables inline embedding of remote media, image links are extracted back out of the post text (markdown-wrapped or bare) and rendered as blurred attachments again.
 - **Polls** — vote on active polls; results show percentages, your choices highlighted, voter counts, and time remaining.
 - **Emoji reactions** — Pleroma/Akkoma-style `emoji_reactions` with a picker (common emoji + custom server emoji).
 - **Boost dropdown** — boost or quote; boosts are hidden for followers-only/direct/subscribers posts since servers reject them.
@@ -65,8 +69,10 @@ A key theme is that I don't have money for a subscription to any service, so all
 ### Profiles
 
 - **Profile view** — header banner, overlapping avatar, display name (with custom emoji), handle, bio, stats, and follow indicators ("Mutual", "Follows you").
-- **Follow / unfollow**, plus a per-profile list-membership dropdown (checkboxes for each of your lists).
-- **Tabs** — Posts (top-level), Posts & Replies, Pinned, Media — all with infinite scroll.
+- **People lists** — followers / following / subscribers counts open paginated panels; on your own profile you can silently remove followers.
+- **Follow tuning** — after following someone, toggle whether their reposts and replies appear in your home timeline.
+- **Follow / unfollow**, plus a per-profile list-membership dropdown (membership resolved via a single `/accounts/:id/lists` call).
+- **Tabs** — Posts (top-level), Posts & Replies, Pinned, Media — all with infinite scroll. Remote profiles get a "load older posts from origin" backfill button.
 - **Edit profile** (own) — avatar/header upload (base64), display name, bio, protected/bot toggles, and up to 6 profile fields.
 
 ### Account management
@@ -74,8 +80,10 @@ A key theme is that I don't have money for a subscription to any service, so all
 Reached from the settings menu:
 
 - **Password change**.
-- **Active sessions** — every OAuth token logged into the account, current one pinned on top; revoke any (revoking the current one logs out).
+- **Active sessions** — every OAuth token logged into the account, current one pinned on top; revoke any (revoking the current one logs out). Logging out also revokes the token server-side.
+- **Sent follow requests** — pending outgoing requests to protected accounts.
 - **Portability** — export follows/followers as CSV, import them back, manage aliases, and move followers to a new account (type-to-confirm; irreversible).
+- **Delete account** — type-to-confirm wipe of the account and all its posts; logs out afterward.
 
 ### Settings
 
@@ -94,7 +102,8 @@ Reached from the settings menu:
   - **Medium** (900–1399px) — content area plus a sliding thread panel from the right.
   - **Narrow** (<900px) — thread replaces the content in-place with a back button.
 - **Escape closes the topmost popup**, innermost first (pickers → dropdowns → dialogs → panel).
-- **Instance identity** — tab favicon and headerbar icon follow the logged-in instance; the login screen recognizes instances as you type and shows their favicon.
+- **Flaky-connection resilience** — every API request carries a timeout (20s reads, 60s writes); read requests auto-retry with backoff on network errors and 429/5xx; uploads get 5 minutes. While the browser is offline, all polling pauses behind an amber banner, and reconnecting refreshes the current view immediately. Failed loads offer Retry buttons.
+- **Instance identity** — tab title ("rvmf on \<host\>"), favicon, and headerbar icon follow the logged-in instance; the login screen recognizes instances as you type and shows their favicon.
 - **Error boundaries** — one broken section degrades to a local "Try again" instead of blanking the app.
 - **Animated thread loading** — Framer Motion staggers ancestors converging down toward the focal post, replies converging up.
 - Keyboard-accessible throughout (`focus-visible` outlines), Adwaita-style overlay scrollbars.
@@ -169,8 +178,10 @@ src/
                      blurhash placeholders, MediaLightbox.
 
     Compose.jsx        ComposeDialog (new post), EditDialog, media upload
-                     hook + thumbnail strip, poll draft state + editor,
-                     visibility select, char counter, parent-post previews.
+                     hook + thumbnail strip with alt-text editing, poll
+                     draft state + editor, visibility/language selects,
+                     markdown preview hook + pane, char counter,
+                     parent-post previews.
 
     ReplyComposer.jsx  Inline reply composer sharing the compose building
                      blocks.
@@ -179,8 +190,10 @@ src/
                      ancestors, focal post, nested reply tree, inline
                      composers, staggered animations.
 
-    ProfileView.jsx    Profile header, follow state, badges, tabs,
-                     infinite-scroll statuses, per-profile lists menu.
+    ProfileView.jsx    Profile header, follow state + tuning, badges,
+                     people lists (followers/following/subscribers),
+                     tabs, infinite-scroll statuses, origin backfill,
+                     per-profile lists menu.
 
     ProfileEdit.jsx    Own-profile editor: images, bio, flags, fields.
 
@@ -191,18 +204,25 @@ src/
 
     ListsView.jsx      List CRUD + per-list feed.
 
-    GroupsView.jsx     Followed groups, group feeds, group creation.
+    GroupsView.jsx     Followed/moderated groups, group feeds, group
+                     posting, creation, and management (description,
+                     members, deletion).
 
     ConversationsView.jsx  Direct-message inbox.
 
+    FavouritesView.jsx Favourited posts with infinite scroll.
+
     MutedAccountsView.jsx  Muted accounts with unmute.
 
-    AccountSettingsView.jsx  Password change, session revocation,
-                     portability card (export/import CSV, aliases,
-                     follower migration).
+    AccountSettingsView.jsx  Password change, session revocation, sent
+                     follow requests, portability card (export/import
+                     CSV, aliases, follower migration), account deletion.
 
     Emoji.jsx          Emoji autocomplete hook, dropdown, picker,
                      shortcode tables.
+
+    Mention.jsx        @mention autocomplete hook + dropdown backed by
+                     /accounts/search.
 
     InstanceIcon.jsx   Instance favicon with fallback glyph.
 
@@ -210,8 +230,13 @@ src/
 
   lib/
     mitra.js           API client. Everything the app does against the
-                     instance lives here, through apiFetch() which handles
-                     JSON parsing, error wrapping, and 204 No Content.
+                     instance lives here, through apiFetch() which adds
+                     request timeouts and read retries, handles JSON
+                     parsing, error wrapping, and 204 No Content.
+
+    storage.js         localStorage/sessionStorage wrapper under the
+                     rvmf- key prefix, with a one-time migration from
+                     the old mitra-* keys.
 
     render.jsx         HTML-to-plaintext conversion preserving links as
                      markdown tokens, safe rich-text rendering (mentions,
@@ -239,6 +264,7 @@ All calls go through the client in `src/lib/mitra.js`.
 |---|---|---|
 | `/api/v1/apps` | POST | Register OAuth app |
 | `/oauth/token` | POST | Exchange auth code for token |
+| `/oauth/revoke` | POST | Invalidate token on logout |
 | `/api/v1/accounts/verify_credentials` | GET | Get current user info |
 | `/api/v2/instance` | GET | Instance config (character limit) |
 | `/api/v1/instance` | GET | Instance recognition on login screen |
@@ -248,8 +274,14 @@ All calls go through the client in `src/lib/mitra.js`.
 | `/api/v1/timelines/list/:id` | GET | List timeline |
 | `/api/v1/timelines/group/:id` | GET | Group timeline |
 | `/api/v1/statuses/:id/context` | GET | Thread ancestors + descendants |
+| `/api/v1/statuses/:id` | GET | Single post (focal-post refresh) |
+| `/api/v1/statuses?id[]=` | GET | Batch fetch posts (live timeline polling) |
 | `/api/v1/statuses/:id/source` | GET | Raw source for editing |
-| `/api/v1/statuses` | POST | Create post/reply (supports `Idempotency-Key`) |
+| `/api/v1/statuses/:id/favourited_by` | GET | Who favourited |
+| `/api/v1/statuses/:id/reblogged_by` | GET | Who boosted |
+| `/api/v1/statuses/:id/load_conversation` | POST | Pull remote replies from origin |
+| `/api/v1/statuses` | POST | Create post/reply (title, language, `group_id`; supports `Idempotency-Key`) |
+| `/api/v1/statuses/preview` | POST | Server-rendered markdown preview |
 | `/api/v1/statuses/:id` | PUT | Edit post text |
 | `/api/v1/statuses/:id` | DELETE | Delete own post |
 | `/api/v1/statuses/:id/favourite` | POST | Favourite |
@@ -264,8 +296,10 @@ All calls go through the client in `src/lib/mitra.js`.
 | `/api/v1/pleroma/statuses/:id/reactions/:emoji` | DELETE | Remove emoji reaction |
 | `/api/v1/polls/:id/votes` | POST | Vote on poll |
 | `/api/v1/bookmarks` | GET | Bookmarks (paginated) |
+| `/api/v1/favourites` | GET | Favourited posts (paginated) |
 | `/api/v1/custom_emojis` | GET | Custom emoji list |
 | `/api/v2/search` | GET | Search accounts/statuses/hashtags |
+| `/api/v1/accounts/search` | GET | Username lookup (@autocomplete) |
 | `/api/v1/markers` | GET | Read positions (notifications) |
 | `/api/v1/markers` | POST | Update read positions |
 | `/api/v1/notifications` | GET | Notifications |
@@ -280,16 +314,27 @@ All calls go through the client in `src/lib/mitra.js`.
 | `/api/v1/lists/:id/accounts?limit=0` | GET | List members |
 | `/api/v1/lists/:id/accounts` | POST | Add members |
 | `/api/v1/lists/:id/accounts` | DELETE | Remove members |
-| `/api/v1/groups/followed` | GET | Followed groups |
+| `/api/v1/groups/followed` | GET | Followed/moderated groups (`filter`) |
 | `/api/v1/groups` | POST | Create group |
+| `/api/v1/groups/:id` | PATCH | Update group description |
+| `/api/v1/groups/:id` | DELETE | Delete group |
+| `/api/v1/groups/:id/source` | GET | Group description source (for editing) |
+| `/api/v1/groups/:id/members` | GET | Group members + affiliations |
 | `/api/v1/directory` | GET | Profile directory (Explore > People) |
 | `/api/v1/conversations` | GET | DM conversations |
 | `/api/v1/mutes` | GET | Muted accounts (paginated) |
 | `/api/v1/accounts/:id/mute` | POST | Mute account |
 | `/api/v1/accounts/:id/unmute` | POST | Unmute account |
 | `/api/v1/accounts/:id/block` | POST | Block account |
-| `/api/v1/accounts/:id/follow` | POST | Follow account |
+| `/api/v1/accounts/:id/follow` | POST | Follow account (reblogs/replies options) |
 | `/api/v1/accounts/:id/unfollow` | POST | Unfollow account |
+| `/api/v1/accounts/:id/remove_from_followers` | POST | Silently remove a follower |
+| `/api/v1/accounts/:id/followers` | GET | Followers (paginated) |
+| `/api/v1/accounts/:id/following` | GET | Following (paginated) |
+| `/api/v1/accounts/:id/subscribers` | GET | Subscribers with expiry |
+| `/api/v1/accounts/:id/lists` | GET | Which of your lists contain this account |
+| `/api/v1/accounts/:id/load_activities` | POST | Backfill remote profile from origin |
+| `/api/v1/follow_requests/outgoing` | GET | Pending sent follow requests |
 | `/api/v1/accounts/:id` | GET | Fetch profile |
 | `/api/v1/accounts/:id/statuses` | GET | Profile statuses (tabs/pagination) |
 | `/api/v1/accounts/relationships` | GET | Follow relationships |
@@ -297,6 +342,7 @@ All calls go through the client in `src/lib/mitra.js`.
 | `/api/v1/accounts/update_credentials` | PATCH | Update own profile (also default visibility) |
 | `/api/v2/media` | POST | Upload media attachment |
 | `/api/v1/media/:id` | GET | Poll upload status / resolve URLs |
+| `/api/v1/media/:id` | PUT | Update alt text / description |
 | `/api/v1/preferences` | GET | Posting defaults |
 | `/api/v1/settings/change_password` | POST | Change password |
 | `/api/v1/settings/sessions` | GET | Active sessions |
