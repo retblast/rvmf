@@ -132,6 +132,9 @@ export default function App() {
   const [clearingNotifications, setClearingNotifications] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
+  // Home timeline's own infinite-scroll sentinel — see the observer
+  // effect below for why it can't be looked up by class name.
+  const homeSentinelRef = useRef(null)
 
   const [fetchClientMedia, setFetchClientMedia] = useState(() => {
     try {
@@ -321,7 +324,11 @@ export default function App() {
 
   useEffect(() => {
     if (view !== 'home') return
-    const sentinel = document.querySelector('.scroll-sentinel')
+    // Own ref, not document.querySelector: on the wide tier the
+    // notifications column renders before this view and carries a
+    // sentinel of its own — a class-based lookup would grab that one
+    // and home's infinite scroll would watch the wrong element.
+    const sentinel = homeSentinelRef.current
     if (!sentinel) return
     const observer = new IntersectionObserver(
       (entries) => {
@@ -331,7 +338,7 @@ export default function App() {
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [view, loadMoreTimeline, timeline.length])
+  }, [view, tier, loadMoreTimeline, timeline.length])
 
   function toggleNotifFilter(types) {
     setNotifExcluded((prev) => {
@@ -1185,7 +1192,7 @@ export default function App() {
           )}
           {loadingMore && <div className="empty-state">Loading…</div>}
           {hasMore && !loadingMore && timeline.length > 0 && (
-            <div className="scroll-sentinel" />
+            <div ref={homeSentinelRef} className="scroll-sentinel" />
           )}
         </>
       )}
