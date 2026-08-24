@@ -948,6 +948,38 @@ export default function App() {
     return () => clearInterval(interval)
   }, [view, tier, session])
 
+  // Keep home-timeline rows live: poll the visible posts' state on the
+  // same 5s cadence as the thread panel, so counts/flags update everywhere
+  // at once instead of only inside an open thread. Batch endpoint keeps
+  // this to one request; boost wrappers are rebuilt around fresh inner
+  // statuses since /statuses returns originals, never wrappers.
+  const timelineRef = useRef([])
+  timelineRef.current = timeline
+  useEffect(() => {
+    if (!session || view !== 'home') return
+    const interval = setInterval(() => {
+      const posts = timelineRef.current.slice(0, 30)
+      if (posts.length === 0) return
+      mitra
+        .fetchStatuses(session.instanceUrl, session.token, posts.map((p) => p.id))
+        .then((fresh) => {
+          if (!Array.isArray(fresh) || fresh.length === 0) return
+          const byId = new Map(fresh.map((s) => [s.id, s]))
+          setTimeline((prev) =>
+            prev.map((post) => {
+              if (post.reblog) {
+                const inner = byId.get(post.reblog.id)
+                return inner ? { ...post, reblog: inner } : post
+              }
+              return byId.get(post.id) || post
+            })
+          )
+        })
+        .catch(() => {})
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [session, view])
+
   // After a reply posts successfully, insert it into the correct position in
   // the already-loaded tree so it shows up immediately, then swap the panel
   // back to thread view and trigger an immediate refresh.

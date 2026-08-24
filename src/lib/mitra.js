@@ -191,6 +191,15 @@ export function fetchStatus(instanceUrl, token, statusId) {
   })
 }
 
+// Batch fetch posts by id (GET /statuses?id[]=…&id[]=…). Posts that
+// don't exist or aren't visible are simply omitted from the response.
+export function fetchStatuses(instanceUrl, token, ids) {
+  const params = ids.map((id) => `id[]=${encodeURIComponent(id)}`).join('&')
+  return apiFetch(instanceUrl, `/api/v1/statuses?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 export function fetchPublicTimeline(instanceUrl, token, local, { max_id } = {}) {
   const params = new URLSearchParams({ limit: '30' })
   if (local) params.set('local', 'true')
