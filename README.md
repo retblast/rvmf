@@ -288,6 +288,4 @@ All calls go through the client in `src/lib/mitra.js`.
 | `/api/v1/settings/aliases` | POST | Add alias |
 | `/api/v1/settings/aliases/remove` | POST | Remove alias |
 | `/api/v1/settings/move_followers` | POST | Move followers (migration) |
-| `/api/v1/settings/delete_account` | POST | Delete account |
-
-Note: `delete_account` has a client function in `mitra.js` but no UI yet.
+| `/api/v1/settings/delete_account` | POST | Delete account (type-to-confirm; logs out after) |

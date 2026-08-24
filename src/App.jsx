@@ -1310,6 +1310,7 @@ export default function App() {
           instanceUrl={session.instanceUrl}
           token={session.token}
           onOpenProfile={(account) => { setView('home'); handleOpenProfile(account) }}
+          onDeleted={logout}
         />
       )}
 

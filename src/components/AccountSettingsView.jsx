@@ -237,10 +237,57 @@ function OutgoingRequestsCard({ instanceUrl, token, onOpenProfile }) {
   )
 }
 
+// Account deletion — the one action there's no coming back from. The
+// server wipes the account and its posts (POST /settings/delete_account,
+// 204). Type-to-confirm gates it; on success the app logs out since the
+// token dies with the account.
+function DeleteAccountCard({ instanceUrl, token, onDeleted }) {
+  const [confirmText, setConfirmText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const confirmed = confirmText.trim() === 'DELETE'
+
+  async function doDelete() {
+    if (!confirmed || busy) return
+    setBusy(true)
+    setError('')
+    try {
+      await mitra.deleteAccount(instanceUrl, token)
+      onDeleted()
+    } catch (err) {
+      setError(err.message || 'Delete failed.')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form className="account-card" onSubmit={(e) => { e.preventDefault(); doDelete() }}>
+      <div className="account-card-heading danger">Delete account</div>
+      <div className="poll-meta">
+        Wipes this account and all of its posts from the instance.
+        Irreversible — there is no undo and no export happens automatically.
+        Export your follows first if you plan to migrate elsewhere.
+      </div>
+      {error && <div className="banner banner-error">{error}</div>}
+      <input
+        className="profile-edit-input"
+        placeholder="Type DELETE to confirm"
+        value={confirmText}
+        onChange={(e) => setConfirmText(e.target.value)}
+        autoComplete="off"
+        spellCheck="false"
+      />
+      <button type="submit" className="pill-btn destructive" disabled={!confirmed || busy}>
+        {busy ? 'Deleting…' : 'Delete account'}
+      </button>
+    </form>
+  )
+}
+
 // Account security: password change and active session management.
 // Reached from the settings menu; Mitra's settings module backs both
 // (/v1/settings/change_password, /v1/settings/sessions).
-export function AccountSettingsView({ instanceUrl, token, onOpenProfile }) {
+export function AccountSettingsView({ instanceUrl, token, onOpenProfile, onDeleted }) {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [pwBusy, setPwBusy] = useState(false)
@@ -380,6 +427,8 @@ export function AccountSettingsView({ instanceUrl, token, onOpenProfile }) {
       <OutgoingRequestsCard instanceUrl={instanceUrl} token={token} onOpenProfile={onOpenProfile} />
 
       <PortabilityCard instanceUrl={instanceUrl} token={token} />
+
+      <DeleteAccountCard instanceUrl={instanceUrl} token={token} onDeleted={onDeleted} />
     </div>
   )
 }
