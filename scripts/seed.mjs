@@ -10,8 +10,21 @@ const PASSWORD = 'password-123'
 
 // Users are created by e2e.sh via the Mitra CLI (the HTTP registration
 // endpoint is rate-limited); this script only logs them in and populates
-// content. Logins are also limiter-guarded, so retry patiently.
+// content. Mitra's internal limiter also bites writes, so every
+// interaction is retried patiently.
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function patient(fn, label) {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      if (attempt === 5) throw err
+      console.log(`${label} attempt ${attempt + 1} failed (${err.message}); waiting...`)
+      await sleep(3000)
+    }
+  }
+}
 
 async function makeUser(username) {
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -31,36 +44,36 @@ const carol = await makeUser('carol')
 
 // Follow graph: alice <-> bob, plus carol follows both so her home
 // timeline has content for the specs.
-await mitra.followAccount(instanceUrl, alice.token, bob.account.id)
-await mitra.followAccount(instanceUrl, bob.token, alice.account.id)
-await mitra.followAccount(instanceUrl, carol.token, alice.account.id)
-await mitra.followAccount(instanceUrl, carol.token, bob.account.id)
+await patient(() => mitra.followAccount(instanceUrl, alice.token, bob.account.id), 'follow a->b')
+await patient(() => mitra.followAccount(instanceUrl, bob.token, alice.account.id), 'follow b->a')
+await patient(() => mitra.followAccount(instanceUrl, carol.token, alice.account.id), 'follow c->a')
+await patient(() => mitra.followAccount(instanceUrl, carol.token, bob.account.id), 'follow c->b')
 
-const root = await mitra.postStatus(instanceUrl, alice.token,
-  'Seeded root post from alice', { visibility: 'public' })
-await mitra.postStatus(instanceUrl, bob.token,
-  'Reply from bob to the seeded root', { inReplyToId: root.id, visibility: 'public' })
-const second = await mitra.postStatus(instanceUrl, bob.token,
-  'Second seeded post from bob #testing', { visibility: 'public' })
+const root = await patient(() => mitra.postStatus(instanceUrl, alice.token,
+  'Seeded root post from alice', { visibility: 'public' }), 'post root')
+const rootReply = await patient(() => mitra.postStatus(instanceUrl, bob.token,
+  'Reply from bob to the seeded root', { inReplyToId: root.id, visibility: 'public' }), 'post reply')
+const second = await patient(() => mitra.postStatus(instanceUrl, bob.token,
+  'Second seeded post from bob #testing', { visibility: 'public' }), 'post second')
 
 // Interactions: bob boosts + favourites alice's root; carol favourites it too.
-await mitra.setReblogged(instanceUrl, bob.token, root.id, false)
-await mitra.setFavourited(instanceUrl, bob.token, root.id, false)
-await mitra.setFavourited(instanceUrl, carol.token, second.id, false)
+await patient(() => mitra.setReblogged(instanceUrl, bob.token, root.id, false), 'boost')
+await patient(() => mitra.setFavourited(instanceUrl, bob.token, root.id, false), 'fav bob')
+await patient(() => mitra.setFavourited(instanceUrl, carol.token, second.id, false), 'fav carol')
 
 // Poll from alice; carol votes.
-const pollPost = await mitra.postStatus(instanceUrl, alice.token, 'Seeded poll: pick one', {
+const pollPost = await patient(() => mitra.postStatus(instanceUrl, alice.token, 'Seeded poll: pick one', {
   visibility: 'public',
   poll: { options: ['yes', 'no'], expires_in: 86400, multiple: false },
-})
+}), 'post poll')
 if (pollPost.poll) {
-  await mitra.votePoll(instanceUrl, carol.token, pollPost.poll.id, [0]).catch(() => {})
+  await patient(() => mitra.votePoll(instanceUrl, carol.token, pollPost.poll.id, [0]).catch(() => {}), 'vote')
 }
 
 // A direct message for the Messages view.
-await mitra.postStatus(instanceUrl, bob.token, `Direct note to @${alice.account.acct}`, {
+await patient(() => mitra.postStatus(instanceUrl, bob.token, `Direct note to @${alice.account.acct}`, {
   visibility: 'direct',
-})
+}), 'post dm')
 
 console.log('seed complete')
 const statePath = new URL('../e2e/.state/seed.json', import.meta.url)

@@ -11,14 +11,14 @@ test('filter chips hide notification categories', async ({ page }) => {
 
   // alice has favourite notifications from the seed (bob + carol)
   await page.getByRole('button', { name: /notifications/i }).click()
-  const list = page.locator('.notif-row')
-  await expect(list.filter({ hasText: 'favourited your post' })).toHaveCount(2)
+  const favNotifs = page.locator('.notif-row').filter({ hasText: 'favourited your post' })
+  await expect(favNotifs.first()).toBeVisible()
 
-  // Toggle Favourites off -> those rows vanish, others stay
+  // Toggle Favourites off -> those rows vanish
   await page.getByRole('button', { name: 'Favourites' }).click()
-  await expect(list.filter({ hasText: 'favourited your post' })).toHaveCount(0)
+  await expect(page.locator('.notif-row').filter({ hasText: 'favourited your post' })).toHaveCount(0)
 
   // Back on -> they return
   await page.getByRole('button', { name: 'Favourites' }).click()
-  await expect(list.filter({ hasText: 'favourited your post' })).toHaveCount(2)
+  await expect(favNotifs.first()).toBeVisible()
 })

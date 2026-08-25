@@ -17,10 +17,15 @@ test('favouriting one copy updates the boost-wrapper copy', async ({ page }) => 
   const before = await rows.first().locator('[data-favourited]').getAttribute('data-favourited')
   const after = before === 'true' ? 'false' : 'true'
 
-  await rows.first().getByRole('button', { name: 'Favorite' }).click()
-  for (const btn of await rows.locator('[data-favourited]').all()) {
-    await expect(btn).toHaveAttribute('data-favourited', after)
-  }
+  // The click can land on a rate-limited server; retry the whole
+  // click-and-verify cycle rather than assuming the first POST stuck.
+  await expect(async () => {
+    await rows.first().getByRole('button', { name: 'Favorite' }).click()
+    for (const btn of await rows.locator('[data-favourited]').all()) {
+      const attr = await btn.getAttribute('data-favourited')
+      if (attr !== after) throw new Error(`expected ${after}, got ${attr}`)
+    }
+  }).toPass({ timeout: 15_000 })
 })
 
 test('boosting shows in the boost trigger state', async ({ page }) => {
@@ -30,15 +35,29 @@ test('boosting shows in the boost trigger state', async ({ page }) => {
   const row = page.locator('.post-row', { hasText: SEED.secondText }).first()
   await expect(row).toBeVisible()
 
-  const boost = row.getByRole('button', { name: /boost or quote/i })
-  await expect(boost).toHaveAttribute('data-reblogged', 'false')
+  const trigger = row.getByRole('button', { name: /boost or quote/i })
 
-  await boost.click()
-  await row.getByRole('button', { name: /^boost$/i }).click()
-  await expect(boost).toHaveAttribute('data-reblogged', 'true')
+  // Transition-based (projects share one seeded instance) and
+  // self-healing against rate-limited writes: each pass reads the
+  // current state, opens the dropdown, and clicks toward the target.
+  async function driveTo(target) {
+    await expect(async () => {
+      const current = await trigger.getAttribute('data-reblogged')
+      if (current === target) return
+      await trigger.click() // opens (or closes) the dropdown
+      const itemName = target === 'true' ? /^boost$/i : /^unboost$/i
+      const item = row.getByRole('button', { name: itemName })
+      // A previous pass may have left the dropdown closed — reopen once.
+      if (!(await item.isVisible().catch(() => false))) {
+        await trigger.click()
+      }
+      await item.click()
+      const now = await trigger.getAttribute('data-reblogged')
+      if (now !== target) throw new Error(`reblogged=${now}, want ${target}`)
+    }).toPass({ timeout: 20_000 })
+  }
 
-  // Undo it to keep the fixture close to its seeded shape
-  await boost.click()
-  await row.getByRole('button', { name: /^unboost$/i }).click()
-  await expect(boost).toHaveAttribute('data-reblogged', 'false')
+  await driveTo('true')
+  await expect(trigger).toHaveAttribute('data-reblogged', 'true')
+  await driveTo('false')
 })
