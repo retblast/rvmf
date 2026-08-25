@@ -1,3 +1,9 @@
+/* Design tokens, light/dark themes, and component styles.
+   Convention: ALL font sizes are in rem (not px) so the UI respects the
+   user's browser/OS default text size — 1rem = 16px at default scale.
+   Icon <svg> sizes are pixel-locked by lucide's numeric props and are
+   intentionally exempt. */
+
 :root {
   --window-bg: #f6f5f4;
   --view-bg: #ffffff;
@@ -91,7 +97,7 @@ body {
   background: var(--window-bg);
   color: var(--text-primary);
   font-family: var(--font-ui);
-  font-size: 14px;
+  font-size: 0.875rem;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -122,7 +128,7 @@ button {
   gap: 8px;
   padding: 0 6px;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--text-primary);
 }
 
@@ -148,7 +154,7 @@ button {
 
 .login-recognized {
   color: var(--success);
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   font-weight: 600;
   margin: -10px auto 14px;
 }
@@ -167,7 +173,7 @@ button {
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   padding: 5px 14px;
   border-radius: 4px;
@@ -225,7 +231,7 @@ button {
   border-radius: var(--radius-control);
   background: transparent;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
 }
@@ -251,7 +257,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   flex-shrink: 0;
   position: relative;
@@ -270,7 +276,7 @@ button {
 .avatar.lg {
   width: 40px;
   height: 40px;
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 .content-scroll {
@@ -330,18 +336,18 @@ button {
 
 .post-name {
   font-weight: 700;
-  font-size: 13.5px;
+  font-size: 0.84375rem;
   color: var(--text-primary);
 }
 
 .post-handle,
 .post-time {
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   color: var(--text-secondary);
 }
 
 .post-parent-link {
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   color: var(--text-secondary);
   background: none;
   border: none;
@@ -361,7 +367,7 @@ button {
 
 .post-reply-context {
   margin: 2px 0 2px;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   color: var(--text-secondary);
 }
 
@@ -376,7 +382,7 @@ button {
 
 .post-text {
   margin: 4px 0 8px;
-  font-size: 13.5px;
+  font-size: 0.84375rem;
   line-height: 1.5;
   color: var(--text-primary);
   white-space: pre-wrap;
@@ -397,7 +403,7 @@ button {
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 0.75rem;
   padding: 5px 8px;
   border-radius: var(--radius-control);
   cursor: pointer;
@@ -456,7 +462,7 @@ button {
   background: none;
   border-radius: var(--radius-control);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--text-primary);
 }
 
@@ -469,7 +475,7 @@ button {
 }
 
 .section-label {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -526,7 +532,7 @@ button {
 }
 
 .headerbar-subtitle {
-  font-size: 10.5px;
+  font-size: 0.65625rem;
   font-weight: 400;
   color: var(--text-secondary);
   margin-top: -2px;
@@ -550,7 +556,7 @@ button {
 }
 
 .entry-label {
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   font-weight: 500;
   color: var(--text-secondary);
 }
@@ -560,7 +566,7 @@ button {
   outline: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-family: inherit;
   padding: 0;
   height: 22px;
@@ -573,7 +579,7 @@ button {
   border: 1px solid var(--border-strong);
   background: var(--view-bg);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   flex-shrink: 0;
@@ -607,7 +613,7 @@ button {
 .banner {
   padding: 10px 14px;
   border-radius: var(--radius-control);
-  font-size: 13px;
+  font-size: 0.8125rem;
   margin-bottom: 14px;
 }
 
@@ -632,7 +638,7 @@ button {
   padding: 40px 16px;
   text-align: center;
   color: var(--text-secondary);
-  font-size: 13.5px;
+  font-size: 0.84375rem;
 }
 
 .scroll-sentinel {
@@ -665,21 +671,21 @@ button {
 }
 
 .login-title {
-  font-size: 17px;
+  font-size: 1.0625rem;
   font-weight: 700;
   margin: 0 0 6px;
   color: var(--text-primary);
 }
 
 .login-subtitle {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
   margin: 0 0 24px;
   text-align: left;
 }
 
 .login-hint {
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   color: var(--text-secondary);
   text-align: left;
   line-height: 1.5;
@@ -700,7 +706,7 @@ button {
   border: none;
   background: none;
   color: var(--accent);
-  font-size: 13px;
+  font-size: 0.8125rem;
   cursor: pointer;
   padding: 4px 8px;
 }
@@ -851,7 +857,7 @@ button {
 }
 
 .dialog-title {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -863,7 +869,7 @@ button {
   background: var(--window-bg);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 14px;
+  font-size: 0.875rem;
   padding: 10px 12px;
   resize: vertical;
   outline: none;
@@ -917,7 +923,7 @@ button {
 
 .poll-option-pct {
   color: var(--text-secondary);
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   font-weight: 600;
   flex-shrink: 0;
 }
@@ -993,7 +999,7 @@ button {
 
 .poll-footer {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .poll-expired {
@@ -1014,7 +1020,7 @@ button {
 }
 
 .compose-visibility {
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   color: var(--text-secondary);
   margin-top: 8px;
 }
@@ -1030,7 +1036,7 @@ button {
   background: var(--window-bg);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 8px 12px;
   margin-bottom: 6px;
   outline: none;
@@ -1062,7 +1068,7 @@ button {
   background: var(--window-bg);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 6px 10px;
 }
 
@@ -1082,7 +1088,7 @@ button {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   color: var(--text-secondary);
 }
 
@@ -1110,7 +1116,7 @@ button {
   color: var(--text-primary);
   flex: 1;
   font-family: inherit;
-  font-size: 13.5px;
+  font-size: 0.84375rem;
   outline: none;
 }
 
@@ -1141,7 +1147,7 @@ button {
   -webkit-box-orient: vertical;
   color: var(--text-secondary);
   display: -webkit-box;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   margin-left: auto;
   max-width: 45%;
   overflow: hidden;
@@ -1160,7 +1166,7 @@ button {
 
 .search-hint {
   color: var(--text-secondary);
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   margin-bottom: 8px;
 }
 
@@ -1179,7 +1185,7 @@ button {
   box-shadow: var(--shadow, 0 2px 8px rgba(0, 0, 0, 0.15));
   color: var(--text-secondary);
   display: flex;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   gap: 6px;
   left: 50%;
   padding: 5px 14px;
@@ -1226,7 +1232,7 @@ button {
   color: var(--text-primary);
   flex: 1;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 6px 10px;
 }
 
@@ -1244,7 +1250,7 @@ button {
   cursor: pointer;
   flex: 1;
   font-family: inherit;
-  font-size: 13.5px;
+  font-size: 0.84375rem;
   text-align: left;
 }
 
@@ -1268,7 +1274,7 @@ button {
 .settings-menu-heading {
   color: var(--text-secondary);
   display: block;
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   padding: 2px 0;
   text-transform: uppercase;
 }
@@ -1311,7 +1317,7 @@ button {
 
 .compose-reply-context {
   color: var(--accent);
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   font-weight: 600;
   margin-bottom: 2px;
   text-transform: uppercase;
@@ -1336,7 +1342,7 @@ button {
 
 .parent-preview-cw {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .parent-preview-thumb {
@@ -1350,7 +1356,7 @@ button {
   align-items: center;
   color: var(--text-secondary);
   display: inline-flex;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
 }
 
 button.settings-menu-link {
@@ -1374,7 +1380,7 @@ button.settings-menu-link {
   -webkit-box-orient: vertical;
   color: var(--text-secondary);
   display: -webkit-box;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   line-height: 1.4;
   margin-left: auto;
   max-width: 45%;
@@ -1391,7 +1397,7 @@ button.settings-menu-link {
   border-radius: 999px;
   color: var(--text-contrast, #fff);
   display: inline-flex;
-  font-size: 10.5px;
+  font-size: 0.65625rem;
   font-weight: 700;
   justify-content: center;
   line-height: 1;
@@ -1416,7 +1422,7 @@ span.img-placeholder.custom-emoji {
   position: absolute;
   bottom: 8px;
   right: 10px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--text-secondary);
   pointer-events: none;
 }
@@ -1454,7 +1460,7 @@ span.img-placeholder.custom-emoji {
   border: none;
   background: none;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--text-primary);
   text-align: left;
 }
@@ -1478,7 +1484,7 @@ span.img-placeholder.custom-emoji {
 }
 
 .mention-dropdown .mention-names .post-handle {
-  font-size: 11px;
+  font-size: 0.6875rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1486,14 +1492,14 @@ span.img-placeholder.custom-emoji {
 }
 
 .emoji-dropdown-item .emoji-char {
-  font-size: 18px;
+  font-size: 1.125rem;
   width: 24px;
   text-align: center;
 }
 
 .emoji-dropdown-item .emoji-name {
   color: var(--text-secondary);
-  font-size: 12.5px;
+  font-size: 0.78125rem;
 }
 
 .emoji-picker {
@@ -1525,7 +1531,7 @@ span.img-placeholder.custom-emoji {
   border-radius: 6px;
   background: none;
   cursor: pointer;
-  font-size: 20px;
+  font-size: 1.25rem;
   transition: background 0.1s;
 }
 
@@ -1547,7 +1553,7 @@ span.img-placeholder.custom-emoji {
   border-radius: var(--radius-control);
   background: var(--window-bg);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 0.75rem;
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -1595,7 +1601,7 @@ span.img-placeholder.custom-emoji {
   width: 100%;
   margin-top: 4px;
   padding: 3px 6px;
-  font-size: 10px;
+  font-size: 0.625rem;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--window-bg);
@@ -1623,7 +1629,7 @@ span.img-placeholder.custom-emoji {
   justify-content: center;
   background: rgba(0, 0, 0, 0.55);
   color: #ffffff;
-  font-size: 10px;
+  font-size: 0.625rem;
   text-align: center;
   padding: 4px;
   line-height: 1.3;
@@ -1710,7 +1716,7 @@ span.img-placeholder.custom-emoji {
   gap: 12px;
   padding: 8px 10px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--text-primary);
   cursor: pointer;
 }
@@ -1726,7 +1732,7 @@ span.img-placeholder.custom-emoji {
   border-radius: var(--radius-control);
   background: var(--window-bg);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 0.75rem;
   text-align: right;
   outline: none;
 }
@@ -1752,7 +1758,7 @@ span.img-placeholder.custom-emoji {
   background: none;
   border-radius: var(--radius-control);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--text-secondary);
   transition: background 0.15s, color 0.15s;
 }
@@ -1902,7 +1908,7 @@ span.img-placeholder.custom-emoji {
 }
 
 .media-error-overlay span {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: #fff;
   background: rgba(0, 0, 0, 0.6);
   padding: 4px 10px;
@@ -1917,7 +1923,7 @@ span.img-placeholder.custom-emoji {
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--accent);
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   text-decoration: none;
 }
 
@@ -1936,7 +1942,7 @@ span.img-placeholder.custom-emoji {
   border-radius: 10px;
   background: rgba(0, 0, 0, 0.35);
   color: #ffffff;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   font-weight: 600;
   text-align: center;
   padding: 0 20px;
@@ -1964,7 +1970,7 @@ span.img-placeholder.custom-emoji {
   max-width: 80vw;
   background: rgba(0, 0, 0, 0.7);
   color: #ffffff;
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.4;
   padding: 6px 12px;
   border-radius: 6px;
@@ -2044,7 +2050,7 @@ span.img-placeholder.custom-emoji {
 }
 
 .notif-text {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--text-primary);
 }
 
@@ -2057,12 +2063,12 @@ span.img-placeholder.custom-emoji {
 .notif-actions .pill-btn {
   height: 30px;
   padding: 0 14px;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
 }
 
 .notif-responded {
   margin-top: 6px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--text-secondary);
 }
 
@@ -2152,18 +2158,18 @@ button.mention-link {
 
 .quote-card-name {
   font-weight: 700;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   color: var(--text-primary);
 }
 
 .quote-card-handle {
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   color: var(--text-secondary);
 }
 
 .quote-card-text {
   margin: 0;
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.45;
   color: var(--text-primary);
 }
@@ -2194,7 +2200,7 @@ button.mention-link {
   border: 1px solid var(--border);
   background: var(--hover-overlay);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.4;
   color: var(--text-primary);
   transition: background 0.1s;
@@ -2215,11 +2221,11 @@ button.mention-link {
 }
 
 .reaction-emoji-text {
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 .reaction-count {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--text-secondary);
 }
 
@@ -2252,7 +2258,7 @@ button.mention-link {
   background: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 20px;
+  font-size: 1.25rem;
   padding: 0;
 }
 
@@ -2308,7 +2314,7 @@ button.mention-link {
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   padding: 5px 12px;
   border-radius: 4px;
@@ -2338,7 +2344,7 @@ button.mention-link {
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 500;
   padding: 2px 10px;
   border-radius: 999px;
@@ -2356,7 +2362,7 @@ button.mention-link {
 
 /* Server notification policy: 'accept' | 'drop' badges */
 .notif-policy-badge {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 600;
   padding: 1px 8px;
   border-radius: 999px;
@@ -2381,7 +2387,7 @@ button.mention-link {
   width: 100%;
   margin-top: 10px;
   padding: 8px 12px;
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 700;
   border: none;
   border-bottom: 1px solid var(--border);
@@ -2404,7 +2410,7 @@ button.mention-link {
 }
 
 .compose-preview-context {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   color: var(--text-secondary);
   margin-bottom: 4px;
@@ -2416,7 +2422,7 @@ button.mention-link {
 
 .compose-preview-empty {
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 
 /* ---- main layout: timeline + thread side panel (medium/narrow tiers) ---- */
@@ -2483,7 +2489,7 @@ button.mention-link {
   justify-content: center;
   text-align: center;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 0 24px;
 }
 
@@ -2506,7 +2512,7 @@ button.mention-link {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11.5px;
+  font-size: 0.71875rem;
   font-weight: 600;
   color: var(--text-secondary);
   padding-left: 40px;
@@ -2561,7 +2567,7 @@ button.mention-link {
 
 .reply-loading {
   padding: 10px 0 10px 30px;
-  font-size: 12.5px;
+  font-size: 0.78125rem;
   color: var(--text-secondary);
 }
 
@@ -2717,13 +2723,13 @@ textarea:focus-visible {
 
 .profile-display-name {
   font-weight: 700;
-  font-size: 18px;
+  font-size: 1.125rem;
   color: var(--text-primary);
   line-height: 1.2;
 }
 
 .profile-handle {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
 }
 
@@ -2734,7 +2740,7 @@ textarea:focus-visible {
 
 .profile-bio {
   padding: 8px 16px;
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.45;
   color: var(--text-primary);
 }
@@ -2743,7 +2749,7 @@ textarea:focus-visible {
   display: flex;
   gap: 16px;
   padding: 4px 16px 12px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
 }
 
@@ -2788,7 +2794,7 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   padding: 6px 12px;
   cursor: pointer;
 }
@@ -2801,7 +2807,7 @@ textarea:focus-visible {
 }
 
 .accounts-popover-heading {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   color: var(--text-secondary);
   padding: 6px 12px 2px;
@@ -2823,7 +2829,7 @@ textarea:focus-visible {
   border: none;
   background: transparent;
   padding: 2px 4px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--text-secondary);
   cursor: pointer;
 }
@@ -2848,7 +2854,7 @@ textarea:focus-visible {
   padding: 10px 0;
   border: none;
   background: none;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text-secondary);
   cursor: pointer;
@@ -2877,7 +2883,7 @@ textarea:focus-visible {
 
 .profile-badge {
   display: inline-block;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 8px;
@@ -2956,7 +2962,7 @@ textarea:focus-visible {
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 0.6875rem;
   flex-shrink: 0;
 }
 
@@ -2984,7 +2990,7 @@ textarea:focus-visible {
   position: relative;
   overflow: hidden;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 0.75rem;
   font-family: inherit;
   display: flex;
   align-items: center;
@@ -3007,7 +3013,7 @@ textarea:focus-visible {
 
 .profile-edit-label {
   display: block;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 700;
   color: var(--text-secondary);
   margin: 10px 0 4px;
@@ -3020,7 +3026,7 @@ textarea:focus-visible {
   background: var(--window-bg);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 14px;
+  font-size: 0.875rem;
   padding: 8px 10px;
   outline: none;
 }
@@ -3045,7 +3051,7 @@ textarea.profile-edit-input {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--text-primary);
   cursor: pointer;
 }
@@ -3066,7 +3072,7 @@ textarea.profile-edit-input {
 }
 
 .post-edited {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--text-secondary);
   font-style: italic;
 }
@@ -3112,7 +3118,7 @@ textarea.profile-edit-input {
 }
 
 .dm-name {
-  font-size: 13.5px;
+  font-size: 0.84375rem;
   font-weight: 700;
   color: var(--text-primary);
   overflow: hidden;
@@ -3121,7 +3127,7 @@ textarea.profile-edit-input {
 }
 
 .dm-snippet {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3152,7 +3158,7 @@ textarea.profile-edit-input {
 }
 
 .account-card-heading {
-  font-size: 13.5px;
+  font-size: 0.84375rem;
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -3187,7 +3193,7 @@ textarea.profile-edit-input {
 }
 
 .session-client {
-  font-size: 13.5px;
+  font-size: 0.84375rem;
   font-weight: 700;
   color: var(--text-primary);
   display: flex;
