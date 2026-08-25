@@ -65,6 +65,7 @@ import { AccountSettingsView } from './components/AccountSettingsView.jsx'
 import { FavouritesView } from './components/FavouritesView.jsx'
 import { Switch } from './components/Switch.jsx'
 import { StatusPage } from './components/StatusPage.jsx'
+import { SKINS, applySkin } from './lib/skins.js'
 
 // Server-side notification filters (exclude_types[]). A group counts as
 // "off" when any of its types is excluded; groups never overlap.
@@ -260,6 +261,23 @@ export default function App() {
   const [themeMode, setThemeMode] = useState(() => {
     return storageGet('theme-mode') || 'system'
   })
+
+  // Skin (look-and-feel package): adwaita is the baseline; others are
+  // token manifests from src/lib/skins.js.
+  const [skinId, setSkinId] = useState(() => storageGet('skin') || 'adwaita')
+  useEffect(() => {
+    const skin = SKINS[skinId]
+    if (!skin) return
+    applySkin(skin)
+    storageSet('skin', skinId)
+    // Non-GNOME skins own their accent — the OS-accent feature yields.
+    if (!skin.respectOsAccent) {
+      document.documentElement.classList.remove('os-accent')
+      document.documentElement.style.removeProperty('--os-accent')
+    } else {
+      applyOsAccent(useOsAccent)
+    }
+  }, [skinId, useOsAccent])
 
   useEffect(() => {
     const root = document.documentElement
@@ -486,6 +504,10 @@ export default function App() {
         if (storageGet('theme-mode') === null && typeof cfg['theme-mode'] === 'string') {
           setThemeMode(cfg['theme-mode'])
         }
+        if (storageGet('skin') === null && typeof cfg['skin'] === 'string' && SKINS[cfg['skin']]) {
+          setSkinId(cfg['skin'])
+          storageSet('skin', cfg['skin'])
+        }
         if (storageGet('use-os-accent') === null && typeof cfg['use-os-accent'] === 'boolean') {
           const enabled = Boolean(cfg['use-os-accent'])
           setUseOsAccent(enabled)
@@ -519,6 +541,7 @@ export default function App() {
     const timer = setTimeout(() => {
       mitra.pushClientConfig(session.instanceUrl, session.token, {
         'theme-mode': themeMode,
+        'skin': skinId,
         'use-os-accent': useOsAccent,
         'always-sensitive': alwaysSensitive,
         'peek-spoiler': peekSpoilerMedia,
@@ -1838,6 +1861,19 @@ export default function App() {
                 <div className="settings-menu">
                   <div className="settings-group">
                     <span className="settings-menu-heading">Appearance</span>
+                    <div className="settings-menu-row">
+                      <span>Style</span>
+                      <select
+                        className="compose-visibility-select"
+                        value={skinId}
+                        onChange={(e) => setSkinId(e.target.value)}
+                        aria-label="Style"
+                      >
+                        {Object.values(SKINS).map((s) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
                     <label className="settings-menu-row">
                       <span>Use System Accent Color</span>
                       <Switch checked={useOsAccent} onChange={toggleUseOsAccent} label="Use System Accent Color" />
