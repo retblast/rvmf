@@ -781,6 +781,30 @@ button {
 .status-page .pill-btn {
   margin-top: 8px;
 }
+
+/* Transient confirmation toasts, bottom-center */
+.toast-stack {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 200;
+  pointer-events: none;
+}
+
+.toast {
+  background: rgba(0, 0, 0, 0.8);
+  color: #ffffff;
+  font-size: 0.8125rem;
+  padding: 8px 16px;
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+}
 .settings-group {
   display: flex;
   flex-direction: column;

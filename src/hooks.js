@@ -7,6 +7,12 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 export const AppSettingsContext = createContext({ hoverPreviewsEnabled: true })
 export const PickerContext = createContext({ openPickerId: null, setOpenPickerId: () => {} })
 
+// Transient confirmation toast. Fire-and-forget from anywhere via a
+// window event — avoids prop-drilling a dispatcher through every row.
+export function showToast(message) {
+  window.dispatchEvent(new CustomEvent('rvmf-toast', { detail: message }))
+}
+
 // Blob URLs fetched through the dev proxy are cached so scrolling back
 // doesn't refetch them. Object URLs are never GC'd while alive, so the
 // cache is bounded: oldest entries are evicted and their blob URLs

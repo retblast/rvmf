@@ -19,7 +19,7 @@ import {
   Box,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
-import { PickerContext, useEscapeKey } from '../hooks'
+import { PickerContext, useEscapeKey, showToast } from '../hooks'
 import { formatRelativeTime, htmlToPlainText, processStatusContent, renderEmojiText } from '../lib/render.jsx'
 import { Avatar, MediaGrid, ProxiedImg } from './Media.jsx'
 import { COMMON_EMOJI } from './Emoji.jsx'
@@ -678,7 +678,6 @@ export function PollCard({ poll, instanceUrl, token, onUpdated }) {
 
 function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, onBlock, onEdit, onUpdate }) {
   const [open, setOpen] = useState(false)
-  const [copied, setCopied] = useState(false)
   const [pinBusy, setPinBusy] = useState(false)
   const [pinError, setPinError] = useState('')
   // IPFS pin state: 'idle' | 'busy' | 'copied'
@@ -700,8 +699,8 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
     const acct = status.account?.acct || status.account?.username || 'unknown'
     const url = status.url || `https://${instanceUrl}/@${acct}/${status.id}`
     navigator.clipboard.writeText(url).then(() => {
-      setCopied(true)
-      setTimeout(() => { setCopied(false); setOpen(false) }, 900)
+      showToast('Link copied')
+      setOpen(false)
     }).catch(() => {
       setOpen(false)
     })
@@ -779,7 +778,7 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
           <div className="boost-dropdown">
             <button className="boost-dropdown-item" onClick={copyLink}>
               <Link size={15} />
-              {copied ? 'Copied!' : 'Copy link'}
+              Copy link
             </button>
             {isOwn && onEdit && (
               <button className="boost-dropdown-item" onClick={() => { setOpen(false); onEdit(status) }}>

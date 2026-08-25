@@ -420,6 +420,35 @@ export default function App() {
   // all polling pauses and an amber banner explains why; coming back
   // online refreshes the current view and notifications immediately.
   const [online, setOnline] = useState(() => navigator.onLine)
+
+  // Toast stack + global shortcuts
+  const [toasts, setToasts] = useState([])
+  useEffect(() => {
+    function onToast(e) {
+      const id = `${Date.now()}-${Math.random()}`
+      setToasts((prev) => [...prev, { id, message: e.detail }])
+      setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000)
+    }
+    window.addEventListener('rvmf-toast', onToast)
+    return () => window.removeEventListener('rvmf-toast', onToast)
+  }, [])
+
+  useEffect(() => {
+    function onKey(e) {
+      if (!(e.ctrlKey || e.metaKey)) return
+      const tag = e.target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable) return
+      if (e.key.toLowerCase() === 'n' && session) {
+        e.preventDefault()
+        setComposing(true)
+      } else if (e.key === ',') {
+        e.preventDefault()
+        setSettingsOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [session])
   // Flips true once the settings backfill attempt has resolved; gates
   // the debounced push below.
   const [configSyncReady, setConfigSyncReady] = useState(false)
@@ -1645,6 +1674,11 @@ export default function App() {
           You&apos;re offline — updates paused. Content is from cache.
         </div>
       )}
+      <div className="toast-stack" aria-live="polite">
+        {toasts.map((t) => (
+          <div key={t.id} className="toast" data-testid="toast">{t.message}</div>
+        ))}
+      </div>
       {showPullIndicator && (
         <div className={`pull-indicator${refreshing ? ' refreshing' : ''}`} style={pull ? { transform: `translateX(-50%) translateY(${Math.min(pull / 2, 24)}px)` } : undefined}>
           <RotateCw size={14} className={refreshing ? 'spin' : undefined} />
