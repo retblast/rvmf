@@ -97,7 +97,8 @@ body {
   background: var(--window-bg);
   color: var(--text-primary);
   font-family: var(--font-ui);
-  font-size: 0.875rem;
+  /* No font-size here on purpose: the root (and thus every rem) must
+     follow the user's browser/OS default text size, not our opinion. */
   -webkit-font-smoothing: antialiased;
 }
 
@@ -154,7 +155,7 @@ button {
 
 .login-recognized {
   color: var(--success);
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   margin: -10px auto 14px;
 }
@@ -336,18 +337,18 @@ button {
 
 .post-name {
   font-weight: 700;
-  font-size: 0.84375rem;
+  font-size: 0.875rem;
   color: var(--text-primary);
 }
 
 .post-handle,
 .post-time {
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
 }
 
 .post-parent-link {
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
   background: none;
   border: none;
@@ -367,7 +368,7 @@ button {
 
 .post-reply-context {
   margin: 2px 0 2px;
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
 }
 
@@ -534,7 +535,7 @@ button {
 }
 
 .headerbar-subtitle {
-  font-size: 0.65625rem;
+  font-size: 0.6875rem;
   font-weight: 400;
   color: var(--text-secondary);
   margin-top: -2px;
@@ -558,7 +559,7 @@ button {
 }
 
 .entry-label {
-  font-size: 0.71875rem;
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--text-secondary);
 }
@@ -640,7 +641,7 @@ button {
   padding: 40px 16px;
   text-align: center;
   color: var(--text-secondary);
-  font-size: 0.84375rem;
+  font-size: 0.875rem;
 }
 
 .scroll-sentinel {
@@ -687,7 +688,7 @@ button {
 }
 
 .login-hint {
-  font-size: 0.71875rem;
+  font-size: 0.75rem;
   color: var(--text-secondary);
   text-align: left;
   line-height: 1.5;
@@ -926,7 +927,7 @@ button {
 
 .poll-option-pct {
   color: var(--text-secondary);
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   flex-shrink: 0;
 }
@@ -1023,7 +1024,7 @@ button {
 }
 
 .compose-visibility {
-  font-size: 0.71875rem;
+  font-size: 0.75rem;
   color: var(--text-secondary);
   margin-top: 8px;
 }
@@ -1091,7 +1092,7 @@ button {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
 }
 
@@ -1119,7 +1120,7 @@ button {
   color: var(--text-primary);
   flex: 1;
   font-family: inherit;
-  font-size: 0.84375rem;
+  font-size: 0.875rem;
   outline: none;
 }
 
@@ -1150,7 +1151,7 @@ button {
   -webkit-box-orient: vertical;
   color: var(--text-secondary);
   display: -webkit-box;
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   margin-left: auto;
   max-width: 45%;
   overflow: hidden;
@@ -1169,7 +1170,7 @@ button {
 
 .search-hint {
   color: var(--text-secondary);
-  font-size: 0.71875rem;
+  font-size: 0.75rem;
   margin-bottom: 8px;
 }
 
@@ -1188,7 +1189,7 @@ button {
   box-shadow: var(--shadow, 0 2px 8px rgba(0, 0, 0, 0.15));
   color: var(--text-secondary);
   display: flex;
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   gap: 6px;
   left: 50%;
   padding: 5px 14px;
@@ -1253,7 +1254,7 @@ button {
   cursor: pointer;
   flex: 1;
   font-family: inherit;
-  font-size: 0.84375rem;
+  font-size: 0.875rem;
   text-align: left;
 }
 
@@ -1277,7 +1278,7 @@ button {
 .settings-menu-heading {
   color: var(--text-secondary);
   display: block;
-  font-size: 0.71875rem;
+  font-size: 0.75rem;
   padding: 2px 0;
   text-transform: uppercase;
 }
@@ -1320,7 +1321,7 @@ button {
 
 .compose-reply-context {
   color: var(--accent);
-  font-size: 0.71875rem;
+  font-size: 0.75rem;
   font-weight: 600;
   margin-bottom: 2px;
   text-transform: uppercase;
@@ -1359,7 +1360,7 @@ button {
   align-items: center;
   color: var(--text-secondary);
   display: inline-flex;
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
 }
 
 button.settings-menu-link {
@@ -1383,7 +1384,7 @@ button.settings-menu-link {
   -webkit-box-orient: vertical;
   color: var(--text-secondary);
   display: -webkit-box;
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   line-height: 1.4;
   margin-left: auto;
   max-width: 45%;
@@ -1400,7 +1401,7 @@ button.settings-menu-link {
   border-radius: 999px;
   color: var(--text-contrast, #fff);
   display: inline-flex;
-  font-size: 0.65625rem;
+  font-size: 0.6875rem;
   font-weight: 700;
   justify-content: center;
   line-height: 1;
@@ -1502,7 +1503,7 @@ span.img-placeholder.custom-emoji {
 
 .emoji-dropdown-item .emoji-name {
   color: var(--text-secondary);
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
 }
 
 .emoji-picker {
@@ -1604,7 +1605,7 @@ span.img-placeholder.custom-emoji {
   width: 100%;
   margin-top: 4px;
   padding: 3px 6px;
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--window-bg);
@@ -1632,7 +1633,7 @@ span.img-placeholder.custom-emoji {
   justify-content: center;
   background: rgba(0, 0, 0, 0.55);
   color: #ffffff;
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
   text-align: center;
   padding: 4px;
   line-height: 1.3;
@@ -1926,7 +1927,7 @@ span.img-placeholder.custom-emoji {
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--accent);
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   text-decoration: none;
 }
 
@@ -1945,7 +1946,7 @@ span.img-placeholder.custom-emoji {
   border-radius: 10px;
   background: rgba(0, 0, 0, 0.35);
   color: #ffffff;
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   text-align: center;
   padding: 0 20px;
@@ -2066,7 +2067,7 @@ span.img-placeholder.custom-emoji {
 .notif-actions .pill-btn {
   height: 30px;
   padding: 0 14px;
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
 }
 
 .notif-responded {
@@ -2161,12 +2162,12 @@ button.mention-link {
 
 .quote-card-name {
   font-weight: 700;
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   color: var(--text-primary);
 }
 
 .quote-card-handle {
-  font-size: 0.71875rem;
+  font-size: 0.75rem;
   color: var(--text-secondary);
 }
 
@@ -2390,7 +2391,7 @@ button.mention-link {
   width: 100%;
   margin-top: 10px;
   padding: 8px 12px;
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: 700;
   border: none;
   border-bottom: 1px solid var(--border);
@@ -2515,7 +2516,7 @@ button.mention-link {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.71875rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-secondary);
   padding-left: 40px;
@@ -2570,7 +2571,7 @@ button.mention-link {
 
 .reply-loading {
   padding: 10px 0 10px 30px;
-  font-size: 0.78125rem;
+  font-size: 0.8125rem;
   color: var(--text-secondary);
 }
 
@@ -3121,7 +3122,7 @@ textarea.profile-edit-input {
 }
 
 .dm-name {
-  font-size: 0.84375rem;
+  font-size: 0.875rem;
   font-weight: 700;
   color: var(--text-primary);
   overflow: hidden;
@@ -3161,7 +3162,7 @@ textarea.profile-edit-input {
 }
 
 .account-card-heading {
-  font-size: 0.84375rem;
+  font-size: 0.875rem;
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -3196,7 +3197,7 @@ textarea.profile-edit-input {
 }
 
 .session-client {
-  font-size: 0.84375rem;
+  font-size: 0.875rem;
   font-weight: 700;
   color: var(--text-primary);
   display: flex;
