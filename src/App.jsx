@@ -37,6 +37,7 @@ import { GroupsView } from './components/GroupsView.jsx'
 import { ConversationsView } from './components/ConversationsView.jsx'
 import { AccountSettingsView } from './components/AccountSettingsView.jsx'
 import { FavouritesView } from './components/FavouritesView.jsx'
+import { Switch } from './components/Switch.jsx'
 
 // Server-side notification filters (exclude_types[]). A group counts as
 // "off" when any of its types is excluded; groups never overlap.
@@ -130,6 +131,7 @@ export default function App() {
   const [messagesRefreshTick, setMessagesRefreshTick] = useState(0)
   const [favouritesRefreshTick, setFavouritesRefreshTick] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [serverInfoOpen, setServerInfoOpen] = useState(false)
   const [clientName, setClientNameState] = useState(() => mitra.getClientName())
   const [notifPolicy, setNotifPolicy] = useState(null)
   const [domainBlocks, setDomainBlocks] = useState(null)
@@ -1610,14 +1612,77 @@ export default function App() {
         </div>
       )}
       <header className="headerbar">
-        <div className="headerbar-brand">
-          <InstanceIcon instanceUrl={session.instanceUrl} />
-          <div>
-            rvmf
-            <div className="headerbar-subtitle">
-              {session.instanceUrl.replace(/^https?:\/\//, '')}
+        <div className="headerbar-brand-wrap">
+          <button
+            type="button"
+            className="headerbar-brand headerbar-brand-btn"
+            aria-label="Server details"
+            onClick={() => {
+              setServerInfoOpen((v) => !v)
+              if (!notifPolicy) {
+                mitra.fetchNotificationPolicy(session.instanceUrl, session.token)
+                  .then(setNotifPolicy)
+                  .catch(() => {})
+              }
+              if (!domainBlocks) {
+                mitra.fetchDomainBlocks(session.instanceUrl, session.token)
+                  .then(setDomainBlocks)
+                  .catch(() => {})
+              }
+            }}
+          >
+            <InstanceIcon instanceUrl={session.instanceUrl} />
+            <div>
+              rvmf
+              <div className="headerbar-subtitle">
+                {session.instanceUrl.replace(/^https?:\/\//, '')}
+              </div>
             </div>
-          </div>
+          </button>
+          {serverInfoOpen && (
+            <>
+              <div className="settings-menu-backdrop" onClick={() => setServerInfoOpen(false)} />
+              <div className="server-popover">
+                <span className="settings-menu-heading">{session.instanceUrl.replace(/^https?:\/\//, '')}</span>
+                {notifPolicy ? (
+                  <div className="settings-menu-section">
+                    <span className="settings-menu-heading">Notification Filters</span>
+                    {/* Mitra's policy values are 'accept' | 'drop' — which
+                        notifications the instance filters before you ever
+                        see them. Server-decided, so display-only. */}
+                    {NOTIF_POLICY_RULES.map(([key, label]) => {
+                      const value = notifPolicy[key]
+                      if (!value) return null
+                      return (
+                        <div key={key} className="settings-menu-row settings-menu-subrow">
+                          <span>{label}</span>
+                          <span className={`notif-policy-badge${value === 'drop' ? ' drop' : ''}`}>
+                            {value}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <span className="poll-meta">Loading filters…</span>
+                )}
+                {domainBlocks && (
+                  <div className="settings-menu-section">
+                    <span className="settings-menu-heading">Blocked Domains</span>
+                    {domainBlocks.length === 0 ? (
+                      <span className="poll-meta">None.</span>
+                    ) : (
+                      domainBlocks.map((block) => (
+                        <div key={block.digest} className="settings-menu-row settings-menu-subrow">
+                          <span>{block.domain}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="view-switcher">
@@ -1683,26 +1748,15 @@ export default function App() {
         </div>
 
         <div className="headerbar-actions">
-          <button className="icon-btn" aria-label="Refresh" onClick={handleRefresh}>
+          <button className="icon-btn" aria-label="Refresh" title="Refresh" onClick={handleRefresh}>
             <RotateCw size={16} />
           </button>
           <div className="settings-menu-wrap">
             <button
               className="icon-btn"
               aria-label="Settings"
-              onClick={() => {
-                setSettingsOpen((v) => !v)
-                if (!notifPolicy) {
-                  mitra.fetchNotificationPolicy(session.instanceUrl, session.token)
-                    .then(setNotifPolicy)
-                    .catch(() => {})
-                }
-                if (!domainBlocks) {
-                  mitra.fetchDomainBlocks(session.instanceUrl, session.token)
-                    .then(setDomainBlocks)
-                    .catch(() => {})
-                }
-              }}
+              title="Settings"
+              onClick={() => setSettingsOpen((v) => !v)}
             >
               <Settings size={16} />
             </button>
@@ -1710,85 +1764,81 @@ export default function App() {
               <>
                 <div className="settings-menu-backdrop" onClick={() => setSettingsOpen(false)} />
                 <div className="settings-menu">
-                  <label className="settings-menu-row">
-                    <span>Fetch media directly</span>
-                    <input
-                      type="checkbox"
-                      checked={fetchClientMedia}
-                      onChange={toggleFetchClientMedia}
-                    />
-                  </label>
-                  <label className="settings-menu-row">
-                    <span>Mark all media as sensitive</span>
-                    <input
-                      type="checkbox"
-                      checked={alwaysSensitive}
-                      onChange={toggleAlwaysSensitive}
-                    />
-                  </label>
-                  {alwaysSensitive && (
-                    <label className="settings-menu-row settings-menu-subrow">
-                      <span>Reveal media on hover (peek)</span>
-                      <input
-                        type="checkbox"
-                        checked={peekSpoilerMedia}
-                        onChange={togglePeekSpoilerMedia}
-                      />
+                  <div className="settings-group">
+                    <span className="settings-menu-heading">Appearance</span>
+                    <label className="settings-menu-row">
+                      <span>Use System Accent Color</span>
+                      <Switch checked={useOsAccent} onChange={toggleUseOsAccent} label="Use System Accent Color" />
                     </label>
-                  )}
-                  <label className="settings-menu-row">
-                    <span>Use system accent color</span>
-                    <input
-                      type="checkbox"
-                      checked={useOsAccent}
-                      onChange={toggleUseOsAccent}
-                    />
-                  </label>
-                  <div className="settings-menu-row">
-                    <span>Theme</span>
-                    <div className="theme-toggle">
-                      <button
-                        className={`theme-toggle-btn${themeMode === 'system' ? ' active' : ''}`}
-                        onClick={() => setThemeMode('system')}
-                      >
-                        System
-                      </button>
-                      <button
-                        className={`theme-toggle-btn${themeMode === 'light' ? ' active' : ''}`}
-                        onClick={() => setThemeMode('light')}
-                      >
-                        Light
-                      </button>
-                      <button
-                        className={`theme-toggle-btn${themeMode === 'dark' ? ' active' : ''}`}
-                        onClick={() => setThemeMode('dark')}
-                      >
-                        Dark
-                      </button>
+                    <div className="settings-menu-row">
+                      <span>Theme</span>
+                      <div className="theme-toggle">
+                        <button
+                          className={`theme-toggle-btn${themeMode === 'system' ? ' active' : ''}`}
+                          onClick={() => setThemeMode('system')}
+                        >
+                          System
+                        </button>
+                        <button
+                          className={`theme-toggle-btn${themeMode === 'light' ? ' active' : ''}`}
+                          onClick={() => setThemeMode('light')}
+                        >
+                          Light
+                        </button>
+                        <button
+                          className={`theme-toggle-btn${themeMode === 'dark' ? ' active' : ''}`}
+                          onClick={() => setThemeMode('dark')}
+                        >
+                          Dark
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div className="settings-menu-row">
-                    <span>Default post visibility</span>
-                    <select
-                      className="compose-visibility-select"
-                      value={defaultVisibility}
-                      onChange={(e) => handleDefaultVisibilityChange(e.target.value)}
-                    >
-                      {['public', 'unlisted', 'private', 'subscribers', 'direct'].map((v) => (
-                        <option key={v} value={v}>{mitraVisibilityLabel(v)}</option>
-                      ))}
-                    </select>
+
+                  <div className="settings-group">
+                    <span className="settings-menu-heading">Content</span>
+                    <label className="settings-menu-row">
+                      <span>Fetch Media Directly</span>
+                      <Switch checked={fetchClientMedia} onChange={toggleFetchClientMedia} label="Fetch Media Directly" />
+                    </label>
+                    <label className="settings-menu-row">
+                      <span>Mark All Media As Sensitive</span>
+                      <Switch checked={alwaysSensitive} onChange={toggleAlwaysSensitive} label="Mark All Media As Sensitive" />
+                    </label>
+                    {alwaysSensitive && (
+                      <label className="settings-menu-row settings-menu-subrow">
+                        <span>Reveal Media on Hover (Peek)</span>
+                        <Switch checked={peekSpoilerMedia} onChange={togglePeekSpoilerMedia} label="Reveal Media on Hover (Peek)" />
+                      </label>
+                    )}
                   </div>
-                  <div className="settings-menu-row">
-                    <span>Sent from</span>
-                    <input
-                      type="text"
-                      className="settings-text-input"
-                      value={clientName}
-                      onChange={(e) => handleClientNameChange(e.target.value)}
-                      maxLength={32}
-                    />
+
+                  <div className="settings-group">
+                    <span className="settings-menu-heading">Account</span>
+                    <div className="settings-menu-row">
+                      <span>Default Post Visibility</span>
+                      <select
+                        className="compose-visibility-select"
+                        value={defaultVisibility}
+                        onChange={(e) => handleDefaultVisibilityChange(e.target.value)}
+                      >
+                        {['public', 'unlisted', 'private', 'subscribers', 'direct'].map((v) => (
+                          <option key={v} value={v}>{mitraVisibilityLabel(v)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="settings-menu-row">
+                      <span>Sent From</span>
+                      <input
+                        type="text"
+                        className="settings-text-input"
+                        value={clientName}
+                        onChange={(e) => handleClientNameChange(e.target.value)}
+                        maxLength={32}
+                      />
+                    </div>
                   </div>
+
                   <button
                     type="button"
                     className="settings-menu-row settings-menu-link"
@@ -1802,7 +1852,7 @@ export default function App() {
                     className="settings-menu-row settings-menu-link"
                     onClick={() => { setSettingsOpen(false); setView('muted') }}
                   >
-                    <span>Muted accounts</span>
+                    <span>Muted Accounts</span>
                     <span className="settings-menu-arrow">→</span>
                   </button>
                   <button
@@ -1810,43 +1860,9 @@ export default function App() {
                     className="settings-menu-row settings-menu-link"
                     onClick={() => { setSettingsOpen(false); setView('account') }}
                   >
-                    <span>Account &amp; sessions</span>
+                    <span>Account &amp; Sessions</span>
                     <span className="settings-menu-arrow">→</span>
                   </button>
-                  {notifPolicy && (
-                    <div className="settings-menu-section">
-                      <span className="settings-menu-heading">Filtered notifications (server)</span>
-                      {/* Mitra's policy values are 'accept' | 'drop' — which
-                          notifications the instance filters before you ever
-                          see them. Server-decided, so display-only. */}
-                      {NOTIF_POLICY_RULES.map(([key, label]) => {
-                        const value = notifPolicy[key]
-                        if (!value) return null
-                        return (
-                          <div key={key} className="settings-menu-row settings-menu-subrow">
-                            <span>{label}</span>
-                            <span className={`notif-policy-badge${value === 'drop' ? ' drop' : ''}`}>
-                              {value}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                  {domainBlocks && (
-                    <div className="settings-menu-section">
-                      <span className="settings-menu-heading">Blocked domains (server)</span>
-                      {domainBlocks.length === 0 ? (
-                        <span className="poll-meta">None.</span>
-                      ) : (
-                        domainBlocks.map((block) => (
-                          <div key={block.digest} className="settings-menu-row settings-menu-subrow">
-                            <span>{block.domain}</span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
                 </div>
               </>
             )}
@@ -1855,7 +1871,7 @@ export default function App() {
             <Plus size={15} />
             New post
           </button>
-          <button className="icon-btn" aria-label="Log out" onClick={logout}>
+          <button className="icon-btn" aria-label="Log out" title="Log out" onClick={logout}>
             <LogOut size={16} />
           </button>
           <Avatar

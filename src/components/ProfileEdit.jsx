@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { htmlToPlainText } from '../lib/render.jsx'
+import { Switch } from './Switch.jsx'
 
 // Read a File as { base64, mediaType, preview }. The API wants raw
 // base64 plus an explicit media type — no data: URI prefix.
@@ -131,13 +132,13 @@ export function ProfileEditDialog({ account, instanceUrl, token, onClose, onSave
         />
 
         <div className="profile-edit-toggles">
-          <label>
-            <input type="checkbox" checked={locked} onChange={(e) => setLocked(e.target.checked)} />
-            Protected — approve followers manually
+          <label className="profile-edit-toggle-row">
+            <span>Protected — Approve Followers Manually</span>
+            <Switch checked={locked} onChange={setLocked} label="Protected" />
           </label>
-          <label>
-            <input type="checkbox" checked={bot} onChange={(e) => setBot(e.target.checked)} />
-            Automated account (bot)
+          <label className="profile-edit-toggle-row">
+            <span>Automated Account (Bot)</span>
+            <Switch checked={bot} onChange={setBot} label="Automated Account" />
           </label>
         </div>
 
