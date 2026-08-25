@@ -138,6 +138,17 @@ export function updateTreeNode(nodes, updated) {
   })
 }
 
+// A status can appear in a list more than once — as its own row, and
+// again inside other people's boost wrappers. Merging by inner id keeps
+// every copy's favourite/boost/bookmark state in lockstep the moment an
+// action returns. Returns the same reference when nothing matches, so
+// callers can skip writes.
+export function mergeStatusIntoRow(row, updated) {
+  if (!row.reblog) return row.id === updated.id ? updated : row
+  if (row.reblog.id === updated.id) return { ...row, reblog: updated }
+  return row
+}
+
 // Turns "@handle" substrings AND bare URLs in plain text into real links,
 // in a single pass. Mentions are matched against the status's `mentions`
 // array; URLs are matched generically since Mastodon-API content often

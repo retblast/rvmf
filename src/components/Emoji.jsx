@@ -36,7 +36,7 @@ const EMOJI_NAMES = [
   ['heavy_check_mark', '✅'], ['ballot_box_with_check', '☑️'],
 ]
 
-function filterEmoji(query, customEmojis) {
+export function filterEmoji(query, customEmojis) {
   const q = query.toLowerCase()
   const unicodeMatches = EMOJI_NAMES
     .filter(([name]) => name.includes(q))

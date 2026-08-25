@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { useMitraSession } from './useMitraSession'
 import * as mitra from './lib/mitra'
-import { buildReplyTree, findNode, insertIntoTree, updateTreeNode, htmlToPlainText as noteToPlainText } from './lib/render.jsx'
+import { buildReplyTree, findNode, insertIntoTree, updateTreeNode, mergeStatusIntoRow, htmlToPlainText as noteToPlainText } from './lib/render.jsx'
 import { AppSettingsContext, PickerContext, useLayoutTier, usePullToRefresh } from './hooks'
 import LoginView from './LoginView'
 import { Avatar, MediaLightbox } from './components/Media.jsx'
@@ -779,16 +779,6 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [composing, editing, openPickerId, settingsOpen, sidePanel])
-
-  // A status can appear in a list more than once — as its own row, and
-  // again inside other people's boost wrappers. Merging by inner id too
-  // keeps every copy's favourite/boost/bookmark state in lockstep the
-  // moment an action returns.
-  function mergeStatusIntoRow(row, updated) {
-    if (!row.reblog) return row.id === updated.id ? updated : row
-    if (row.reblog.id === updated.id) return { ...row, reblog: updated }
-    return row
-  }
 
   function updatePost(updated) {
     setTimeline((prev) => prev.map((p) => mergeStatusIntoRow(p, updated)))
