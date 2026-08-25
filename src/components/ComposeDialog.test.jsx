@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AppSettingsContext } from '../hooks'
 import { ComposeDialog } from './Compose.jsx'
@@ -37,21 +37,19 @@ describe('ComposeDialog validation', () => {
   it('refuses posts over the character limit', async () => {
     const onPosted = vi.fn()
     renderDialog({ onPosted })
-    await userEvent.type(
-      screen.getByPlaceholderText(/what's on your mind/i),
-      'x'.repeat(501)
-    )
+    fireEvent.change(screen.getByPlaceholderText(/what's on your mind/i), {
+      target: { value: 'x'.repeat(501) },
+    })
     await userEvent.click(screen.getByRole('button', { name: 'Post' }))
     expect(await screen.findByText(/over the limit/i)).toBeInTheDocument()
     expect(onPosted).not.toHaveBeenCalled()
   })
 
-  it('shows the over-limit count in the counter', async () => {
+  it('shows the over-limit count in the counter', () => {
     renderDialog()
-    await userEvent.type(
-      screen.getByPlaceholderText(/what's on your mind/i),
-      'x'.repeat(505)
-    )
+    fireEvent.change(screen.getByPlaceholderText(/what's on your mind/i), {
+      target: { value: 'x'.repeat(505) },
+    })
     expect(screen.getByText('-5')).toHaveClass('over')
   })
 })
