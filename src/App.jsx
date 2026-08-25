@@ -1869,6 +1869,21 @@ export default function App() {
             >
               <Settings size={16} />
             </button>
+          </div>
+          <button className="suggested-btn" onClick={() => setComposing(true)}>
+            <Plus size={15} />
+            New post
+          </button>
+          <button className="icon-btn" aria-label="Log out" title="Log out" onClick={logout}>
+            <LogOut size={16} />
+          </button>
+          <Avatar
+            name={session.account.display_name || session.account.username}
+            src={session.account.avatar}
+          />
+        </div>
+      </header>
+      )}
             {settingsOpen && (
               <>
                 <div className="settings-menu-backdrop" onClick={() => setSettingsOpen(false)} />
@@ -1988,21 +2003,6 @@ export default function App() {
                 </div>
               </>
             )}
-          </div>
-          <button className="suggested-btn" onClick={() => setComposing(true)}>
-            <Plus size={15} />
-            New post
-          </button>
-          <button className="icon-btn" aria-label="Log out" title="Log out" onClick={logout}>
-            <LogOut size={16} />
-          </button>
-          <Avatar
-            name={session.account.display_name || session.account.username}
-            src={session.account.avatar}
-          />
-        </div>
-      </header>
-      )}
 
       {tier === 'wide' ? (
         <div className="app-shell">

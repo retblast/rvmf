@@ -1757,9 +1757,9 @@ span.img-placeholder.custom-emoji {
 }
 
 .settings-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
+  position: fixed;
+  top: 52px;
+  right: 12px;
   z-index: 91;
   min-width: 220px;
   background: var(--view-bg);
@@ -3350,4 +3350,13 @@ textarea.profile-edit-input {
 
 .menubar-spacer {
   flex: 1;
+}
+
+/* Breeze menubar dropdowns: open downward, solid chrome */
+.menubar-dropdown {
+  top: calc(100% + 4px);
+  bottom: auto;
+  background: var(--view-bg);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
