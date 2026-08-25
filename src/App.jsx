@@ -691,7 +691,7 @@ export default function App() {
   function updateExplorePost(updated) {
     setExploreTimelines((prev) => ({
       ...prev,
-      [exploreFeed]: prev[exploreFeed]?.map((p) => (p.id === updated.id ? updated : p)) ?? null,
+      [exploreFeed]: prev[exploreFeed]?.map((p) => mergeStatusIntoRow(p, updated)) ?? null,
     }))
   }
 
@@ -780,8 +780,18 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [composing, editing, openPickerId, settingsOpen, sidePanel])
 
+  // A status can appear in a list more than once — as its own row, and
+  // again inside other people's boost wrappers. Merging by inner id too
+  // keeps every copy's favourite/boost/bookmark state in lockstep the
+  // moment an action returns.
+  function mergeStatusIntoRow(row, updated) {
+    if (!row.reblog) return row.id === updated.id ? updated : row
+    if (row.reblog.id === updated.id) return { ...row, reblog: updated }
+    return row
+  }
+
   function updatePost(updated) {
-    setTimeline((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+    setTimeline((prev) => prev.map((p) => mergeStatusIntoRow(p, updated)))
   }
 
   function handleEditStatus(status) {
@@ -803,10 +813,10 @@ export default function App() {
   // natural expectation of a list of things you saved.
   function updateBookmarkedPost(updated) {
     if (!updated.bookmarked) {
-      setBookmarks((prev) => prev.filter((p) => p.id !== updated.id))
+      setBookmarks((prev) => prev.filter((p) => p.id !== updated.id && p.reblog?.id !== updated.id))
       return
     }
-    setBookmarks((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))
+    setBookmarks((prev) => prev.map((p) => mergeStatusIntoRow(p, updated)))
   }
 
   function prependPost(post) {
@@ -1119,7 +1129,11 @@ export default function App() {
 
   function updateNotificationStatus(updated) {
     setNotifications((prev) =>
-      prev.map((n) => (n.status && n.status.id === updated.id ? { ...n, status: updated } : n))
+      prev.map((n) => {
+        if (!n.status) return n
+        const merged = mergeStatusIntoRow(n.status, updated)
+        return merged === n.status ? n : { ...n, status: merged }
+      })
     )
   }
 
