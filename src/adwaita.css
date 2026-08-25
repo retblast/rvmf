@@ -871,7 +871,8 @@ button {
   background: var(--window-bg);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 0.875rem;
+  /* You're writing the post — full root size, matching .post-text. */
+  font-size: 1rem;
   padding: 10px 12px;
   resize: vertical;
   outline: none;
