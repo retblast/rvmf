@@ -95,7 +95,6 @@ export function ConversationsView({
 
   useEffect(() => {
     if (tab === 'timeline' && dmPosts.length === 0 && !dmLoading && !dmError) loadDms()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
 
   const loadMoreDms = useCallback(async () => {
