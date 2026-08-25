@@ -382,7 +382,9 @@ button {
 
 .post-text {
   margin: 4px 0 8px;
-  font-size: 0.84375rem;
+  /* Post bodies are the primary reading surface — full root size, not
+     the smaller chrome size. */
+  font-size: 1rem;
   line-height: 1.5;
   color: var(--text-primary);
   white-space: pre-wrap;
