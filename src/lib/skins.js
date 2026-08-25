@@ -35,12 +35,17 @@ export const ADWAITA_TOKENS = {
   },
 }
 
+import BreezeMenubar from '../ui/breeze/Menubar.jsx'
+
 export const SKINS = {
   adwaita: { id: 'adwaita', name: 'Adwaita', respectOsAccent: true },
   breeze: {
     id: 'breeze',
     name: 'KDE Breeze',
     respectOsAccent: false,
+    // Tier-3 structural override (bundled skins only — shipping JS is
+    // code execution, so imported third-party skins stay CSS-only).
+    components: { HeaderBar: BreezeMenubar },
     tokens: {
       light: {
         '--window-bg': '#eff0f1',

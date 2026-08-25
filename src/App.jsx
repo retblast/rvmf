@@ -66,6 +66,7 @@ import { FavouritesView } from './components/FavouritesView.jsx'
 import { Switch } from './components/Switch.jsx'
 import { StatusPage } from './components/StatusPage.jsx'
 import { SKINS, applySkin } from './lib/skins.js'
+import { UIContext } from './ui/index.jsx'
 
 // Server-side notification filters (exclude_types[]). A group counts as
 // "off" when any of its types is excluded; groups never overlap.
@@ -1689,7 +1690,17 @@ export default function App() {
     focusedReplyId,
   }
 
+  // Active skin's structural overrides (Tier 3). Adwaita has none and
+  // keeps the inline GNOME header bar below.
+  const SkinHeaderBar = SKINS[skinId]?.components?.HeaderBar || null
+  const headerProps = {
+    session, tier, view, setView, notifUnread,
+    handleRefresh, setComposing, logout,
+    settingsOpen, setSettingsOpen,
+  }
+
   return (
+    <UIContext.Provider value={SKINS[skinId]?.components || {}}>
     <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, defaultVisibility, instanceUrl: session.instanceUrl, token: session.token }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
       {!online && (
@@ -1708,6 +1719,9 @@ export default function App() {
           <span>{refreshing ? 'Refreshing…' : pull >= 80 ? 'Release to refresh' : 'Pull to refresh'}</span>
         </div>
       )}
+      {SkinHeaderBar ? (
+        <SkinHeaderBar {...headerProps} />
+      ) : (
       <header className="headerbar">
         <div className="headerbar-brand-wrap">
           <button
@@ -1988,6 +2002,7 @@ export default function App() {
           />
         </div>
       </header>
+      )}
 
       {tier === 'wide' ? (
         <div className="app-shell">
@@ -2072,5 +2087,6 @@ export default function App() {
       )}
     </PickerContext.Provider>
     </AppSettingsContext.Provider>
+    </UIContext.Provider>
   )
 }

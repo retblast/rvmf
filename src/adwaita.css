@@ -3299,3 +3299,51 @@ textarea.profile-edit-input {
   color: var(--error, #c01c28);
   margin-top: 6px;
 }
+
+/* KDE Breeze structural variant: classic menu bar */
+.menubar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 8px;
+  background: var(--headerbar-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.menubar-brand {
+  font-weight: 700;
+  font-size: 0.875rem;
+  padding: 0 10px 0 4px;
+}
+
+.menubar-menu {
+  position: relative;
+}
+
+.menubar-item {
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.menubar-item:hover,
+.menubar-item.active {
+  background: var(--hover-overlay);
+}
+
+.menubar-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 220px;
+  z-index: 95;
+  max-height: none;
+}
+
+.menubar-spacer {
+  flex: 1;
+}
