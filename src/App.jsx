@@ -19,6 +19,32 @@ import { useMitraSession } from './useMitraSession'
 import * as mitra from './lib/mitra'
 import { buildReplyTree, findNode, insertIntoTree, updateTreeNode, mergeStatusIntoRow, htmlToPlainText as noteToPlainText } from './lib/render.jsx'
 import { AppSettingsContext, PickerContext, useLayoutTier, usePullToRefresh } from './hooks'
+import { ChevronRight } from 'lucide-react'
+
+// Collapsible blocked-domain list (the one server list that grows
+// without limit). Grid-rows 0fr->1fr animates the height without JS
+// measurement; inner box scrolls past ~180px.
+function DomainsAccordion({ domains }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button type="button" className="accordion-header" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <ChevronRight size={13} className={`accordion-chevron${open ? ' open' : ''}`} />
+        <span className="settings-menu-heading">Blocked Domains</span>
+        <span className="notif-policy-badge">{domains.length}</span>
+      </button>
+      <div className={`accordion-body${open ? ' open' : ''}`}>
+        <div className="accordion-inner scrollbar-thin">
+          {domains.map((block) => (
+            <div key={block.digest} className="settings-menu-row settings-menu-subrow">
+              <span>{block.domain}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  )
+}
 import LoginView from './LoginView'
 import { Avatar, MediaLightbox } from './components/Media.jsx'
 import { NotificationRow, PostRow } from './components/Post.jsx'
@@ -1668,15 +1694,13 @@ export default function App() {
                 )}
                 {domainBlocks && (
                   <div className="settings-menu-section">
-                    <span className="settings-menu-heading">Blocked Domains</span>
                     {domainBlocks.length === 0 ? (
-                      <span className="poll-meta">None.</span>
+                      <>
+                        <span className="settings-menu-heading">Blocked Domains</span>
+                        <span className="poll-meta">None.</span>
+                      </>
                     ) : (
-                      domainBlocks.map((block) => (
-                        <div key={block.digest} className="settings-menu-row settings-menu-subrow">
-                          <span>{block.domain}</span>
-                        </div>
-                      ))
+                      <DomainsAccordion domains={domainBlocks} />
                     )}
                   </div>
                 )}

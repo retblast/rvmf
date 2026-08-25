@@ -785,6 +785,45 @@ button {
   padding: 8px;
 }
 
+/* Blocked-domains accordion */
+.accordion-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 4px 2px;
+  text-align: left;
+  color: var(--text-primary);
+}
+
+.accordion-chevron {
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+
+.accordion-chevron.open {
+  transform: rotate(90deg);
+}
+
+.accordion-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.accordion-body.open {
+  grid-template-rows: 1fr;
+}
+
+.accordion-inner {
+  overflow-y: auto;
+  max-height: 180px;
+  min-height: 0;
+}
+
 .dialog-overlay {
   position: fixed;
   inset: 0;
