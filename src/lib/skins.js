@@ -60,6 +60,11 @@ export const SKINS = {
         '--active-overlay': 'rgba(35, 38, 41, 0.1)',
         '--accent': '#3daee9',
         '--accent-fg': '#fcfcfc',
+        // Shape & density (Breeze is squarer and denser than Adwaita)
+        '--radius-window': '4px',
+        '--radius-popover': '4px',
+        '--control-pad-y': '5px',
+        '--control-pad-x': '10px',
       },
       dark: {
         '--window-bg': '#232629',
@@ -74,8 +79,20 @@ export const SKINS = {
         '--active-overlay': 'rgba(252, 252, 252, 0.12)',
         '--accent': '#3daee9',
         '--accent-fg': '#232629',
+        '--radius-window': '4px',
+        '--radius-popover': '4px',
+        '--control-pad-y': '5px',
+        '--control-pad-x': '10px',
       },
     },
+    // Design-language extras tokens can't express: flatter chrome,
+    // denser rows — the KDE feel on top of the structural menu bar.
+    css: `
+      .dialog-card, .settings-menu, .server-popover, .boost-dropdown { box-shadow: none; }
+      .post-row { padding-block: 2px; }
+      .settings-menu-row, .boost-dropdown-item { padding-block: 4px; }
+      .pill-btn { padding-block: 5px; }
+    `,
   },
 }
 

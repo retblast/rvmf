@@ -22,6 +22,10 @@
   --success: #2ec27e;
   --radius-window: 12px;
   --radius-control: 6px;
+  --radius-popover: 10px;
+  --radius-pill: 999px;
+  --control-pad-y: 8px;
+  --control-pad-x: 14px;
   --font-ui: -apple-system, BlinkMacSystemFont, sans-serif, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
 }
 
@@ -150,7 +154,7 @@ button {
 }
 
 .login-icon img {
-  border-radius: 10px;
+  border-radius: var(--radius-popover);
 }
 
 .login-recognized {
@@ -514,7 +518,7 @@ button {
 
 .scrollbar-thin::-webkit-scrollbar-thumb {
   background-color: transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   border: 3px solid transparent;
   background-clip: padding-box;
   transition: background-color 150ms ease;
@@ -812,7 +816,7 @@ button {
   margin: 4px;
   padding: 6px 6px 8px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-popover);
   background: var(--window-bg);
 }
 
@@ -825,7 +829,7 @@ button {
   text-align: left;
   cursor: pointer;
   padding: 2px 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .headerbar-brand-btn:hover {
@@ -841,7 +845,7 @@ button {
   max-width: 320px;
   background: var(--view-bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-popover);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   padding: 8px;
 }
@@ -1501,7 +1505,7 @@ span.img-placeholder.custom-emoji {
   overflow-y: auto;
   background: var(--window-bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
   z-index: 20;
   margin-bottom: 4px;
@@ -1571,7 +1575,7 @@ span.img-placeholder.custom-emoji {
   overflow-y: auto;
   background: var(--window-bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   box-shadow: 0 -4px 12px rgba(0,0,0,0.15);
   z-index: 20;
   margin-bottom: 4px;
@@ -1639,7 +1643,7 @@ span.img-placeholder.custom-emoji {
 .upload-thumb-media {
   position: relative;
   height: 72px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   overflow: hidden;
   border: 1px solid var(--border);
   background: var(--window-bg);
@@ -1724,7 +1728,7 @@ span.img-placeholder.custom-emoji {
   pointer-events: none;
   width: 320px;
   height: 320px;
-  border-radius: 10px;
+  border-radius: var(--radius-popover);
   overflow: hidden;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
   border: 1px solid var(--border);
@@ -1760,7 +1764,7 @@ span.img-placeholder.custom-emoji {
   min-width: 220px;
   background: var(--view-bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-popover);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   padding: 6px;
 }
@@ -1839,7 +1843,7 @@ span.img-placeholder.custom-emoji {
 .media-grid {
   display: grid;
   gap: 3px;
-  border-radius: 10px;
+  border-radius: var(--radius-popover);
   overflow: hidden;
 }
 
@@ -1919,7 +1923,7 @@ span.img-placeholder.custom-emoji {
   gap: 10px;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-popover);
   background: var(--window-bg);
   color: var(--text-secondary);
   cursor: default;
@@ -1977,7 +1981,7 @@ span.img-placeholder.custom-emoji {
   gap: 6px;
   padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   color: var(--accent);
   font-size: 0.8125rem;
   text-decoration: none;
@@ -1995,7 +1999,7 @@ span.img-placeholder.custom-emoji {
   justify-content: center;
   gap: 8px;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-popover);
   background: rgba(0, 0, 0, 0.35);
   color: #ffffff;
   font-size: 0.8125rem;
@@ -2012,7 +2016,7 @@ span.img-placeholder.custom-emoji {
 .lightbox-image {
   max-width: 92vw;
   max-height: 92vh;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   object-fit: contain;
   cursor: default;
 }
@@ -2461,7 +2465,7 @@ button.mention-link {
   margin-top: 8px;
   padding: 10px 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--window-bg);
 }
 
@@ -2942,7 +2946,7 @@ textarea:focus-visible {
   font-size: 0.6875rem;
   font-weight: 600;
   padding: 1px 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   vertical-align: middle;
 }
 
