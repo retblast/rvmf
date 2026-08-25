@@ -752,7 +752,35 @@ button {
   left: 23px;
 }
 
-/* Grouped boxed rows inside the settings popover */
+/* HIG placeholder pages: icon + heading + description + optional action */
+.status-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.status-page-icon {
+  color: var(--text-secondary);
+  opacity: 0.55;
+}
+
+.status-page-heading {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.status-page-description {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  max-width: 320px;
+}
+
+.status-page .pill-btn {
+  margin-top: 8px;
+}
 .settings-group {
   display: flex;
   flex-direction: column;

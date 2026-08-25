@@ -64,6 +64,7 @@ import { ConversationsView } from './components/ConversationsView.jsx'
 import { AccountSettingsView } from './components/AccountSettingsView.jsx'
 import { FavouritesView } from './components/FavouritesView.jsx'
 import { Switch } from './components/Switch.jsx'
+import { StatusPage } from './components/StatusPage.jsx'
 
 // Server-side notification filters (exclude_types[]). A group counts as
 // "off" when any of its types is excluded; groups never overlap.
@@ -1295,9 +1296,11 @@ export default function App() {
           {loading && timeline.length === 0 ? (
             <div className="empty-state">Loading…</div>
           ) : timeline.length === 0 ? (
-            <div className="empty-state">
-              No posts yet. Follow someone to see their posts here.
-            </div>
+            <StatusPage
+              icon={Home}
+              heading="No posts yet"
+              description="Follow someone to see their posts here."
+            />
           ) : (
             <div className="timeline-list">
               {timeline.map((post) => (
@@ -1940,7 +1943,13 @@ export default function App() {
             {sidePanel ? (
               <ErrorBoundary><ThreadPanelContent {...threadPanelProps} /></ErrorBoundary>
             ) : (
-              <div className="thread-column-empty">Select a post to view its replies.</div>
+                <div className="thread-column-empty">
+                <StatusPage
+                  icon={MessageCircle}
+                  heading="No thread open"
+                  description="Select a post to view its replies."
+                />
+              </div>
             )}
           </aside>
         </div>
