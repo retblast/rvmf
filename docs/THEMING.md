@@ -74,3 +74,9 @@ Selection syncs to your account via settings sync.
 Token names are a versioned contract (`contractVersion: 1`). Renames will be
 avoided within a version; deprecations get announced in release notes.
 Tier-2 class-name-based CSS is best-effort and may break between releases.
+
+## Tier 3: HeaderBar props contract
+
+`session, tier, view, setView, notifUnread, handleRefresh, setComposing, logout, openSettingsFrom(event), settingsOpen`
+
+`openSettingsFrom(event)` opens the shared settings panel anchored to the calling element. `settingsOpen` reflects panel visibility (Escape/backdrop close it).
