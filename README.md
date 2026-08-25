@@ -112,6 +112,18 @@ Reached from the settings menu:
 - **Animated thread loading** — Framer Motion staggers ancestors converging down toward the focal post, replies converging up.
 - Keyboard-accessible throughout (`focus-visible` outlines), Adwaita-style overlay scrollbars.
 
+## Testing
+
+- **`npm test`** — Vitest unit/component tests: the pure libraries (rich-text rendering, quarantined-image recovery, reply trees, storage migration, blurhash, emoji filtering) and key component behaviors (composer validation, visibility handling, cross-copy status merging).
+- **`nix run .#e2e`** — full E2E suite against a real backend, fully hermetic:
+  1. throwaway PostgreSQL in a temp dir
+  2. a pinned real Mitra server (upstream release deb extracted by the flake — `packages.mitra`)
+  3. users + posts + replies + boosts + favourites + a poll seeded *through the app's own API client*
+  4. production build served under `vite preview`
+  5. Playwright specs across both layout tiers (wide/narrow): signup+auto-login, timeline render, favourite/boost state syncing across boost-wrapper copies, thread open + inline reply, markdown preview, notification filter chips
+- Specs follow a strict selector policy: roles and labels first, `data-*` attributes second, never CSS classes. `RVMF_KEEP=1` preserves the fixture workspace for debugging; `SKIP_TESTS=1` + `E2E_HOLD=<seconds>` hold the stack open for manual poking.
+- **CI** (`.github/workflows/ci.yml`) runs three jobs on every push/PR: lint+unit, the same E2E chain against the pinned Mitra deb on a clean runner, and `nix build` / `nix flake check`.
+
 ## How login works
 
 Mitra speaks a Mastodon-compatible API. This app uses the standard OAuth **authorization code** flow:

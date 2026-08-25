@@ -7,6 +7,9 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   test: {
+    // Unit/component tests only, and only from src/ — Playwright owns
+    // e2e/specs, and .direnv store copies must never be scanned.
+    include: ['src/**/*.{test,spec}.{js,jsx}'],
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/test/setup.js',
