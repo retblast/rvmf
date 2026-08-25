@@ -804,7 +804,7 @@ button {
   border-radius: 999px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
-}
+
 .settings-group {
   display: flex;
   flex-direction: column;
