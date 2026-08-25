@@ -1150,6 +1150,7 @@ export const NotificationRow = memo(function NotificationRow({
   onOpenLightbox,
   onOpenProfile,
   onRespondFollowRequest,
+  pendingFollowIds,
   statusById,
   onQuote,
   currentAccountId,
@@ -1192,7 +1193,15 @@ export const NotificationRow = memo(function NotificationRow({
           <span className="post-time">{formatRelativeTime(notification.created_at)}</span>
         </div>
 
-        {notification.type === 'follow_request' && !responded && (
+        {notification.type === 'follow_request' && !responded && pendingFollowIds != null && !pendingFollowIds.has(account.id) && (
+          // Request was already handled elsewhere (or earlier session) —
+          // the server keeps the notification around, but there is
+          // nothing left to accept or reject.
+          <div className="notif-responded">
+            {account.display_name || account.username} followed you
+          </div>
+        )}
+        {notification.type === 'follow_request' && !responded && (pendingFollowIds == null || pendingFollowIds.has(account.id)) && (
           <div className="notif-actions">
             <button
               className="pill-btn suggested"

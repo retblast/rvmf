@@ -160,6 +160,8 @@ export default function App() {
   const [serverInfoOpen, setServerInfoOpen] = useState(false)
   const [clientName, setClientNameState] = useState(() => mitra.getClientName())
   const [notifPolicy, setNotifPolicy] = useState(null)
+  // Account ids with pending incoming follow requests (null = unknown yet)
+  const [pendingFollowIds, setPendingFollowIds] = useState(null)
   const [domainBlocks, setDomainBlocks] = useState(null)
   const [defaultVisibility, setDefaultVisibility] = useState('public')
   const [clearingNotifications, setClearingNotifications] = useState(false)
@@ -364,8 +366,16 @@ export default function App() {
     setNotificationsError('')
     setNotificationsHasMore(true)
     try {
-      const items = await mitra.fetchNotifications(session.instanceUrl, session.token)
+      const [items, pending] = await Promise.all([
+        mitra.fetchNotifications(session.instanceUrl, session.token),
+        // Which requests are still awaiting action — old follow_request
+        // notifications for handled accounts must not offer buttons.
+        mitra.fetchFollowRequests(session.instanceUrl, session.token)
+          .then((list) => new Set((list || []).map((a) => a.id)))
+          .catch(() => null),
+      ])
       setNotifications(items)
+      if (pending) setPendingFollowIds(pending)
     } catch (err) {
       setNotificationsError(err.message || 'Failed to load notifications.')
     } finally {
@@ -1217,6 +1227,7 @@ export default function App() {
                 onOpenLightbox={setLightboxAttachment}
                 onOpenProfile={handleOpenProfile}
                 onRespondFollowRequest={respondFollowRequest}
+                pendingFollowIds={pendingFollowIds}
                 currentAccountId={session.account?.id}
                 onDelete={handleDeleteStatus}
                 onEdit={handleEditStatus}

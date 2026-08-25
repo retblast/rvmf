@@ -308,6 +308,16 @@ export function respondFollowRequest(instanceUrl, token, accountId, action) {
   })
 }
 
+// Accounts with PENDING incoming follow requests — the source of truth
+// for whether an old follow_request notification still needs action.
+export function fetchFollowRequests(instanceUrl, token, { max_id } = {}) {
+  const params = new URLSearchParams({ limit: '40' })
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/follow_requests?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 export function postStatus(instanceUrl, token, text, options = {}) {
   const {
     inReplyToId, visibility = 'public', mediaIds, quoteId, spoilerText, poll, idempotencyKey,
