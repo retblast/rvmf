@@ -1400,6 +1400,15 @@ export default function App() {
           token={session.token}
           currentAccountId={session.account?.id}
           onOpenThread={handleOpenThread}
+          onComposeReply={handleComposeReply}
+          onOpenLightbox={setLightboxAttachment}
+          onOpenProfile={handleOpenProfile}
+          onUpdatePost={updatePost}
+          onQuote={handleQuote}
+          onDelete={handleDeleteStatus}
+          onEdit={handleEditStatus}
+          onMute={handleMuteAccount}
+          onBlock={handleBlockAccount}
         />
       )}
 

@@ -701,6 +701,16 @@ export function fetchConversations(instanceUrl, token, { max_id } = {}) {
   })
 }
 
+// Flat timeline of direct-visibility posts — the "All DMs" view next to
+// the per-conversation inbox.
+export function fetchDirectTimeline(instanceUrl, token, { max_id } = {}) {
+  const params = new URLSearchParams({ limit: '20' })
+  if (max_id) params.set('max_id', max_id)
+  return apiFetch(instanceUrl, `/api/v1/timelines/direct?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
 export function deleteStatus(instanceUrl, token, id) {
   return apiFetch(instanceUrl, `/api/v1/statuses/${id}`, {
     method: 'DELETE',
