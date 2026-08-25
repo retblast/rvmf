@@ -16,6 +16,7 @@ import {
   Edit3,
   Pin,
   PinOff,
+  Box,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { PickerContext, useEscapeKey } from '../hooks'
@@ -678,6 +679,9 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
   const [copied, setCopied] = useState(false)
   const [pinBusy, setPinBusy] = useState(false)
   const [pinError, setPinError] = useState('')
+  // IPFS pin state: 'idle' | 'busy' | 'copied'
+  const [ipfsState, setIpfsState] = useState('idle')
+  const [ipfsError, setIpfsError] = useState('')
   const ref = useRef(null)
   useEscapeKey(() => setOpen(false), open)
 
@@ -734,6 +738,34 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
     }
   }
 
+  // IPFS pinning is only offered for own public posts — the server
+  // rejects everything else (403), and 418 means the instance has the
+  // integration off, which surfaces as an inline error.
+  const ipfsEligible = isOwn && status.visibility === 'public'
+
+  async function handleIpfsPin() {
+    if (ipfsState === 'busy') return
+    setIpfsState('busy')
+    setIpfsError('')
+    try {
+      const updated = await mitra.pinToIpfs(instanceUrl, token, status.id)
+      onUpdate?.(updated || { ...status, ipfs_cid: 'pinned' })
+      setOpen(false)
+    } catch (err) {
+      setIpfsError(err.message || 'Pin failed.')
+      setIpfsState('idle')
+    }
+  }
+
+  function copyIpfsCid() {
+    navigator.clipboard.writeText(status.ipfs_cid).then(() => {
+      setIpfsState('copied')
+      setTimeout(() => { setIpfsState('idle'); setOpen(false) }, 900)
+    }).catch(() => {
+      setOpen(false)
+    })
+  }
+
   return (
     <div className="boost-dropdown-wrap" ref={ref}>
       <button className="action-btn" aria-label="More options" style={{ marginLeft: 'auto' }} onClick={() => setOpen(!open)}>
@@ -759,6 +791,20 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
                 {status.pinned ? 'Unpin from profile' : 'Pin to profile'}
               </button>
             )}
+            {ipfsEligible && (
+              status.ipfs_cid ? (
+                <button className="boost-dropdown-item" onClick={copyIpfsCid}>
+                  <Box size={15} />
+                  {ipfsState === 'copied' ? 'CID copied!' : 'Copy IPFS CID'}
+                </button>
+              ) : (
+                <button className="boost-dropdown-item" onClick={handleIpfsPin} disabled={ipfsState === 'busy'}>
+                  <Box size={15} />
+                  {ipfsState === 'busy' ? 'Pinning…' : 'Save to IPFS'}
+                </button>
+              )
+            )}
+            {ipfsError && <div className="banner banner-error">{ipfsError}</div>}
             {isOwn && (
               <button className="boost-dropdown-item destructive" onClick={handleDelete}>
                 <X size={15} />

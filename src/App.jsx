@@ -132,6 +132,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [clientName, setClientNameState] = useState(() => mitra.getClientName())
   const [notifPolicy, setNotifPolicy] = useState(null)
+  const [domainBlocks, setDomainBlocks] = useState(null)
   const [defaultVisibility, setDefaultVisibility] = useState('public')
   const [clearingNotifications, setClearingNotifications] = useState(false)
   const [hasMore, setHasMore] = useState(true)
@@ -380,6 +381,9 @@ export default function App() {
   // all polling pauses and an amber banner explains why; coming back
   // online refreshes the current view and notifications immediately.
   const [online, setOnline] = useState(() => navigator.onLine)
+  // Flips true once the settings backfill attempt has resolved; gates
+  // the debounced push below.
+  const [configSyncReady, setConfigSyncReady] = useState(false)
   useEffect(() => {
     function goOffline() { setOnline(false) }
     function goOnline() {
@@ -395,6 +399,67 @@ export default function App() {
       window.removeEventListener('online', goOnline)
     }
   }, [session, view, tier, loadNotifications])
+
+  // Server-backed settings sync. Fresh devices backfill missing values
+  // from the account's client_config; a device that already has a value
+  // locally is never overridden — local always wins. Changes push back
+  // (debounced) so they follow you across devices.
+  const restoredConfigRef = useRef(null)
+  useEffect(() => {
+    if (!session || restoredConfigRef.current === session.account?.id) return
+    restoredConfigRef.current = session.account?.id ?? 'anon'
+    let cancelled = false
+    mitra.fetchOwnAccount(session.instanceUrl, session.token)
+      .then((acct) => {
+        if (cancelled) return
+        setConfigSyncReady(true)
+        const cfg = acct?.client_config?.rvmf
+        if (!cfg) return
+        if (storageGet('theme-mode') === null && typeof cfg['theme-mode'] === 'string') {
+          setThemeMode(cfg['theme-mode'])
+        }
+        if (storageGet('use-os-accent') === null && typeof cfg['use-os-accent'] === 'boolean') {
+          const enabled = Boolean(cfg['use-os-accent'])
+          setUseOsAccent(enabled)
+          applyOsAccent(enabled)
+          storageSet('use-os-accent', String(enabled))
+        }
+        for (const key of ['always-sensitive', 'peek-spoiler', 'fetch-client-media']) {
+          if (storageGet(key) === null && typeof cfg[key] === 'boolean') {
+            storageSet(key, String(cfg[key]))
+            if (key === 'always-sensitive') setAlwaysSensitive(Boolean(cfg[key]))
+            if (key === 'peek-spoiler') setPeekSpoilerMedia(Boolean(cfg[key]))
+            if (key === 'fetch-client-media') setFetchClientMedia(Boolean(cfg[key]))
+          }
+        }
+        if (storageGet('notif-excluded') === null && Array.isArray(cfg['notif-excluded'])) {
+          setNotifExcluded(cfg['notif-excluded'])
+          storageSet('notif-excluded', JSON.stringify(cfg['notif-excluded']))
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setConfigSyncReady(true)
+      })
+    return () => { cancelled = true }
+  }, [session])
+
+  useEffect(() => {
+    // Hold pushes until the initial backfill attempt has resolved —
+    // otherwise a fresh device would overwrite server config with its
+    // local defaults before reading what's there.
+    if (!session || !configSyncReady) return undefined
+    const timer = setTimeout(() => {
+      mitra.pushClientConfig(session.instanceUrl, session.token, {
+        'theme-mode': themeMode,
+        'use-os-accent': useOsAccent,
+        'always-sensitive': alwaysSensitive,
+        'peek-spoiler': peekSpoilerMedia,
+        'fetch-client-media': fetchClientMedia,
+        'notif-excluded': notifExcluded,
+      }).catch(() => {})
+    }, 2000)
+    return () => clearTimeout(timer)
+  }, [session, themeMode, useOsAccent, alwaysSensitive, peekSpoilerMedia, fetchClientMedia, notifExcluded])
 
   // Restore the notifications read marker once per session so the unread
   // count on the tab is accurate.
@@ -1623,6 +1688,11 @@ export default function App() {
                     .then(setNotifPolicy)
                     .catch(() => {})
                 }
+                if (!domainBlocks) {
+                  mitra.fetchDomainBlocks(session.instanceUrl, session.token)
+                    .then(setDomainBlocks)
+                    .catch(() => {})
+                }
               }}
             >
               <Settings size={16} />
@@ -1752,6 +1822,20 @@ export default function App() {
                           </div>
                         )
                       })}
+                    </div>
+                  )}
+                  {domainBlocks && (
+                    <div className="settings-menu-section">
+                      <span className="settings-menu-heading">Blocked domains (server)</span>
+                      {domainBlocks.length === 0 ? (
+                        <span className="poll-meta">None.</span>
+                      ) : (
+                        domainBlocks.map((block) => (
+                          <div key={block.digest} className="settings-menu-row settings-menu-subrow">
+                            <span>{block.domain}</span>
+                          </div>
+                        ))
+                      )}
                     </div>
                   )}
                 </div>

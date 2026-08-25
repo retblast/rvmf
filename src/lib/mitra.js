@@ -718,6 +718,71 @@ export function deleteStatus(instanceUrl, token, id) {
   })
 }
 
+// Push this client's settings blob. The response is the updated
+// CredentialAccount whose client_config now carries it.
+export function pushClientConfig(instanceUrl, token, config) {
+  return apiFetch(instanceUrl, '/api/v1/settings/client_config', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ rvmf: config }),
+  })
+}
+
+export function fetchOwnAccount(instanceUrl, token) {
+  return apiFetch(instanceUrl, '/api/v1/accounts/verify_credentials', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function fetchDomainBlocks(instanceUrl, token) {
+  return apiFetch(instanceUrl, '/api/v1/instance/domain_blocks', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function pinToIpfs(instanceUrl, token, statusId) {
+  return apiFetch(instanceUrl, `/api/v1/statuses/${statusId}/make_permanent`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+}
+
+export function registerAccount(instanceUrl, username, password, inviteCode) {
+  const body = { username, password }
+  if (inviteCode) body.invite_code = inviteCode
+  return apiFetch(instanceUrl, '/api/v1/accounts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+// Password-grant login: no redirect round-trip. Used right after signup
+// so a newly created account lands straight in its timeline.
+export async function loginWithPassword(instanceUrl, username, password) {
+  const tokenRes = await apiFetch(instanceUrl, '/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'password',
+      username,
+      password,
+    }).toString(),
+  })
+  const token = tokenRes.access_token
+  const [account, instance] = await Promise.all([
+    apiFetch(instanceUrl, '/api/v1/accounts/verify_credentials', {
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+    fetchInstance(instanceUrl).catch(() => null),
+  ])
+  const maxCharacters = instance?.configuration?.statuses?.max_characters || 500
+  return { instanceUrl, token, account, maxCharacters }
+}
+
 // Pin/unpin one of the user's own posts to their profile.
 export function setPinned(instanceUrl, token, id, pinned) {
   return apiFetch(instanceUrl, `/api/v1/statuses/${id}/${pinned ? 'pin' : 'unpin'}`, {
