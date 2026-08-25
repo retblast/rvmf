@@ -30,7 +30,7 @@ function Menu({ label, open, onToggle, children }) {
 export default function BreezeMenubar({
   session, view, setView, notifUnread,
   handleRefresh, setComposing, logout,
-  settingsOpen, setSettingsOpen,
+  openSettingsFrom,
 }) {
   const [openMenu, setOpenMenu] = useState(null)
   const toggle = (name) => setOpenMenu((m) => (m === name ? null : name))
@@ -64,7 +64,7 @@ export default function BreezeMenubar({
 
       <Menu label="Settings" open={openMenu === 'settings'} onToggle={() => toggle('settings')}>
         <button type="button" className="boost-dropdown-item"
-          onClick={() => { setSettingsOpen(!settingsOpen); close() }}>
+          onClick={(e) => { openSettingsFrom(e); close() }}>
           Preferences…
         </button>
         <button type="button" className="boost-dropdown-item destructive" disabled={!session}

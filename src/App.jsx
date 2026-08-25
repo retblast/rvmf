@@ -161,6 +161,14 @@ export default function App() {
   const [favouritesRefreshTick, setFavouritesRefreshTick] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [serverInfoOpen, setServerInfoOpen] = useState(false)
+  // Where the settings panel was opened from (null = centered)
+  const [settingsAnchor, setSettingsAnchor] = useState(null)
+
+  function openSettingsFrom(e) {
+    const rect = e?.currentTarget?.getBoundingClientRect()
+    setSettingsAnchor(rect ? { top: rect.top, bottom: rect.bottom, left: rect.left } : null)
+    setSettingsOpen(true)
+  }
   const [clientName, setClientNameState] = useState(() => mitra.getClientName())
   const [notifPolicy, setNotifPolicy] = useState(null)
   // Account ids with pending incoming follow requests (null = unknown yet)
@@ -462,6 +470,7 @@ export default function App() {
         setComposing(true)
       } else if (e.key === ',') {
         e.preventDefault()
+        setSettingsAnchor(null) // no trigger element — centered
         setSettingsOpen((v) => !v)
       }
     }
@@ -1695,8 +1704,8 @@ export default function App() {
   const SkinHeaderBar = SKINS[skinId]?.components?.HeaderBar || null
   const headerProps = {
     session, tier, view, setView, notifUnread,
-    handleRefresh, setComposing, logout,
-    settingsOpen, setSettingsOpen,
+    handleRefresh, setComposing, logout, openSettingsFrom,
+    settingsOpen,
   }
 
   return (
@@ -1865,7 +1874,10 @@ export default function App() {
               className="icon-btn"
               aria-label="Settings"
               title="Settings"
-              onClick={() => setSettingsOpen((v) => !v)}
+              onClick={(e) => {
+                if (settingsOpen) { setSettingsOpen(false); return }
+                openSettingsFrom(e)
+              }}
             >
               <Settings size={16} />
             </button>
@@ -1887,7 +1899,18 @@ export default function App() {
             {settingsOpen && (
               <>
                 <div className="settings-menu-backdrop" onClick={() => setSettingsOpen(false)} />
-                <div className="settings-menu">
+                <div
+                  className={`settings-menu${settingsAnchor ? '' : ' centered'}`}
+                  style={settingsAnchor ? {
+                    top: settingsAnchor.bottom + 460 > window.innerHeight
+                      ? undefined
+                      : settingsAnchor.bottom + 6,
+                    bottom: settingsAnchor.bottom + 460 > window.innerHeight
+                      ? window.innerHeight - settingsAnchor.top + 6
+                      : undefined,
+                    left: Math.max(8, Math.min(settingsAnchor.left, window.innerWidth - 340)),
+                  } : undefined}
+                >
                   <div className="settings-group">
                     <span className="settings-menu-heading">Appearance</span>
                     <div className="settings-menu-row">
