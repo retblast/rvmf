@@ -128,7 +128,7 @@ export function ThreadPanelContent({
   }
 
   return (
-    <motion.div key={status?.id || 'empty'}>
+    <motion.div key={status?.id || 'empty'} data-testid="thread-root">
       <div className="thread-panel-header">
         <span className="dialog-title">
           {composing ? 'Reply' : (

@@ -22,8 +22,10 @@ function migrateScope(store) {
   } catch { /* storage unavailable — nothing to migrate */ }
 }
 
-migrateScope(localStorage)
-migrateScope(sessionStorage)
+// Guards keep this module importable outside a browser too (seed and
+// test scripts run in bare Node).
+if (typeof localStorage !== 'undefined') migrateScope(localStorage)
+if (typeof sessionStorage !== 'undefined') migrateScope(sessionStorage)
 
 export function storageGet(key, fallback = null) {
   try {

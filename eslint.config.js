@@ -17,6 +17,15 @@ export default [
       sourceType: 'module',
       globals: {
         ...globals.browser,
+        // Vitest is configured with globals: true
+        describe: 'readonly',
+        it: 'readonly',
+        expect: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
+        vi: 'readonly',
       },
       parserOptions: {
         ecmaFeatures: { jsx: true },

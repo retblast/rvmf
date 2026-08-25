@@ -243,6 +243,7 @@ export function ThreadReply({
             <div className="action-btn-group">
               <button
                 className={`action-btn${status.favourited ? ' favorited' : ''}`}
+                data-favourited={status.favourited ? 'true' : 'false'}
                 aria-label="Favorite"
                 onClick={toggleFavourite}
                 disabled={busy}
@@ -515,6 +516,7 @@ function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote, onShow
       <button
         className={`action-btn boost-trigger${reblogged ? ' boosted' : ''}`}
         aria-label="Boost or quote"
+        data-reblogged={reblogged ? 'true' : 'false'}
         onClick={() => setOpen(!open)}
         disabled={busy}
       >
@@ -1003,6 +1005,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
             <div className="action-btn-group">
               <button
                 className={`action-btn${status.favourited ? ' favorited' : ''}`}
+                data-favourited={status.favourited ? 'true' : 'false'}
                 aria-label="Favorite"
                 onClick={toggleFavourite}
                 disabled={busy}
