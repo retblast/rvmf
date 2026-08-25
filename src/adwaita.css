@@ -687,6 +687,22 @@ button {
   border-radius: 3px;
 }
 
+/* Switch between sign-in and sign-up on the login screen */
+.login-mode-toggle {
+  display: block;
+  margin: 12px auto 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.login-mode-toggle:hover {
+  text-decoration: underline;
+}
+
 .dialog-overlay {
   position: fixed;
   inset: 0;

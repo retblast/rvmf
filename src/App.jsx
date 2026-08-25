@@ -62,7 +62,7 @@ const NOTIF_POLICY_RULES = [
 ]
 
 export default function App() {
-  const { session, beginLogin, logout, authError, completingLogin } = useMitraSession()
+  const { session, beginLogin, signup, logout, authError, completingLogin } = useMitraSession()
   const tier = useLayoutTier()
   const [scrollEl, setScrollEl] = useState(null)
   const refreshRef = useRef(() => {})
@@ -1125,7 +1125,12 @@ export default function App() {
 
   if (!session) {
     return (
-      <LoginView onBeginLogin={beginLogin} error={authError} completingLogin={completingLogin} />
+      <LoginView
+        onBeginLogin={beginLogin}
+        onCreateAccount={signup}
+        error={authError}
+        completingLogin={completingLogin}
+      />
     )
   }
 

@@ -2,10 +2,17 @@ import { useEffect, useState } from 'react'
 import { Rss } from 'lucide-react'
 import { normalizeInstanceUrl } from './lib/mitra'
 
-export default function LoginView({ onBeginLogin, error: externalError, completingLogin }) {
+export default function LoginView({ onBeginLogin, onCreateAccount, error: externalError, completingLogin }) {
   const [instanceUrl, setInstanceUrl] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // 'login' redirects to the instance's own page; 'signup' creates the
+  // account via API and logs straight in.
+  const [mode, setMode] = useState('login')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   // Normalized origin once the typed domain answers as an instance —
   // drives the favicon swap in both brand spots.
   const [recognized, setRecognized] = useState(null)
@@ -39,14 +46,34 @@ export default function LoginView({ onBeginLogin, error: externalError, completi
       setError('Enter your instance address first.')
       return
     }
-    setBusy(true)
     setError('')
+
+    if (mode === 'login') {
+      setBusy(true)
+      try {
+        await onBeginLogin(instanceUrl.trim())
+        // On success the browser navigates away to the instance's login
+        // page, so there's nothing further to do here.
+      } catch (err) {
+        setError(err.message || 'Something went wrong.')
+        setBusy(false)
+      }
+      return
+    }
+
+    if (!username.trim() || !password) {
+      setError('Username and password are required.')
+      return
+    }
+    if (password !== confirm) {
+      setError("Passwords don't match.")
+      return
+    }
+    setBusy(true)
     try {
-      await onBeginLogin(instanceUrl.trim())
-      // On success the browser navigates away to the instance's login
-      // page, so there's nothing further to do here.
-    } catch (err) {
-      setError(err.message || 'Something went wrong.')
+      await onCreateAccount(instanceUrl.trim(), username.trim(), password, inviteCode.trim() || undefined)
+      // Success flips straight into the session; nothing further here.
+    } finally {
       setBusy(false)
     }
   }
@@ -85,11 +112,13 @@ export default function LoginView({ onBeginLogin, error: externalError, completi
               ✓ {recognized.replace(/^https?:\/\//, '')}
             </div>
           )}
-          <h1 className="login-title">Sign in to your instance</h1>
+          <h1 className="login-title">{mode === 'login' ? 'Sign in to your instance' : 'Create your account'}</h1>
           <p className="login-subtitle">
             {completingLogin
               ? 'Finishing sign-in…'
-              : "Enter your server address. You'll log in on the instance's own page — your password never touches this app."}
+              : mode === 'signup'
+                ? "The account is created on the instance, and you'll be signed in right away."
+                : "Enter your server address. You'll log in on the instance's own page — your password never touches this app."}
           </p>
 
           {!completingLogin && (
@@ -109,10 +138,65 @@ export default function LoginView({ onBeginLogin, error: externalError, completi
                     spellCheck="false"
                   />
                 </label>
+                {mode === 'signup' && (
+                  <>
+                    <label className="entry-row">
+                      <span className="entry-label">Username</span>
+                      <input
+                        type="text"
+                        placeholder="lowercase_name"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck="false"
+                      />
+                    </label>
+                    <label className="entry-row">
+                      <span className="entry-label">Password</span>
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        autoComplete="new-password"
+                      />
+                    </label>
+                    <label className="entry-row">
+                      <span className="entry-label">Repeat</span>
+                      <input
+                        type="password"
+                        value={confirm}
+                        onChange={(e) => setConfirm(e.target.value)}
+                        autoComplete="new-password"
+                      />
+                    </label>
+                    <label className="entry-row">
+                      <span className="entry-label">Invite</span>
+                      <input
+                        type="text"
+                        placeholder="Invite code (if required)"
+                        value={inviteCode}
+                        onChange={(e) => setInviteCode(e.target.value)}
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck="false"
+                      />
+                    </label>
+                  </>
+                )}
               </div>
 
               <button className="pill-btn suggested full-width" type="submit" disabled={busy}>
-                {busy ? 'Redirecting…' : 'Continue'}
+                {busy
+                  ? (mode === 'login' ? 'Redirecting…' : 'Creating account…')
+                  : (mode === 'login' ? 'Continue' : 'Create account')}
+              </button>
+              <button
+                type="button"
+                className="login-mode-toggle"
+                onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError('') }}
+              >
+                {mode === 'login' ? 'New here? Create an account' : 'Already registered? Sign in instead'}
               </button>
             </form>
           )}

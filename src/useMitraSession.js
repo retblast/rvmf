@@ -22,6 +22,11 @@ export function useMitraSession() {
   const [authError, setAuthError] = useState('')
   const [completingLogin, setCompletingLogin] = useState(false)
 
+  function applySession(newSession) {
+    setSession(newSession)
+    saveSession(newSession)
+  }
+
   // On mount: if the instance just redirected us back with ?code=... or
   // ?error=..., finish (or report) the login and scrub the URL.
   useEffect(() => {
@@ -41,10 +46,7 @@ export function useMitraSession() {
     setCompletingLogin(true)
     mitra
       .completeLogin(code)
-      .then((newSession) => {
-        setSession(newSession)
-        saveSession(newSession)
-      })
+      .then(applySession)
       .catch((err) => setAuthError(err.message || 'Login failed.'))
       .finally(() => setCompletingLogin(false))
   }, [])
@@ -71,6 +73,23 @@ export function useMitraSession() {
     return mitra.beginLogin(instanceUrl)
   }, [])
 
+  // Create the account, then immediately log in with the password grant —
+  // no redirect round-trip, straight into the new timeline.
+  const signup = useCallback(async (rawInstanceUrl, username, password, inviteCode) => {
+    setAuthError('')
+    setCompletingLogin(true)
+    try {
+      const instanceUrl = mitra.normalizeInstanceUrl(rawInstanceUrl)
+      await mitra.registerAccount(instanceUrl, username, password, inviteCode)
+      const newSession = await mitra.loginWithPassword(instanceUrl, username, password)
+      applySession(newSession)
+    } catch (err) {
+      setAuthError(err.message || 'Sign-up failed.')
+    } finally {
+      setCompletingLogin(false)
+    }
+  }, [])
+
   const logout = useCallback(() => {
     // Invalidate the token server-side so the session can't be reused,
     // best-effort — logout proceeds even if the request fails. Read from
@@ -86,5 +105,5 @@ export function useMitraSession() {
     saveSession(null)
   }, [])
 
-  return { session, beginLogin, logout, authError, completingLogin }
+  return { session, beginLogin, signup, logout, authError, completingLogin }
 }
