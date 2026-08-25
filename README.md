@@ -33,7 +33,7 @@ A key theme is that I don't have money for a subscription to any service, so all
 - **Explore** — federated and local public timelines, plus a profile directory ("People") with infinite scroll.
 - **Search** — debounced search across people, posts, and hashtags (`/api/v2/search`), with display tabs that filter results. Works around Mitra's untyped-search parser by sending typed requests per category.
 - **Notifications** — follows, follow requests (accept/reject), boosts, favourites, mentions, emoji reactions, quotes, edits. Auto-refreshes every 5 seconds while visible. Unread badge driven by the server-side markers API so the read position syncs across devices. Clear-all supported. Filter chips hide categories client-side (Mitra has no `exclude_types` param); hidden categories never count as read.
-- **Messages** — direct-message inbox: one row per conversation with participants and a snippet of the latest post. Clicking opens that post's thread.
+- **Messages** — direct-message inbox: one row per conversation with participants and a snippet of the latest post. Clicking opens that post's thread. An "All DMs" tab shows the flat timeline of every direct-visibility post.
 - **Lists** — create, rename, delete lists (Mitra custom feeds); add/remove members from any profile; per-list timelines.
 - **Groups** — browse followed and moderated groups, open their timelines, post directly into a group, create new ones, edit descriptions, browse members (admin badges), and delete groups (type-to-confirm).
 - **Favourites** — dedicated favourites view with infinite scroll; un-favouriting removes the row.
@@ -51,6 +51,7 @@ A key theme is that I don't have money for a subscription to any service, so all
 - **Quote** — boost dropdown includes a "Quote" option that opens the compose dialog with the quoted post attached.
 - **Group posting** — "Post to this group" addresses the composer at a group (`group_id`), with context shown in the dialog.
 - **Default visibility** — seeded from server preferences (`posting:default:visibility`) and persisted back via `update_credentials`, so it applies across devices and clients.
+- **Signup** — create an account on the instance from the login screen (username, password, invite code when required) and land straight in your timeline via the password grant — no redirect.
 
 ### Posts & Interactions
 
@@ -62,6 +63,8 @@ A key theme is that I don't have money for a subscription to any service, so all
 - **Emoji reactions** — Pleroma/Akkoma-style `emoji_reactions` with a picker (common emoji + custom server emoji).
 - **Boost dropdown** — boost or quote; boosts are hidden for followers-only/direct/subscribers posts since servers reject them.
 - **Edit & delete own posts** — editing loads the raw source (not rendered HTML) and PUTs it back; edited posts show an "(edited)" marker.
+- **IPFS pinning** — save own public posts to IPFS when the instance has the integration; pinned posts offer a copy-CID action.
+- **Cross-copy state sync** — acting on a post updates every place it appears in a list, including inside other people's boost wrappers.
 - **Pin/unpin own posts** to your profile.
 - **Post options menu** — copy link, mute account, block account.
 - **Hide/show media** per post without leaving the timeline.
@@ -91,9 +94,10 @@ Reached from the settings menu:
 - **Mark all media as sensitive** — strict mode that blurs everything; sub-toggle lets hover previews peek behind CWs (muted video peek included).
 - **Use system accent color** — inherits the OS/browser accent, ignoring known browser default blues so nothing gets painted over pointlessly.
 - **Theme** — System / Light / Dark three-way toggle.
+- **Settings sync** — display preferences (theme, media handling, notification filters) push to your account and backfill fresh devices; local values always win on a device you've touched.
 - **Sent from** — configurable client name used in OAuth registration ("posted via X"); changing it re-registers the app on next login.
 - **Muted accounts** manager with one-click unmute.
-- Server notification policy displayed read-only.
+- Server notification policy and instance domain blocks displayed read-only.
 
 ### Layout & UX
 
@@ -263,8 +267,13 @@ All calls go through the client in `src/lib/mitra.js`.
 | Endpoint | Method | Purpose |
 |---|---|---|
 | `/api/v1/apps` | POST | Register OAuth app |
-| `/oauth/token` | POST | Exchange auth code for token |
+| `/oauth/token` | POST | Exchange auth code for token (or password grant after signup) |
 | `/oauth/revoke` | POST | Invalidate token on logout |
+| `/api/v1/accounts` | POST | Create account (invite-code capable) |
+| `/api/v1/timelines/direct` | GET | Flat direct-post timeline ("All DMs") |
+| `/api/v1/statuses/:id/make_permanent` | POST | Pin post to IPFS |
+| `/api/v1/settings/client_config` | POST | Sync client settings to the account |
+| `/api/v1/instance/domain_blocks` | GET | Instance block list (read-only display) |
 | `/api/v1/accounts/verify_credentials` | GET | Get current user info |
 | `/api/v2/instance` | GET | Instance config (character limit) |
 | `/api/v1/instance` | GET | Instance recognition on login screen |
