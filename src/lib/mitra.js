@@ -33,9 +33,12 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function fetchWithTimeout(instanceUrl, path, options, timeoutMs) {
+async function fetchWithTimeout(instanceUrl, path, options, timeoutMs, state) {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const timer = setTimeout(() => {
+    if (state) state.timedOut = true
+    controller.abort()
+  }, timeoutMs)
   try {
     return await fetch(`${instanceUrl}${path}`, { ...options, signal: controller.signal })
   } finally {
@@ -67,15 +70,18 @@ async function apiFetch(instanceUrl, path, options = {}) {
 
   let lastRes = null
   let timedOut = false
+  let hadNetworkError = false
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0) await sleep(800 * 2 ** (attempt - 1))
+    const state = { timedOut: false }
     try {
       const res = await fetchWithTimeout(
         instanceUrl,
         path,
         options,
-        isRead ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS
+        isRead ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS,
+        state
       )
       if (res.ok || !RETRYABLE_STATUS.has(res.status)) {
         return await parseResponse(res)
@@ -83,11 +89,15 @@ async function apiFetch(instanceUrl, path, options = {}) {
       // 429/5xx on a read — maybe transient, try again
       lastRes = res
     } catch {
-      timedOut = true
+      // Only a timer-fired abort means "too slow"; anything else is an
+      // immediate network-layer failure (refused, reset, CORS, DNS).
+      if (state.timedOut) timedOut = true
+      hadNetworkError = true
     }
   }
 
   if (lastRes) return parseResponse(lastRes) // throws the HTTP error
+  console.warn(`[rvmf] request failed: ${method} ${instanceUrl}${path}`)
   if (timedOut) {
     throw new Error('Request timed out — the instance took too long to answer.')
   }

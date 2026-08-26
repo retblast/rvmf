@@ -1761,7 +1761,7 @@ span.img-placeholder.custom-emoji {
   top: 52px;
   right: 12px;
   z-index: 91;
-  min-width: 220px;
+  width: 320px;
   background: var(--view-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-popover);
