@@ -67,6 +67,9 @@ async function apiFetch(instanceUrl, path, options = {}) {
   const method = (options.method || 'GET').toUpperCase()
   const isRead = method === 'GET' || method === 'HEAD'
   const maxAttempts = isRead ? READ_ATTEMPTS : 1
+  // Optional callback receiving the response's Link header on a successful
+  // read, for callers that walk Mastodon-style cursor pagination.
+  const onLink = typeof options.onLink === 'function' ? options.onLink : null
 
   let lastRes = null
   let timedOut = false
@@ -84,6 +87,7 @@ async function apiFetch(instanceUrl, path, options = {}) {
         state
       )
       if (res.ok || !RETRYABLE_STATUS.has(res.status)) {
+        if (onLink) onLink(res.headers.get('Link') || null)
         return await parseResponse(res)
       }
       // 429/5xx on a read — maybe transient, try again
@@ -320,12 +324,41 @@ export function respondFollowRequest(instanceUrl, token, accountId, action) {
 
 // Accounts with PENDING incoming follow requests — the source of truth
 // for whether an old follow_request notification still needs action.
-export function fetchFollowRequests(instanceUrl, token, { max_id } = {}) {
-  const params = new URLSearchParams({ limit: '40' })
-  if (max_id) params.set('max_id', max_id)
-  return apiFetch(instanceUrl, `/api/v1/follow_requests?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+//
+// The server only emits the next-page cursor via the HTTP Link header
+// (rel="next"), which plain apiFetch discards. So we page through the
+// whole list ourselves until the Link header is absent; a single page
+// (limit 40 by default) is not enough — anything beyond it would be
+// silently treated as already-handled by the notifications UI. A larger
+// page size keeps this to a handful of requests. Mitra caps at 200.
+export async function fetchAllPendingFollowAccountIds(instanceUrl, token) {
+  const PAGE_SIZE = 80
+  const minRequestId = (nextUrl) => {
+    // id runs up to the next `&` or to `>` that closes the Link URL.
+    const match = /[?&]max_id=([^&>]+)/.exec(nextUrl)
+    return match ? decodeURIComponent(match[1]) : null
+  }
+
+  const pending = new Set()
+  let max_id = null
+  for (;;) {
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE) })
+    if (max_id) params.set('max_id', max_id)
+    let nextUrl = null
+    const accounts = await apiFetch(
+      instanceUrl,
+      `/api/v1/follow_requests?${params.toString()}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        onLink: (link) => { nextUrl = link || null },
+      }
+    )
+    for (const account of accounts || []) pending.add(account.id)
+    // Follow the server's rel="next" cursor; stop when there is no next page.
+    max_id = nextUrl && minRequestId(nextUrl)
+    if (!max_id || !Array.isArray(accounts) || accounts.length < PAGE_SIZE) break
+  }
+  return pending
 }
 
 export function postStatus(instanceUrl, token, text, options = {}) {

@@ -398,8 +398,9 @@ export default function App() {
         mitra.fetchNotifications(session.instanceUrl, session.token),
         // Which requests are still awaiting action — old follow_request
         // notifications for handled accounts must not offer buttons.
-        mitra.fetchFollowRequests(session.instanceUrl, session.token)
-          .then((list) => new Set((list || []).map((a) => a.id)))
+        // Fetched in full (paginated) so no pending request gets treated
+        // as already-handled just because it fell off the first page.
+        mitra.fetchAllPendingFollowAccountIds(session.instanceUrl, session.token)
           .catch(() => null),
       ])
       setNotifications(items)
@@ -1119,6 +1120,12 @@ export default function App() {
       mitra
         .fetchNotifications(session.instanceUrl, session.token)
         .then((items) => setNotifications(items))
+        .catch(() => {})
+      // Keep the set of still-pending follow requests in sync too, so a
+      // request handled elsewhere stops offering Accept/Reject live.
+      mitra
+        .fetchAllPendingFollowAccountIds(session.instanceUrl, session.token)
+        .then((pending) => setPendingFollowIds(pending))
         .catch(() => {})
     }, 5000)
     return () => clearInterval(interval)
