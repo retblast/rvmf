@@ -23,6 +23,7 @@ A key theme is that I don't have money for a subscription to any service, so all
 - Testing using the Nix flake. Deploy a local Mitra instance, fill it with various kinds of data, to test the UI (been doing it manually... not very fun.)
 - Make the LLMs eat up the GNOME HIG and whatever related resources to overhaul the look and feel of the app.
 - Wire up testing for all the features we have
+- Media downloads: report partial success — `downloadAllMedia` currently swallows per-file failures, so a post where only some attachments save still says "Media saved". Add a count (e.g. "3 of 5 saved") before the reusable helper is lifted to an account-level sweep.
 
 ## Features
 
