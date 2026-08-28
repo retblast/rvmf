@@ -26,8 +26,10 @@ function Harness({ status }) {
   return (
     <div>
       <button onClick={t.toggle}>toggle</button>
+      <button onClick={() => t.changeSource('fr_FR')}>set-fr</button>
       <span data-testid="shown">{String(t.shown)}</span>
       <span data-testid="phase">{t.phase}</span>
+      <span data-testid="source">{t.sourceCode || ''}</span>
       <span data-testid="translated">{t.translated || ''}</span>
       {t.error && <span data-testid="error">{t.error}</span>}
     </div>
@@ -90,13 +92,40 @@ describe('useTranslation', () => {
     expect(translateText).toHaveBeenCalledTimes(1) // no second fetch
   })
 
-  it('reports an error when the post has no resolvable source language', async () => {
+  it('asks for a source language when there is no tag and no script guess', async () => {
     const user = userEvent.setup()
-    setup({ language: null })
+    setup({ language: null }) // Latin-only content -> no script guess
 
     await user.click(screen.getByRole('button', { name: 'toggle' }))
-    expect(screen.getByTestId('phase').textContent).toBe('error')
-    expect(screen.getByTestId('error').textContent).toMatch(/source language/)
+    expect(screen.getByTestId('phase').textContent).toBe('needs-source')
     expect(translateText).not.toHaveBeenCalled()
+  })
+
+  it('falls back to a script guess when the tag is missing', async () => {
+    translateText.mockResolvedValue('ru: …')
+    const user = userEvent.setup()
+    // No language tag, but Cyrillic content -> should guess ru_RU.
+    setup({ language: null, content: '<p>Привет, как дела?</p>' })
+
+    await user.click(screen.getByRole('button', { name: 'toggle' }))
+    await waitFor(() => expect(screen.getByTestId('phase').textContent).toBe('done'))
+    expect(screen.getByTestId('source').textContent).toBe('ru_RU')
+    expect(translateText).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets the user override the detected source language', async () => {
+    translateText.mockResolvedValue('fr: …')
+    const user = userEvent.setup()
+    setup({ language: 'es' }) // tag resolves es, but user forces French
+
+    await user.click(screen.getByRole('button', { name: 'toggle' }))
+    await waitFor(() => expect(screen.getByTestId('phase').textContent).toBe('done'))
+    expect(translateText).toHaveBeenCalledTimes(1)
+
+    // Switching the source while the translated view is up re-translates.
+    await user.click(screen.getByRole('button', { name: 'set-fr' }))
+    await waitFor(() => expect(screen.getByTestId('phase').textContent).toBe('done'))
+    expect(screen.getByTestId('source').textContent).toBe('fr_FR')
+    expect(translateText).toHaveBeenCalledTimes(2)
   })
 })

@@ -419,6 +419,19 @@ button {
   font-size: 0.75rem;
 }
 
+/* Source-language dropdown shown in the translated header (lets the user
+   correct a wrong/absent auto-detected source) and when no source tag exists. */
+.post-translation-source {
+  font-size: 0.75rem;
+  padding: 1px 4px;
+  margin-left: 2px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-primary);
+  max-width: 190px;
+}
+
 /* Download/inference progress bar under the "loading" label. Determinate
    (width set inline) while the weights stream in; indeterminate (a sliding
    segment) once the model is ready and inference is running. */

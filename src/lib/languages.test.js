@@ -4,6 +4,7 @@ import {
   resolveTargetLanguage,
   isForeignStatus,
   modelLangName,
+  detectScriptLanguage,
 } from './languages.js'
 
 describe('resolveModelCode', () => {
@@ -88,5 +89,31 @@ describe('modelLangName', () => {
 
   it('falls back to the code itself', () => {
     expect(modelLangName('zz_ZZ')).toBe('zz_ZZ')
+  })
+})
+
+describe('detectScriptLanguage', () => {
+  it('detects single-script languages confidently', () => {
+    expect(detectScriptLanguage('こんにちは、元気ですか')).toBe('ja_JP') // kana -> Japanese
+    expect(detectScriptLanguage('안녕하세요')).toBe('ko_KR')          // Hangul -> Korean
+    expect(detectScriptLanguage('你好世界')).toBe('zh_TW')           // Han -> Traditional
+    expect(detectScriptLanguage('مرحبا بالعالم')).toBe('ar_SA')      // Arabic
+    expect(detectScriptLanguage('שלום עולם')).toBe('he_IL')          // Hebrew
+    expect(detectScriptLanguage('नमस्ते दुनिया')).toBe('hi_IN')      // Devanagari
+    expect(detectScriptLanguage('สวัสดีชาวโลก')).toBe('th_TH')       // Thai
+    expect(detectScriptLanguage('வணக்கம் உலகம்')).toBe('ta_IN')      // Tamil
+    expect(detectScriptLanguage('Γεια σου κόσμε')).toBe('el_GR')     // Greek
+    expect(detectScriptLanguage('Привет мир')).toBe('ru_RU')         // Cyrillic
+  })
+
+  it('prefers Japanese over Han characters when kana is present (shared script)', () => {
+    expect(detectScriptLanguage('ボタンを押してください')).toBe('ja_JP')
+  })
+
+  it('returns null for ambiguous Latin-script text and empty input', () => {
+    expect(detectScriptLanguage('hello world')).toBeNull()
+    expect(detectScriptLanguage('')).toBeNull()
+    expect(detectScriptLanguage(null)).toBeNull()
+    expect(detectScriptLanguage(undefined)).toBeNull()
   })
 })

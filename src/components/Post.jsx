@@ -24,7 +24,12 @@ import * as mitra from '../lib/mitra'
 import { PickerContext, AppSettingsContext, useEscapeKey, showToast, downloadAllMedia } from '../hooks'
 import { formatRelativeTime, htmlToPlainText, processStatusContent, renderEmojiText, renderPlainText } from '../lib/render.jsx'
 import { translateText } from '../lib/translate'
-import { modelLangName, resolveModelCode } from '../lib/languages'
+import {
+  detectScriptLanguage,
+  modelLangName,
+  resolveModelCode,
+  SUPPORTED_LANGUAGES,
+} from '../lib/languages'
 import { Avatar, MediaGrid, ProxiedImg } from './Media.jsx'
 import { COMMON_EMOJI } from './Emoji.jsx'
 import { ReplyComposerFields } from './ReplyComposer.jsx'
@@ -68,33 +73,33 @@ export function useTranslation(status) {
   // e.g. in isolation tests), no toggle is offered.
   const { translationEnabled } = useContext(AppSettingsContext)
   const browserLang = userLanguage()
-  const sourceCode = resolveModelCode(status?.language)
   const targetCode = resolveModelCode(browserLang) || 'en'
-  const sourceLangName = modelLangName(sourceCode)
 
-  // phase: 'idle' | 'loading' | 'done' | 'error'
+  // phase: 'idle' | 'needs-source' | 'loading' | 'done' | 'error'
   const [phase, setPhase] = useState('idle')
   const [progress, setProgress] = useState(null) // null | { overall, file, ready }
   const [translated, setTranslated] = useState(null)
   const [error, setError] = useState(null)
   const [shown, setShown] = useState(false)
+  // A user-chosen source language, set via the picker. Takes precedence over
+  // the post's tag and the script guess so a wrong auto-fill can be corrected.
+  const [sourceOverride, setSourceOverride] = useState(null)
 
-  // Kick off translation if needed, then reveal the translated view.
-  async function toggle() {
-    if (shown) {
-      setShown(false)
-      return
-    }
-    setShown(true)
-    if (phase === 'loading' || phase === 'done') return
+  // Resolve the source language for this post: explicit user choice first,
+  // then the post's language tag, then a conservative script guess. The script
+  // guess / tag are only ever surfaced as a correctable choice, and when
+  // nothing resolves we enter 'needs-source' and ask the user.
+  const sourceCode =
+    sourceOverride ??
+    resolveModelCode(status?.language) ??
+    detectScriptLanguage(htmlToPlainText(status?.content))
+  const sourceLangName = modelLangName(sourceCode)
+
+  // Actually run the translation for a given source code, reporting progress.
+  async function runTranslate(code) {
     setPhase('loading')
     setProgress(null)
     setError(null)
-    if (!sourceCode) {
-      setError(`Can't detect this post's source language — no usable language tag.`)
-      setPhase('error')
-      return
-    }
     try {
       // The 4 B parameter model only runs at a usable speed through the GPU.
       // Turning on a clear WebGPU gate here is more honest than silently
@@ -106,7 +111,7 @@ export function useTranslation(status) {
         )
       }
       const source = htmlToPlainText(status.content)
-      const result = await translateText(source, sourceCode, targetCode, setProgress)
+      const result = await translateText(source, code, targetCode, setProgress)
       setTranslated(result)
       setPhase('done')
     } catch (err) {
@@ -114,6 +119,30 @@ export function useTranslation(status) {
       setError(String(err?.message || err))
       setPhase('error')
     }
+  }
+
+  // Kick off translation if needed, then reveal the translated view.
+  async function toggle() {
+    if (shown) {
+      setShown(false)
+      return
+    }
+    setShown(true)
+    if (phase === 'loading') return
+    if (phase === 'done') return
+    if (!sourceCode) {
+      setPhase('needs-source')
+      return
+    }
+    await runTranslate(sourceCode)
+  }
+
+  // Called when the user picks a source language. Re-runs translation so a
+  // wrong auto-fill (or a bad/absent tag) is corrected in place.
+  function changeSource(code) {
+    if (!code) return
+    setSourceOverride(code)
+    if (shown && code !== sourceCode) runTranslate(code)
   }
 
   return {
@@ -126,6 +155,7 @@ export function useTranslation(status) {
     translated,
     error,
     toggle,
+    changeSource,
   }
 }
 
@@ -145,11 +175,35 @@ function TranslateToggleButton({ active, disabled, onClick }) {
   )
 }
 
+// A compact `<select>` of the model's supported languages, used both to
+// correct a wrong/absent auto-detected source and to kick off translation when
+// no source could be detected. The post's tag and script guess are only ever
+// surfaced through this control — never trusted silently.
+function SourceLanguageSelect({ value, disabled, onChange }) {
+  return (
+    <select
+      className="post-translation-source"
+      value={value || ''}
+      disabled={disabled}
+      aria-label="Source language"
+      title="Source language"
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="" disabled>Choose source language…</option>
+      {SUPPORTED_LANGUAGES.map(({ code, label }) => (
+        <option key={code} value={code}>{label} — {code.split('_')[0]}</option>
+      ))}
+    </select>
+  )
+}
+
 // The translated view shown in place of the original text: a "Translated from
 // X" heading with a show-original ✕, the translated text, the progress bar
-// while the model downloads/runs, or an inline error.
+// while the model downloads/runs, an inline error, or a source-language
+// picker when the post has no usable tag and no decisive script guess.
 function TranslatedBody({ status, t }) {
-  const { sourceLangName, phase, progress, translated, error, toggle } = t
+  const { sourceCode, sourceLangName, phase, progress, translated, error, toggle, changeSource } = t
 
   if (phase === 'loading') {
     // A real progress bar: determinate while the weights download, then an
@@ -191,6 +245,7 @@ function TranslatedBody({ status, t }) {
           <div className="post-translation-head">
             <span className="post-translation-label">
               <Languages size={13} /> Translated from {sourceLangName || 'unknown language'}
+              <SourceLanguageSelect value={sourceCode} onChange={changeSource} />
             </span>
             <button
               className="post-translation-close"
@@ -205,6 +260,22 @@ function TranslatedBody({ status, t }) {
             {renderPlainText(translated, status.mentions, status.emojis)}
           </p>
         </>
+      )}
+      {phase === 'needs-source' && (
+        <div className="post-translation-head">
+          <span className="post-translation-label">
+            <Languages size={13} /> Couldn't detect the source language — pick one:
+            <SourceLanguageSelect value={sourceCode} onChange={changeSource} />
+          </span>
+          <button
+            className="post-translation-close"
+            aria-label="Show original"
+            title="Show original"
+            onClick={(e) => { e.stopPropagation(); toggle() }}
+          >
+            <X size={13} />
+          </button>
+        </div>
       )}
       {phase === 'error' && (
         <div className="banner banner-error">{error}</div>
