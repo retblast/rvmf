@@ -95,4 +95,25 @@ describe('translateText', () => {
     progressCb({ status: 'ready', task: 'text-generation', model: 'm' })
     expect(onProgress).toHaveBeenLastCalledWith({ overall: 100, file: 'model.onnx', ready: true })
   })
+
+  it('falls back to per-file progress when no aggregate event fires', async () => {
+    let progressCb
+    pipeline.mockImplementation(async (_t, _m, opts) => {
+      progressCb = opts.progress_callback
+      return genReturning([{ content: 'x' }])
+    })
+    const onProgress = vi.fn()
+    await translateText('a', 'en', 'ja', onProgress)
+
+    // Only per-file events arrive (no progress_total): each forwards its own
+    // file progress so the bar still moves instead of hanging on indeterminate.
+    progressCb({ status: 'progress', name: 'm', file: 'model.onnx', loaded: 250, total: 1000 })
+    expect(onProgress).toHaveBeenLastCalledWith({ overall: 25, file: 'model.onnx', ready: false })
+
+    progressCb({ status: 'progress', name: 'm', file: 'model.onnx', loaded: 500, total: 1000 })
+    expect(onProgress).toHaveBeenLastCalledWith({ overall: 50, file: 'model.onnx', ready: false })
+
+    progressCb({ status: 'ready', task: 'text-generation', model: 'm' })
+    expect(onProgress).toHaveBeenLastCalledWith({ overall: 100, file: 'model.onnx', ready: true })
+  })
 })

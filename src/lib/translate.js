@@ -29,12 +29,13 @@ let pipelinePromise = null
 
 // Returns the live pipeline singleton, initializing on first use. `onProgress`
 // (if given) is fed a normalized `{ overall, file, ready }` object:
-//   - `overall` (number 0–100 | null): the *aggregate* download percentage
-//     across all model files. Transformers.js wraps the callback and emits a
-//     `progress_total` event for this, so the bar fills smoothly 0→100 rather
-//     than bouncing to 0 each time a new file starts.
-//   - `file` (string | null): the file currently being downloaded (from the
-//     per-file `progress` events) — used for a detailed label / debugging.
+//   - `overall` (number 0–100 | null): the download percentage. Prefers the
+//     *aggregate* `progress_total` event (which fills smoothly 0→100 across
+//     all files); if that event is missing (older/other Transformers.js
+//     builds), it falls back to the current file's own percentage so the bar
+//     still advances during the download instead of hanging on an empty
+//     indeterminate state.
+//   - `file` (string | null): the file currently being downloaded.
 //   - `ready` (boolean): true once the pipeline is loaded, i.e. the download
 //     is finished and inference is running.
 async function getPipeline(onProgress) {
@@ -49,16 +50,24 @@ async function getPipeline(onProgress) {
       let overall = null
       let file = null
       let ready = false
+      let hasAggregate = false
       return pipeline('text-generation', MODEL_ID, {
         device: 'webgpu',
         dtype: DTYPE,
         progress_callback: (e) => {
           if (e.status === 'progress_total') {
+            hasAggregate = true
             overall = typeof e.progress === 'number'
               ? e.progress
               : (e.total ? Math.min(100, (e.loaded / e.total) * 100) : null)
           } else if (e.status === 'progress') {
             file = e.file
+            // No aggregate event available: fall back to this file's own
+            // progress so the bar still moves. (The bar resets per file, but
+            // the weights file dominates the download, so it reads well.)
+            if (!hasAggregate && e.total) {
+              overall = Math.min(100, (e.loaded / e.total) * 100)
+            }
           } else if (e.status === 'ready') {
             ready = true
             overall = 100
