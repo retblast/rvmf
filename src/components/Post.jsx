@@ -24,7 +24,7 @@ import * as mitra from '../lib/mitra'
 import { PickerContext, AppSettingsContext, useEscapeKey, showToast, downloadAllMedia } from '../hooks'
 import { formatRelativeTime, htmlToPlainText, processStatusContent, renderEmojiText, renderPlainText } from '../lib/render.jsx'
 import { translateText } from '../lib/translate'
-import { isForeignStatus, modelLangName, resolveModelCode } from '../lib/languages'
+import { modelLangName, resolveModelCode } from '../lib/languages'
 import { Avatar, MediaGrid, ProxiedImg } from './Media.jsx'
 import { COMMON_EMOJI } from './Emoji.jsx'
 import { ReplyComposerFields } from './ReplyComposer.jsx'
@@ -54,35 +54,47 @@ function userLanguage() {
   return cachedLang || 'en'
 }
 
-// On-device translate control for a single post. Renders as a small inline
-// control beneath the post text, only when the post is in a language
-// different from the user's. The model (~3 GB) is downloaded and the request
-// runs fully client-side on first use — post text never leaves the device.
-function TranslatedText({ status }) {
+// On-device translation state for one post. Fediverse language tags are often
+// missing or wrong, so the translation *button* is always available (once the
+// feature is enabled) rather than gated on a language-mismatch heuristic — the
+// user decides what to translate. Translation still targets the user's browser
+// language and, when the post carries a resolvable source tag, uses it; the
+// model (~3 GB) is downloaded and the request runs fully client-side on first
+// use — post text never leaves the device.
+// Exported so unit tests can exercise the toggle behavior directly.
+export function useTranslation(status) {
   // The feature is opt-in via a settings toggle (default off). Fail closed:
   // if the setting isn't explicitly enabled (or the context isn't provided,
-  // e.g. in isolation tests), the control stays hidden.
+  // e.g. in isolation tests), no toggle is offered.
   const { translationEnabled } = useContext(AppSettingsContext)
   const browserLang = userLanguage()
-  // Show the control only when the post's base language differs from the
-  // user's, and target the translation at the user's browser language.
-  const foreign = isForeignStatus(status?.language, browserLang)
   const sourceCode = resolveModelCode(status?.language)
   const targetCode = resolveModelCode(browserLang) || 'en'
+  const sourceLangName = modelLangName(sourceCode)
 
   // phase: 'idle' | 'loading' | 'done' | 'error'
   const [phase, setPhase] = useState('idle')
   const [progress, setProgress] = useState(null) // null | { overall, file, ready }
   const [translated, setTranslated] = useState(null)
   const [error, setError] = useState(null)
+  const [shown, setShown] = useState(false)
 
-  if (!translationEnabled || !foreign || !sourceCode) return null
-
-  async function handleTranslate() {
-    if (phase === 'loading') return
+  // Kick off translation if needed, then reveal the translated view.
+  async function toggle() {
+    if (shown) {
+      setShown(false)
+      return
+    }
+    setShown(true)
+    if (phase === 'loading' || phase === 'done') return
     setPhase('loading')
     setProgress(null)
     setError(null)
+    if (!sourceCode) {
+      setError(`Can't detect this post's source language — no usable language tag.`)
+      setPhase('error')
+      return
+    }
     try {
       // The 4 B parameter model only runs at a usable speed through the GPU.
       // Turning on a clear WebGPU gate here is more honest than silently
@@ -104,32 +116,45 @@ function TranslatedText({ status }) {
     }
   }
 
-  if (phase === 'done') {
-    return (
-      <div className="post-translation">
-        <div className="post-translation-head">
-          <span className="post-translation-label">
-            <Languages size={13} /> Translated from {modelLangName(sourceCode)}
-          </span>
-          <button
-            className="post-translation-close"
-            aria-label="Show original"
-            title="Show original"
-            onClick={(e) => { e.stopPropagation(); setPhase('idle'); setTranslated(null) }}
-          >
-            <X size={13} />
-          </button>
-        </div>
-        <p className="post-text post-translation-text">{renderPlainText(translated, status.mentions, status.emojis)}</p>
-      </div>
-    )
+  return {
+    translationEnabled,
+    sourceCode,
+    sourceLangName,
+    shown,
+    phase,
+    progress,
+    translated,
+    error,
+    toggle,
   }
+}
+
+// Small action-row button that toggles a post between its original and its
+// on-device translation. Active (highlighted) while the translated view is up.
+function TranslateToggleButton({ active, disabled, onClick }) {
+  return (
+    <button
+      className={`action-btn${active ? ' translated' : ''}`}
+      aria-label={active ? 'Show original' : 'Translate'}
+      title={active ? 'Show original post' : 'Translate this post on-device'}
+      onClick={(e) => { e.stopPropagation(); onClick() }}
+      disabled={disabled}
+    >
+      <Languages size={15} />
+    </button>
+  )
+}
+
+// The translated view shown in place of the original text: a "Translated from
+// X" heading with a show-original ✕, the translated text, the progress bar
+// while the model downloads/runs, or an inline error.
+function TranslatedBody({ status, t }) {
+  const { sourceLangName, phase, progress, translated, error, toggle } = t
 
   if (phase === 'loading') {
-    // A real progress bar. While the weights download we have an aggregate
-    // percentage (determinate bar); once the model is loaded we're running
-    // inference, which has no byte-level progress, so switch to an
-    // indeterminate "Translating…" bar.
+    // A real progress bar: determinate while the weights download, then an
+    // indeterminate "Translating…" bar once the model is loaded and inference
+    // (which has no byte-level progress) is running.
     const overall = typeof progress?.overall === 'number' ? progress.overall : null
     const ready = progress?.ready === true
     const indeterminate = ready || overall == null
@@ -161,16 +186,29 @@ function TranslatedText({ status }) {
 
   return (
     <div className="post-translation">
+      {phase === 'done' && translated && (
+        <>
+          <div className="post-translation-head">
+            <span className="post-translation-label">
+              <Languages size={13} /> Translated from {sourceLangName || 'unknown language'}
+            </span>
+            <button
+              className="post-translation-close"
+              aria-label="Show original"
+              title="Show original"
+              onClick={(e) => { e.stopPropagation(); toggle() }}
+            >
+              <X size={13} />
+            </button>
+          </div>
+          <p className="post-text post-translation-text">
+            {renderPlainText(translated, status.mentions, status.emojis)}
+          </p>
+        </>
+      )}
       {phase === 'error' && (
         <div className="banner banner-error">{error}</div>
       )}
-      <button
-        className="post-translate-btn"
-        onClick={(e) => { e.stopPropagation(); handleTranslate() }}
-        title="Translate this post on-device"
-      >
-        <Languages size={13} /> Translate
-      </button>
     </div>
   )
 }
@@ -219,6 +257,7 @@ export function ThreadReply({
   const rawName = account.display_name || account.username || 'Unknown'
   const name = renderEmojiText(rawName, account.emojis)
   const content = processStatusContent(status, instanceUrl)
+  const translation = useTranslation(status)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
   // Same context line as PostRow: when the parent isn't loaded, fall back
   // to the mention matching in_reply_to_account_id. Notification previews
@@ -336,8 +375,9 @@ export function ThreadReply({
               </span>
             </div>
           )}
-          <p className="post-text">{content.textNodes}</p>
-          <TranslatedText status={status} />
+          {translation.shown
+            ? <TranslatedBody status={status} t={translation} />
+            : <p className="post-text">{content.textNodes}</p>}
           <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
           {status.poll && (
             <PollCard
@@ -431,6 +471,13 @@ export function ThreadReply({
               >
                 {mediaHidden ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
+            )}
+            {translation.translationEnabled && (
+              <TranslateToggleButton
+                active={translation.shown}
+                disabled={translation.phase === 'loading'}
+                onClick={translation.toggle}
+              />
             )}
             <PostOptionsMenu
               status={status}
@@ -1007,6 +1054,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   const displayName = renderEmojiText(displayNameRaw, account.emojis)
   const booster = isBoost ? post.account : null
   const content = processStatusContent(status, instanceUrl)
+  const translation = useTranslation(status)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
   const replyToAccount = !parentStatus && status.in_reply_to_account_id
     ? (status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
@@ -1121,8 +1169,9 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
               </span>
             </div>
           )}
-          <p className="post-text">{content.textNodes}</p>
-          <TranslatedText status={status} />
+          {translation.shown
+            ? <TranslatedBody status={status} t={translation} />
+            : <p className="post-text">{content.textNodes}</p>}
           <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
           {status.poll && (
             <PollCard
@@ -1210,6 +1259,13 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
               >
                 {mediaHidden ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
+            )}
+            {translation.translationEnabled && (
+              <TranslateToggleButton
+                active={translation.shown}
+                disabled={translation.phase === 'loading'}
+                onClick={translation.toggle}
+              />
             )}
             <PostOptionsMenu
               status={status}

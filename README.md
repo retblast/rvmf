@@ -73,9 +73,9 @@ A key theme is that I don't have money for a subscription to any service, so all
 ### On-device translation
 
 - **Enabled from settings** — a "Translate Foreign Posts" toggle in the settings menu (default **off**). Turning it on the first time shows a confirmation explaining that a model will be downloaded, so the heavy download is never a surprise.
-- With it on, posts in a language different from yours get a **Translate** control (under the text in timeline rows and thread replies). The target language comes from your browser's `navigator.language`.
+- With it on, every post (timeline rows and thread replies) gains a small **translate toggle** among its action buttons (next to like/favourite etc.). Tapping it swaps the post to an on-device translation; tapping again (or the "show original" ✕) swaps back. Because Fediverse language tags are often missing or wrong, the button is **always available** rather than gated on a language-mismatch heuristic — you decide what to translate. The target language comes from your browser's `navigator.language`; when the post carries a usable source-language tag it's used for detection.
 - Translation runs **entirely in your browser** on Google's **TranslateGemma 4B** model via Transformers.js + ONNX Runtime Web (WebGPU). No part of the post ever reaches a translation server — it's a faithful, private pass over the author's own text.
-- Everything is **opt-in and lazy**: the ~3 GB quantized model and the ONNX WebGPU runtime are only downloaded on the first actual translation (both served from the same origin as the app), so it takes a while that once; later translations reuse the cached model. A progress indicator shows the download.
+- Everything is **opt-in and lazy**: the ~3 GB quantized model and the ONNX WebGPU runtime are only downloaded on the first actual translation (both served from the same origin as the app), so it takes a while that once; later translations reuse the cached model. A determinate progress bar shows the download, switching to an indeterminate "Translating…" bar during inference.
 - Translated text renders through the same safe, link/mention-aware rich-text pipeline as normal posts, with a "show original" close affordance. Requires a **WebGPU-capable browser** (Chrome/Edge, or Firefox with WebGPU enabled); unsupported browsers get a clear error instead of a broken spinner.
 
 ### Profiles
@@ -382,9 +382,8 @@ src/
 
     languages.js       TranslateGemma locale vocabulary + resolver that maps
                      BCP-47/ISO-639-1 tags (status language, navigator.language)
-                     onto the model's exact codes, and the foreign-language
-                     heuristic used to decide where to show the Translate
-                     control.
+                     onto the model's exact codes, and the source-language
+                     detection used when translating a post.
 
     blurhash.js        Minimal pure-JS blurhash decoder for placeholders.
 

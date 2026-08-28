@@ -405,24 +405,6 @@ button {
   gap: 6px;
 }
 
-.post-translate-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: none;
-  background: transparent;
-  color: var(--accent);
-  font-size: 0.8125rem;
-  padding: 3px 8px 3px 4px;
-  border-radius: var(--radius-control);
-  cursor: pointer;
-}
-
-.post-translate-btn:hover {
-  background: var(--hover-overlay);
-  text-decoration: underline;
-}
-
 .post-translation-loading {
   color: var(--text-secondary);
   font-size: 0.8125rem;
@@ -530,6 +512,11 @@ button {
 
 .action-btn.bookmarked {
   color: var(--accent);
+}
+
+.action-btn.translated {
+  color: var(--accent);
+  background: var(--hover-overlay);
 }
 
 /* ---- boost dropdown ---- */
