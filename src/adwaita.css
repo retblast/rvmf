@@ -2960,6 +2960,12 @@ textarea:focus-visible {
   color: var(--text-secondary);
 }
 
+.profile-badge.requested {
+  background: var(--hover-overlay);
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
 .notif-text .post-name.clickable {
   cursor: pointer;
 }

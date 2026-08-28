@@ -349,7 +349,9 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
     if (!account || followBusy) return
     setFollowBusy(true)
     try {
-      const result = relationship?.following
+      // A pending (requested) follow is cancelled by the same unfollow
+      // endpoint on Mitra — it withdraws the outstanding request.
+      const result = (relationship?.following || relationship?.requested)
         ? await mitra.unfollowAccount(instanceUrl, token, account.id)
         : await mitra.followAccount(instanceUrl, token, account.id)
       setRelationship(result)
@@ -458,15 +460,24 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
             {!isOwn && !relationship?.following && relationship?.followed_by && (
               <span className="profile-badge follows-you">Follows you</span>
             )}
+            {!isOwn && relationship?.requested && (
+              <span className="profile-badge requested">Request pending</span>
+            )}
           </div>
           {!isOwn && (
             <>
               <button
-                className={`pill-btn ${relationship?.following ? '' : 'suggested'}`}
+                className={`pill-btn ${relationship?.following || relationship?.requested ? '' : 'suggested'}`}
                 onClick={toggleFollow}
                 disabled={followBusy}
               >
-                {followBusy ? '…' : relationship?.following ? 'Following' : 'Follow'}
+                {followBusy
+                  ? '…'
+                  : relationship?.following
+                    ? 'Following'
+                    : relationship?.requested
+                      ? 'Requested'
+                      : 'Follow'}
               </button>
               {relationship?.following && (
                 <FollowOptions
