@@ -12,6 +12,7 @@
     "lint": "eslint src/"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "framer-motion": "^11.11.9",
     "lucide-react": "^0.383.0",
     "react": "^18.3.1",

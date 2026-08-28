@@ -70,6 +70,13 @@ A key theme is that I don't have money for a subscription to any service, so all
 - **Post options menu** — copy link, mute account, block account.
 - **Hide/show media** per post without leaving the timeline.
 
+### On-device translation
+
+- Posts in a language different from yours get a **Translate** control (under the text in timeline rows and thread replies). The target language comes from your browser's `navigator.language`.
+- Translation runs **entirely in your browser** on Google's **TranslateGemma 4B** model via Transformers.js + ONNX Runtime Web (WebGPU). No part of the post ever reaches a translation server — it's a faithful, private pass over the author's own text.
+- Everything is **opt-in and lazy**: nothing is downloaded until you actually click Translate on a post. The first click fetches the ~3 GB quantized model and the ONNX WebGPU runtime (both served from the same origin as the app), so it takes a while; later translations reuse the cached model. A progress indicator shows the download.
+- Translated text renders through the same safe, link/mention-aware rich-text pipeline as normal posts, with a "show original" close affordance. Requires a **WebGPU-capable browser** (Chrome/Edge, or Firefox with WebGPU enabled); unsupported browsers get a clear error instead of a broken spinner.
+
 ### Profiles
 
 - **Profile view** — header banner, overlapping avatar, display name (with custom emoji), handle, bio, stats, and follow indicators ("Mutual", "Follows you").
@@ -115,7 +122,7 @@ Reached from the settings menu:
 
 ## Testing
 
-- **`npm test`** — Vitest unit/component tests: the pure libraries (rich-text rendering, quarantined-image recovery, reply trees, storage migration, blurhash, emoji filtering) and key component behaviors (composer validation, visibility handling, cross-copy status merging).
+- **`npm test`** — Vitest unit/component tests: the pure libraries (rich-text rendering, quarantined-image recovery, reply trees, storage migration, blurhash, emoji filtering, TranslateGemma language mapping + translation orchestration) and key component behaviors (composer validation, visibility handling, cross-copy status merging).
 - **`nix run .#e2e`** — full E2E suite against a real backend, fully hermetic:
   1. throwaway PostgreSQL in a temp dir
   2. a pinned real Mitra server (upstream release deb extracted by the flake — `packages.mitra`)
@@ -362,6 +369,17 @@ src/
                      hashtags, URLs, custom emoji — no dangerouslySetInnerHTML),
                      reply tree helpers, Mitra signed-proxy URL decoding,
                      quarantined-image recovery.
+
+    translate.js       On-device TranslateGemma wrapper — lazily loaded
+                     singleton pipeline (WebGPU, q4f16) that takes a
+                     plain-text post and returns its translated text. Never
+                     imported or run until a user requests a translation.
+
+    languages.js       TranslateGemma locale vocabulary + resolver that maps
+                     BCP-47/ISO-639-1 tags (status language, navigator.language)
+                     onto the model's exact codes, and the foreign-language
+                     heuristic used to decide where to show the Translate
+                     control.
 
     blurhash.js        Minimal pure-JS blurhash decoder for placeholders.
 

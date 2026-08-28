@@ -18,10 +18,13 @@ import {
   PinOff,
   Box,
   Download,
+  Languages,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { PickerContext, useEscapeKey, showToast, downloadAllMedia } from '../hooks'
-import { formatRelativeTime, htmlToPlainText, processStatusContent, renderEmojiText } from '../lib/render.jsx'
+import { formatRelativeTime, htmlToPlainText, processStatusContent, renderEmojiText, renderPlainText } from '../lib/render.jsx'
+import { translateText } from '../lib/translate'
+import { isForeignStatus, modelLangName, resolveModelCode } from '../lib/languages'
 import { Avatar, MediaGrid, ProxiedImg } from './Media.jsx'
 import { COMMON_EMOJI } from './Emoji.jsx'
 import { ReplyComposerFields } from './ReplyComposer.jsx'
@@ -38,6 +41,117 @@ function unwrapStatus(post) {
 // of followers-only/direct/subscribers content, so don't offer the button.
 export function canBoostStatus(status) {
   return ['public', 'unlisted'].includes(status?.visibility)
+}
+
+// Browser language (BCP-47, e.g. "en-US"), cached once at module load so the
+// translate control is stable across re-renders. Lazy so it never runs in
+// non-browser environments (tests).
+let cachedLang = null
+function userLanguage() {
+  if (cachedLang == null && typeof navigator !== 'undefined') {
+    cachedLang = navigator.language || 'en'
+  }
+  return cachedLang || 'en'
+}
+
+// On-device translate control for a single post. Renders as a small inline
+// control beneath the post text, only when the post is in a language
+// different from the user's. The model (~3 GB) is downloaded and the request
+// runs fully client-side on first use — post text never leaves the device.
+function TranslatedText({ status }) {
+  const browserLang = userLanguage()
+  // Show the control only when the post's base language differs from the
+  // user's, and target the translation at the user's browser language.
+  const foreign = isForeignStatus(status?.language, browserLang)
+  const sourceCode = resolveModelCode(status?.language)
+  const targetCode = resolveModelCode(browserLang) || 'en'
+
+  // phase: 'idle' | 'loading' | 'done' | 'error'
+  const [phase, setPhase] = useState('idle')
+  const [progress, setProgress] = useState(null) // null | { file, loaded, total }
+  const [translated, setTranslated] = useState(null)
+  const [error, setError] = useState(null)
+
+  if (!foreign || !sourceCode) return null
+
+  async function handleTranslate() {
+    if (phase === 'loading') return
+    setPhase('loading')
+    setProgress(null)
+    setError(null)
+    try {
+      // The 4 B parameter model only runs at a usable speed through the GPU.
+      // Turning on a clear WebGPU gate here is more honest than silently
+      // falling back to the CPU (which would take minutes per token).
+      if (typeof navigator !== 'undefined' && !navigator.gpu) {
+        throw new Error(
+          'On-device translation needs a WebGPU-capable browser ' +
+          '(Chrome/Edge, or Firefox with webgpu enabled).'
+        )
+      }
+      const source = htmlToPlainText(status.content)
+      const result = await translateText(source, sourceCode, targetCode, setProgress)
+      setTranslated(result)
+      setPhase('done')
+    } catch (err) {
+      console.error(err)
+      setError(String(err?.message || err))
+      setPhase('error')
+    }
+  }
+
+  if (phase === 'done') {
+    return (
+      <div className="post-translation">
+        <div className="post-translation-head">
+          <span className="post-translation-label">
+            <Languages size={13} /> Translated from {modelLangName(sourceCode)}
+          </span>
+          <button
+            className="post-translation-close"
+            aria-label="Show original"
+            title="Show original"
+            onClick={(e) => { e.stopPropagation(); setPhase('idle'); setTranslated(null) }}
+          >
+            <X size={13} />
+          </button>
+        </div>
+        <p className="post-text post-translation-text">{renderPlainText(translated, status.mentions, status.emojis)}</p>
+      </div>
+    )
+  }
+
+  if (phase === 'loading') {
+    const pct = progress?.loaded && progress?.total
+      ? Math.round((progress.loaded / progress.total) * 100)
+      : 0
+    const isWeights = /onnx\b|model/g.test(progress?.file || '')
+    const label = isWeights
+      ? `Downloading translation model… ${pct}%`
+      : progress?.file
+        ? `Preparing translator… (${progress.file})`
+        : 'Starting translator…'
+    return (
+      <div className="post-translation post-translation-loading">
+        <span className="post-translation-label">{label}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="post-translation">
+      {phase === 'error' && (
+        <div className="banner banner-error">{error}</div>
+      )}
+      <button
+        className="post-translate-btn"
+        onClick={(e) => { e.stopPropagation(); handleTranslate() }}
+        title="Translate this post on-device"
+      >
+        <Languages size={13} /> Translate
+      </button>
+    </div>
+  )
 }
 
 // One reply, at any depth, with the exact same action row and interactivity
@@ -202,6 +316,7 @@ export function ThreadReply({
             </div>
           )}
           <p className="post-text">{content.textNodes}</p>
+          <TranslatedText status={status} />
           <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
           {status.poll && (
             <PollCard
@@ -986,6 +1101,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
             </div>
           )}
           <p className="post-text">{content.textNodes}</p>
+          <TranslatedText status={status} />
           <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
           {status.poll && (
             <PollCard

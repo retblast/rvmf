@@ -395,6 +395,72 @@ button {
   white-space: pre-wrap;
 }
 
+/* ---- on-device translation ---- */
+
+.post-translation {
+  margin: 2px 0 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.post-translate-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.8125rem;
+  padding: 3px 8px 3px 4px;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.post-translate-btn:hover {
+  background: var(--hover-overlay);
+  text-decoration: underline;
+}
+
+.post-translation-loading {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  align-items: center;
+}
+
+.post-translation-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.post-translation-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.post-translation-close {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 2px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.post-translation-close:hover {
+  background: var(--hover-overlay);
+  color: var(--text-primary);
+}
+
+.post-translation-text {
+  margin: 2px 0 0;
+}
+
 .post-actions {
   display: flex;
   align-items: center;

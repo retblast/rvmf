@@ -457,3 +457,12 @@ export function processStatusContent(status, instanceUrl) {
 
   return { textNodes, attachments, sensitive, spoilerText }
 }
+
+// Renders a block of plain text — e.g. a machine-translated post, which has
+// no orig HTML to process — through the same linkify/mention/emoji pass the
+// normal post text goes through, so URLs stay clickable and line breaks are
+// preserved. Mentions and emoji come from the source status so user/@names
+// and :shortcodes: that survive translation still render consistently.
+export function renderPlainText(text, mentions, emojis) {
+  return renderRichText(String(text || ''), mentions, emojis)
+}
