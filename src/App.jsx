@@ -2103,6 +2103,7 @@ export default function App() {
           maxCharacters={session.maxCharacters || 500}
           groupId={composerGroup?.id || null}
           groupName={composerGroup ? (composerGroup.display_name || composerGroup.acct || composerGroup.username) : null}
+          currentAccountId={session.account?.id}
         />
       )}
 

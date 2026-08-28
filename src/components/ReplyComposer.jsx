@@ -13,6 +13,7 @@ import { processStatusContent } from '../lib/render.jsx'
 import {
   useMediaUploads, MediaUploadStrip, CharCounter, VisibilitySelect, LanguageSelect,
   usePollDraft, PollEditorFields, ParentPreviewMedia, useStatusPreview, StatusPreviewPane,
+  replyVisibilityOptions, defaultReplyVisibility,
 } from './Compose.jsx'
 import { AppSettingsContext } from '../hooks'
 import {
@@ -23,7 +24,7 @@ import {
 } from './Emoji.jsx'
 import { useMentionAutocomplete, MentionDropdown } from './Mention.jsx'
 
-export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted, maxCharacters = 500 }) {
+export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted, maxCharacters = 500, currentAccountId }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -45,13 +46,19 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
   const account = status?.account || {}
   const name = account.display_name || account.username || 'Unknown'
   const { defaultVisibility } = useContext(AppSettingsContext)
-  // Replies inherit the parent's visibility; fresh posts start at the
-  // server-configured default. Conversation parents lock it entirely.
-  const [visibility, setVisibility] = useState(status?.visibility || defaultVisibility || 'public')
-  const conversationLocked = status?.visibility === 'conversation'
-  useEffect(() => {
-    if (conversationLocked) setVisibility('conversation')
-  }, [conversationLocked])
+  // Replies may not be raised above the parent — only the visibilities the
+  // server accepts for a reply to `status` are offered, and the select starts
+  // at the sensible default (conversation for limited parents, direct for DM).
+  // A conversation parent is *not* hard-locked: replying as an explicit DM is
+  // still allowed, matching mitra-web.
+  const parentVisibility = status?.visibility
+  const isSameAuthor = currentAccountId && status?.account?.id === currentAccountId
+  const replyOptions = parentVisibility
+    ? replyVisibilityOptions(parentVisibility, isSameAuthor)
+    : undefined
+  const [visibility, setVisibility] = useState(
+    parentVisibility ? defaultReplyVisibility(parentVisibility) : (defaultVisibility || 'public')
+  )
   const [showTitle, setShowTitle] = useState(false)
   const [title, setTitle] = useState('')
   const [language, setLanguage] = useState('')
@@ -184,9 +191,9 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
         <CharCounter current={text.length} max={maxCharacters} />
       </div>
       {showPreview && <StatusPreviewPane nodes={preview.nodes} error={preview.error} />}
-      {conversationLocked && (
+      {replyOptions && (
         <div className="poll-meta">
-          Conversation replies stay visible only to conversation participants.
+          Both replies and DMs are possible — this post is visible only to conversation participants or explicit recipients.
         </div>
       )}
       {poll.enabled && <PollEditorFields poll={poll} />}
@@ -265,7 +272,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
               />
             )}
           </div>
-          <VisibilitySelect value={visibility} onChange={setVisibility} locked={conversationLocked} />
+          <VisibilitySelect value={visibility} onChange={setVisibility} options={replyOptions} />
           <LanguageSelect value={language} onChange={setLanguage} />
         <div style={{ flex: 1 }} />
         <button className="pill-btn" onClick={onClose} type="button">

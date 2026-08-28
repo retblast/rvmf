@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { VisibilitySelect, visibilityLabel, CharCounter } from './Compose.jsx'
+import { VisibilitySelect, visibilityLabel, CharCounter, replyVisibilityOptions, defaultReplyVisibility } from './Compose.jsx'
 
 describe('visibilityLabel', () => {
   it('labels standard and Mitra-specific visibilities', () => {
@@ -9,6 +9,42 @@ describe('visibilityLabel', () => {
     expect(visibilityLabel('private')).toBe('Followers only')
     expect(visibilityLabel('subscribers')).toBe('Subscribers only')
     expect(visibilityLabel('conversation')).toBe('Conversation')
+  })
+})
+
+describe('replyVisibilityOptions', () => {
+  it('only permits direct replies to a direct message', () => {
+    expect(replyVisibilityOptions('direct')).toEqual(['direct'])
+  })
+
+  it('offers conversation + direct for conversation-style parents', () => {
+    expect(replyVisibilityOptions('conversation')).toEqual(['conversation', 'direct'])
+    expect(replyVisibilityOptions('subscribers')).toEqual(['conversation', 'direct'])
+  })
+
+  it('restricts followers-only replies to conversation + direct for others', () => {
+    expect(replyVisibilityOptions('private')).toEqual(['conversation', 'direct'])
+  })
+
+  it('lets the author reply one step wider to their own followers-only post', () => {
+    expect(replyVisibilityOptions('private', true)).toEqual(['conversation', 'private', 'direct'])
+  })
+
+  it('allows the standard public/followers/direct range for a public parent', () => {
+    expect(replyVisibilityOptions('public')).toEqual(['public', 'unlisted', 'private', 'direct'])
+  })
+})
+
+describe('defaultReplyVisibility', () => {
+  it('keeps DMs direct and defaults limited parents to conversation', () => {
+    expect(defaultReplyVisibility('direct')).toBe('direct')
+    expect(defaultReplyVisibility('conversation')).toBe('conversation')
+    expect(defaultReplyVisibility('private')).toBe('conversation')
+  })
+
+  it('inherits public/replies for public parents', () => {
+    expect(defaultReplyVisibility('public')).toBe('public')
+    expect(defaultReplyVisibility('unlisted')).toBe('unlisted')
   })
 })
 

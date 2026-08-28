@@ -109,6 +109,7 @@ export function ThreadPanelContent({
     onClose: onCancelCompose,
     onPosted: onReplyPosted,
     maxCharacters,
+    currentAccountId,
   }
 
   if (panel?.mode === 'compose') {
@@ -123,6 +124,7 @@ export function ThreadPanelContent({
           onClose()
         }}
         maxCharacters={maxCharacters}
+        currentAccountId={currentAccountId}
       />
     )
   }

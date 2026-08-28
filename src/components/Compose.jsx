@@ -176,13 +176,58 @@ export function visibilityLabel(v) {
 
 const VISIBILITY_OPTIONS = ['public', 'unlisted', 'private', 'subscribers', 'direct']
 
-// Renders the standard visibility options, plus whatever non-standard
-// value is currently set (e.g. Mitra's 'subscribers') so it displays
-// instead of leaving the select blank.
-export function VisibilitySelect({ value, onChange, locked = false }) {
-  const options = VISIBILITY_OPTIONS.includes(value)
-    ? VISIBILITY_OPTIONS
-    : [value, ...VISIBILITY_OPTIONS]
+// The visibilities Mitra will actually accept for a *reply* to a parent of
+// `parentVisibility` — mirrors the server's `Visibility::can_reply_with`.
+// Replies may not be raised above the parent; `conversation` (visible to the
+// conversation's participants) and `direct` are the two open options for the
+// common case, and a direct-message parent can only be replied to with
+// `direct`. `isSameAuthor` matters only for followers-only parents, which the
+// author may reply to a step wider. (`unlisted`/`public` share Mitra's Public
+// enum, so a public post allows up to public/followers/direct replies.)
+export function replyVisibilityOptions(parentVisibility, isSameAuthor = false) {
+  switch (parentVisibility) {
+    case 'direct':
+      return ['direct']
+    case 'conversation':
+    case 'subscribers':
+    case 'group':
+      return ['conversation', 'direct']
+    case 'private':
+      return isSameAuthor ? ['conversation', 'private', 'direct'] : ['conversation', 'direct']
+    case 'unlisted':
+    case 'public':
+    default:
+      return ['public', 'unlisted', 'private', 'direct']
+  }
+}
+
+// Sensible starting visibility for a reply: DM stays direct (the only valid
+// value), conversation-style/limited parents default to `conversation` (what
+// mitra-web picks), and public/unlisted replies inherit the parent.
+export function defaultReplyVisibility(parentVisibility) {
+  switch (parentVisibility) {
+    case 'direct':
+      return 'direct'
+    case 'conversation':
+    case 'subscribers':
+    case 'group':
+    case 'private':
+      return 'conversation'
+    case 'unlisted':
+      return 'unlisted'
+    default:
+      return 'public'
+  }
+}
+
+// Renders the visibility options, plus whatever non-standard value is
+// currently set (e.g. Mitra's 'conversation') so it displays instead of
+// leaving the select blank. An `options` list overrides the full standard
+// set — used when replying, where only the parent's valid reply visibilities
+// are offered.
+export function VisibilitySelect({ value, onChange, locked = false, options: optionList }) {
+  const base = optionList || VISIBILITY_OPTIONS
+  const options = base.includes(value) ? base : [value, ...base]
   return (
     <select
       className="compose-visibility-select"
@@ -523,14 +568,21 @@ export function PollEditorFields({ poll }) {
   )
 }
 
-export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus, replyToStatus, maxCharacters = 500, groupId = null, groupName = null }) {
+export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus, replyToStatus, maxCharacters = 500, groupId = null, groupName = null, currentAccountId }) {
   const { defaultVisibility } = useContext(AppSettingsContext)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  // Replies inherit the parent's visibility; fresh posts start at the
-  // server-configured default.
-  const [visibility, setVisibility] = useState(replyToStatus?.visibility || defaultVisibility || 'public')
+
+  // Replies may not be raised above the parent — only the visibilities the
+  // server accepts for a reply are offered, starting at the sensible default.
+  // Fresh posts use the server-configured default visibility.
+  const replyOptions = replyToStatus
+    ? replyVisibilityOptions(replyToStatus.visibility, currentAccountId && replyToStatus.account?.id === currentAccountId)
+    : undefined
+  const [visibility, setVisibility] = useState(
+    replyToStatus ? defaultReplyVisibility(replyToStatus.visibility) : (defaultVisibility || 'public')
+  )
   const [spoilerText, setSpoilerText] = useState('')
   const [showCW, setShowCW] = useState(false)
   const fileInputRef = useRef(null)
@@ -554,17 +606,10 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
   const { query: acQuery, suggestions: acSuggestions, selectedIndex: acIndex, handleKeyDown: acKeyDown } = useEmojiAutocomplete(text, setText, textareaRef, customEmojis)
   const mn = useMentionAutocomplete(text, setText, textareaRef, instanceUrl, token)
   const preview = useStatusPreview(showPreview, text, instanceUrl, token)
-  // Conversation posts can only be replied to inside the conversation —
-  // the server rejects anything else, so lock the selector.
-  const conversationLocked = replyToStatus?.visibility === 'conversation'
 
   useEffect(() => {
     mitra.fetchCustomEmojis(instanceUrl).then((emojis) => setCustomEmojis(emojis || [])).catch(() => {})
   }, [instanceUrl])
-
-  useEffect(() => {
-    if (conversationLocked) setVisibility('conversation')
-  }, [conversationLocked])
 
   // Polls and media attachments are mutually exclusive
   useEffect(() => {
@@ -685,9 +730,9 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
         {showPreview && (
           <StatusPreviewPane nodes={preview.nodes} error={preview.error} />
         )}
-        {conversationLocked && (
+        {replyOptions && (
           <div className="poll-meta">
-            Conversation replies stay visible only to conversation participants.
+            Replying can't make a post more visible than the one you're replying to, so only certain visibilities are offered.
           </div>
         )}
         {replyToStatus && (
@@ -782,7 +827,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
               />
             )}
           </div>
-          <VisibilitySelect value={visibility} onChange={setVisibility} locked={conversationLocked} />
+          <VisibilitySelect value={visibility} onChange={setVisibility} options={replyOptions} />
           <LanguageSelect value={language} onChange={setLanguage} />
           <div style={{ flex: 1, minWidth: 0 }} />
           <button className="pill-btn" onClick={onClose} type="button">
