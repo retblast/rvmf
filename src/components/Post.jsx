@@ -17,9 +17,10 @@ import {
   Pin,
   PinOff,
   Box,
+  Download,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
-import { PickerContext, useEscapeKey, showToast } from '../hooks'
+import { PickerContext, useEscapeKey, showToast, downloadAllMedia } from '../hooks'
 import { formatRelativeTime, htmlToPlainText, processStatusContent, renderEmojiText } from '../lib/render.jsx'
 import { Avatar, MediaGrid, ProxiedImg } from './Media.jsx'
 import { COMMON_EMOJI } from './Emoji.jsx'
@@ -299,6 +300,7 @@ export function ThreadReply({
               status={status}
               instanceUrl={instanceUrl}
               token={token}
+              mediaAttachments={content.attachments}
               isOwn={status.account?.id === currentAccountId}
               onDelete={onDelete}
               onMute={onMute}
@@ -676,10 +678,12 @@ export function PollCard({ poll, instanceUrl, token, onUpdated }) {
   )
 }
 
-function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, onBlock, onEdit, onUpdate }) {
+function PostOptionsMenu({ status, instanceUrl, token, mediaAttachments, isOwn, onDelete, onMute, onBlock, onEdit, onUpdate }) {
   const [open, setOpen] = useState(false)
   const [pinBusy, setPinBusy] = useState(false)
   const [pinError, setPinError] = useState('')
+  const [dlState, setDlState] = useState('idle') // 'idle' | 'busy' | 'done' | 'error'
+  const mediaCount = Array.isArray(mediaAttachments) ? mediaAttachments.length : 0
   // IPFS pin state: 'idle' | 'busy' | 'copied'
   const [ipfsState, setIpfsState] = useState('idle')
   const [ipfsError, setIpfsError] = useState('')
@@ -767,6 +771,20 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
     })
   }
 
+  async function handleDownloadMedia() {
+    if (dlState === 'busy') return
+    setDlState('busy')
+    try {
+      await downloadAllMedia(mediaAttachments, { instanceUrl, token })
+      setDlState('done')
+      showToast('Media saved')
+    } catch {
+      setDlState('error')
+    } finally {
+      setTimeout(() => setDlState('idle'), 1200)
+    }
+  }
+
   return (
     <div className="boost-dropdown-wrap" ref={ref}>
       <button className="action-btn" aria-label="More options" style={{ marginLeft: 'auto' }} onClick={() => setOpen(!open)}>
@@ -780,6 +798,12 @@ function PostOptionsMenu({ status, instanceUrl, token, isOwn, onDelete, onMute, 
               <Link size={15} />
               Copy link
             </button>
+            {mediaCount > 0 && (
+              <button className="boost-dropdown-item" onClick={handleDownloadMedia} disabled={dlState === 'busy'}>
+                <Download size={15} />
+                {dlState === 'busy' ? 'Downloading…' : `Download media (${mediaCount})`}
+              </button>
+            )}
             {isOwn && onEdit && (
               <button className="boost-dropdown-item" onClick={() => { setOpen(false); onEdit(status) }}>
                 <Edit3 size={15} />
@@ -1054,6 +1078,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
               status={status}
               instanceUrl={instanceUrl}
               token={token}
+              mediaAttachments={content.attachments}
               isOwn={status.account?.id === currentAccountId}
               onDelete={onDelete}
               onMute={onMute}

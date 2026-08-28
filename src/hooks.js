@@ -102,6 +102,90 @@ export function safeProxyUrl(url) {
   return proxyUrl(url)
 }
 
+// ---- Media download -----------------------------------------------------
+// The display pipeline fetches blobs through the dev proxy; downloads want
+// the same bytes, so they reuse the same credential guard: only send the
+// bearer token toward the user's own instance, never to third-party hosts
+// (the proxy forwards the header upstream as-is). Rejects non-media content
+// so an HTML error/prune page is never saved as a real file.
+
+function fetchMediaBinary(url, instanceUrl, token) {
+  const headers = {}
+  if (token && instanceUrl && url.startsWith(instanceUrl)) {
+    headers['Authorization'] = `Bearer ${token}`
+  }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 30_000)
+  return fetch(proxyUrl(url), { headers, signal: controller.signal })
+    .finally(() => clearTimeout(timer))
+}
+
+async function fetchDownloadableMedia(url, instanceUrl, token) {
+  const res = await fetchMediaBinary(url, instanceUrl, token)
+  if (!res.ok) return null
+  const contentType = (res.headers.get('content-type') || '').toLowerCase()
+  if (contentType.startsWith('text/') || contentType === 'application/json') return null
+  return { blob: await res.blob(), contentType }
+}
+
+// Candidate URLs for an attachment's bytes, best-first: display URL, origin
+// URL, then the origin URL Mitra hides inside its signed proxy link.
+export function attachmentDownloadUrls(att) {
+  const urls = [att.url, att.remote_url, att._remote_fallback].filter(Boolean)
+  // Dedupe while preserving order.
+  return [...new Set(urls)]
+}
+
+// A safe, descriptive file name derived from the attachment id/type and the
+// content type, so saves are recognizable instead of ambiguous "download".
+export function filenameForAttachment(att, contentType) {
+  const extMap = {
+    'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif',
+    'image/webp': 'webp', 'image/avif': 'avif', 'image/svg+xml': 'svg',
+    'video/mp4': 'mp4', 'video/webm': 'webm', 'audio/mpeg': 'mp3',
+    'audio/ogg': 'ogg', 'audio/wav': 'wav', 'application/octet-stream': 'bin',
+  }
+  const mime = (contentType || '').split(';')[0].trim().toLowerCase()
+  const ext = extMap[mime] || (att.type === 'image' ? 'jpg' : 'bin')
+  const base = (att.id && String(att.id).replace(/[^a-zA-Z0-9_-]/g, '_')) || 'media'
+  return `${base}.${ext}`
+}
+
+// Save a single attachment to disk. Returns true on success, false if every
+// candidate URL failed (unreachable, timeout, or non-media body).
+export async function downloadAttachment(att, { instanceUrl, token }) {
+  for (const url of attachmentDownloadUrls(att)) {
+    try {
+      const media = await fetchDownloadableMedia(url, instanceUrl, token)
+      if (!media) continue
+      const blobUrl = URL.createObjectURL(media.blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = filenameForAttachment(att, media.contentType)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(blobUrl)
+      return true
+    } catch {
+      // try the next candidate URL
+    }
+  }
+  return false
+}
+
+// Download every attachment in a list. Multiple programmatic downloads are
+// only allowed if triggered in separate tasks, so space them out. Shared by
+// the per-post "Download media" action now, and the account-wide media sweep
+// later — just pass a flattened attachment list.
+export async function downloadAllMedia(attachments, opts) {
+  const list = Array.isArray(attachments) ? attachments : []
+  for (const att of list) {
+    await downloadAttachment(att, opts)
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+}
+
 // Positions a floating preview near the cursor, clamped so it never runs
 // off the edge of the viewport.
 export function useCursorPreview(previewWidth = 320, previewHeight = 320) {

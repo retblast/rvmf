@@ -2045,8 +2045,22 @@ span.img-placeholder.custom-emoji {
   color: #ffffff;
 }
 
-.lightbox-close:hover {
+.lightbox-close:hover,
+.lightbox-download:hover {
   background: rgba(255, 255, 255, 0.22);
+}
+
+.lightbox-download {
+  position: fixed;
+  top: 16px;
+  right: 52px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.lightbox-download:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .lightbox-prev,

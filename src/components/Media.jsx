@@ -7,6 +7,7 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
+  Download,
 } from 'lucide-react'
 import {
   AppSettingsContext,
@@ -16,6 +17,7 @@ import {
   useClientMedia,
   isUrlKnownFailed,
   markUrlFailed,
+  downloadAttachment,
 } from '../hooks'
 import { lookupEmojiUrl } from '../lib/emojiRegistry.js'
 
@@ -543,6 +545,15 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
     if (hasNext) onNavigate({ attachment: imageAttachments[currentIdx + 1], attachments, index: currentIdx + 1, onNavigate })
   }
 
+  const [dlState, setDlState] = useState('idle') // 'idle' | 'busy' | 'done'
+  async function handleDownload() {
+    if (dlState === 'busy') return
+    setDlState('busy')
+    const ok = await downloadAttachment(attachment, { instanceUrl, token })
+    setDlState(ok ? 'done' : 'idle')
+    setTimeout(() => setDlState('idle'), 1200)
+  }
+
   useEffect(() => {
     function handleKey(e) {
       if (e.key === 'Escape') onClose()
@@ -557,6 +568,9 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
     <div className="dialog-overlay lightbox-overlay" onClick={onClose}>
       <button className="icon-btn lightbox-close" onClick={onClose} aria-label="Close">
         <X size={18} />
+      </button>
+      <button className="icon-btn lightbox-download" onClick={(e) => { e.stopPropagation(); handleDownload() }} disabled={dlState === 'busy'} aria-label="Download">
+        <Download size={18} />
       </button>
       {hasPrev && (
         <button className="icon-btn lightbox-prev" onClick={(e) => { e.stopPropagation(); goPrev() }} aria-label="Previous">
