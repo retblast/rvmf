@@ -74,7 +74,7 @@ describe('translateText', () => {
     await expect(translateText('a', 'en', 'ja')).rejects.toThrow(/empty result/)
   })
 
-  it('relays progress events for the weight download', async () => {
+  it('relays aggregate download progress and readiness as { overall, file, ready }', async () => {
     let progressCb
     pipeline.mockImplementation(async (_t, _m, opts) => {
       progressCb = opts.progress_callback
@@ -82,7 +82,17 @@ describe('translateText', () => {
     })
     const onProgress = vi.fn()
     await translateText('a', 'en', 'ja', onProgress)
-    progressCb({ status: 'progress', file: 'model.onnx', loaded: 50, total: 100 })
-    expect(onProgress).toHaveBeenCalledWith({ file: 'model.onnx', loaded: 50, total: 100 })
+
+    // Aggregate download progress (smooth 0–100 across all files).
+    progressCb({ status: 'progress_total', name: 'm', progress: 42, loaded: 420, total: 1000, files: {} })
+    expect(onProgress).toHaveBeenLastCalledWith({ overall: 42, file: null, ready: false })
+
+    // Per-file event only updates the "current file" label; overall is kept.
+    progressCb({ status: 'progress', name: 'm', file: 'model.onnx', progress: 7, loaded: 70, total: 1000 })
+    expect(onProgress).toHaveBeenLastCalledWith({ overall: 42, file: 'model.onnx', ready: false })
+
+    // Ready: download finished, inference is running → 100% + ready flag.
+    progressCb({ status: 'ready', task: 'text-generation', model: 'm' })
+    expect(onProgress).toHaveBeenLastCalledWith({ overall: 100, file: 'model.onnx', ready: true })
   })
 })

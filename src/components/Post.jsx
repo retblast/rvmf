@@ -72,7 +72,7 @@ function TranslatedText({ status }) {
 
   // phase: 'idle' | 'loading' | 'done' | 'error'
   const [phase, setPhase] = useState('idle')
-  const [progress, setProgress] = useState(null) // null | { file, loaded, total }
+  const [progress, setProgress] = useState(null) // null | { overall, file, ready }
   const [translated, setTranslated] = useState(null)
   const [error, setError] = useState(null)
 
@@ -126,18 +126,35 @@ function TranslatedText({ status }) {
   }
 
   if (phase === 'loading') {
-    const pct = progress?.loaded && progress?.total
-      ? Math.round((progress.loaded / progress.total) * 100)
-      : 0
-    const isWeights = /onnx\b|model/g.test(progress?.file || '')
-    const label = isWeights
-      ? `Downloading translation model… ${pct}%`
-      : progress?.file
-        ? `Preparing translator… (${progress.file})`
-        : 'Starting translator…'
+    // A real progress bar. While the weights download we have an aggregate
+    // percentage (determinate bar); once the model is loaded we're running
+    // inference, which has no byte-level progress, so switch to an
+    // indeterminate "Translating…" bar.
+    const overall = typeof progress?.overall === 'number' ? progress.overall : null
+    const ready = progress?.ready === true
+    const indeterminate = ready || overall == null
+    const label = ready
+      ? 'Translating…'
+      : overall != null
+        ? `Downloading translation model… ${Math.round(overall)}%`
+        : 'Preparing translator…'
+    const pct = Math.max(0, Math.min(100, overall))
     return (
       <div className="post-translation post-translation-loading">
         <span className="post-translation-label">{label}</span>
+        <div
+          className={`post-translation-progress${indeterminate ? ' is-indeterminate' : ''}`}
+          role="progressbar"
+          aria-label="Translation model progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={indeterminate ? undefined : Math.round(pct)}
+        >
+          <div
+            className="post-translation-progress-fill"
+            style={indeterminate ? undefined : { width: `${pct}%` }}
+          />
+        </div>
       </div>
     )
   }

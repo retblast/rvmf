@@ -28,10 +28,15 @@ const DTYPE = 'q4f16'
 let pipelinePromise = null
 
 // Returns the live pipeline singleton, initializing on first use. `onProgress`
-// (if given) receives each weight file's download as it happens: the progress
-// callback fires per-file (config, tokenizer, then the multi-GB weights), so
-// the "percent" refreshes per file and callers use the filename to tell
-// "downloading weights" apart from the small setup files.
+// (if given) is fed a normalized `{ overall, file, ready }` object:
+//   - `overall` (number 0–100 | null): the *aggregate* download percentage
+//     across all model files. Transformers.js wraps the callback and emits a
+//     `progress_total` event for this, so the bar fills smoothly 0→100 rather
+//     than bouncing to 0 each time a new file starts.
+//   - `file` (string | null): the file currently being downloaded (from the
+//     per-file `progress` events) — used for a detailed label / debugging.
+//   - `ready` (boolean): true once the pipeline is loaded, i.e. the download
+//     is finished and inference is running.
 async function getPipeline(onProgress) {
   if (!pipelinePromise) {
     pipelinePromise = (async () => {
@@ -41,12 +46,26 @@ async function getPipeline(onProgress) {
       // Only ever fetch from the Hub — never probe local/relative model
       // paths the way the library can in some setups.
       env.allowLocalModels = false
+      let overall = null
+      let file = null
+      let ready = false
       return pipeline('text-generation', MODEL_ID, {
         device: 'webgpu',
         dtype: DTYPE,
         progress_callback: (e) => {
-          if (e.status !== 'progress' || !e.file || !e.total) return
-          onProgress?.({ file: e.file, loaded: e.loaded, total: e.total })
+          if (e.status === 'progress_total') {
+            overall = typeof e.progress === 'number'
+              ? e.progress
+              : (e.total ? Math.min(100, (e.loaded / e.total) * 100) : null)
+          } else if (e.status === 'progress') {
+            file = e.file
+          } else if (e.status === 'ready') {
+            ready = true
+            overall = 100
+          } else {
+            return
+          }
+          onProgress?.({ overall, file, ready })
         },
       })
     })()
@@ -65,8 +84,10 @@ export function resetTranslator() {
  * tags, resolved internally to model codes). Resolves to the translated
  * string.
  *
- * `onProgress`, if given, receives `{ file, loaded, total }` for each weight
- * file download during model load (fires before the first inference).
+ * `onProgress`, if given, receives `{ overall, file, ready }` while the model
+ * loads: `overall` is the aggregate 0–100 download percentage, `file` the
+ * file currently downloading, and `ready` true once the model is loaded and
+ * inference is running.
  *
  * Throws if the model is unsupported on the device, the download fails, or
  * either language isn't in the model's vocabulary.

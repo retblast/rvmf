@@ -426,7 +426,7 @@ button {
 .post-translation-loading {
   color: var(--text-secondary);
   font-size: 0.8125rem;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .post-translation-label {
@@ -435,6 +435,39 @@ button {
   gap: 5px;
   color: var(--text-secondary);
   font-size: 0.75rem;
+}
+
+/* Download/inference progress bar under the "loading" label. Determinate
+   (width set inline) while the weights stream in; indeterminate (a sliding
+   segment) once the model is ready and inference is running. */
+.post-translation-progress {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--hover-overlay);
+  overflow: hidden;
+}
+
+.post-translation-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.15s linear;
+}
+
+.post-translation-progress.is-indeterminate .post-translation-progress-fill {
+  width: 40%;
+  animation: post-translation-slide 1.1s ease-in-out infinite;
+}
+
+@keyframes post-translation-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
 }
 
 .post-translation-head {
