@@ -191,11 +191,6 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
         <CharCounter current={text.length} max={maxCharacters} />
       </div>
       {showPreview && <StatusPreviewPane nodes={preview.nodes} error={preview.error} />}
-      {replyOptions && (
-        <div className="poll-meta">
-          Both replies and DMs are possible — this post is visible only to conversation participants or explicit recipients.
-        </div>
-      )}
       {poll.enabled && <PollEditorFields poll={poll} />}
       <MediaUploadStrip uploads={uploads} onRemove={removeUpload} onEditDescription={editDescription} onCommitDescription={commitDescription} />
       <div className="dialog-actions">
