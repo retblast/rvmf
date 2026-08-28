@@ -987,6 +987,25 @@ button {
   color: var(--text-primary);
 }
 
+/* Confirmation dialogs are short — narrower than the compose card and the
+   body text sits between the title and the actions. */
+.confirm-card {
+  width: 400px;
+}
+
+.confirm-message {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.confirm-message .confirm-note {
+  margin-top: 8px;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
 .compose-textarea {
   width: 100%;
   border: 1px solid var(--border-strong);
@@ -1403,6 +1422,13 @@ button {
   font-size: 0.75rem;
   padding: 2px 0;
   text-transform: uppercase;
+}
+
+.settings-menu-note {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  padding: 2px 0 6px;
 }
 
 .settings-menu-subrow span {

@@ -72,9 +72,10 @@ A key theme is that I don't have money for a subscription to any service, so all
 
 ### On-device translation
 
-- Posts in a language different from yours get a **Translate** control (under the text in timeline rows and thread replies). The target language comes from your browser's `navigator.language`.
+- **Enabled from settings** — a "Translate Foreign Posts" toggle in the settings menu (default **off**). Turning it on the first time shows a confirmation explaining that a model will be downloaded, so the heavy download is never a surprise.
+- With it on, posts in a language different from yours get a **Translate** control (under the text in timeline rows and thread replies). The target language comes from your browser's `navigator.language`.
 - Translation runs **entirely in your browser** on Google's **TranslateGemma 4B** model via Transformers.js + ONNX Runtime Web (WebGPU). No part of the post ever reaches a translation server — it's a faithful, private pass over the author's own text.
-- Everything is **opt-in and lazy**: nothing is downloaded until you actually click Translate on a post. The first click fetches the ~3 GB quantized model and the ONNX WebGPU runtime (both served from the same origin as the app), so it takes a while; later translations reuse the cached model. A progress indicator shows the download.
+- Everything is **opt-in and lazy**: the ~3 GB quantized model and the ONNX WebGPU runtime are only downloaded on the first actual translation (both served from the same origin as the app), so it takes a while that once; later translations reuse the cached model. A progress indicator shows the download.
 - Translated text renders through the same safe, link/mention-aware rich-text pipeline as normal posts, with a "show original" close affordance. Requires a **WebGPU-capable browser** (Chrome/Edge, or Firefox with WebGPU enabled); unsupported browsers get a clear error instead of a broken spinner.
 
 ### Profiles
@@ -122,7 +123,7 @@ Reached from the settings menu:
 
 ## Testing
 
-- **`npm test`** — Vitest unit/component tests: the pure libraries (rich-text rendering, quarantined-image recovery, reply trees, storage migration, blurhash, emoji filtering, TranslateGemma language mapping + translation orchestration) and key component behaviors (composer validation, visibility handling, cross-copy status merging).
+- **`npm test`** — Vitest unit/component tests: the pure libraries (rich-text rendering, quarantined-image recovery, reply trees, storage migration, blurhash, emoji filtering, TranslateGemma language mapping + translation orchestration) and key component behaviors (composer validation, visibility handling, cross-copy status merging, the reusable confirm dialog).
 - **`nix run .#e2e`** — full E2E suite against a real backend, fully hermetic:
   1. throwaway PostgreSQL in a temp dir
   2. a pinned real Mitra server (upstream release deb extracted by the flake — `packages.mitra`)
@@ -353,6 +354,10 @@ src/
     InstanceIcon.jsx   Instance favicon with fallback glyph.
 
     ErrorBoundary.jsx  Per-section crash containment.
+
+    ConfirmDialog.jsx  Reusable confirm modal (reuses the dialog chrome);
+                      used to gate heavy opt-in actions like enabling
+                      on-device translation.
 
   lib/
     mitra.js           API client. Everything the app does against the

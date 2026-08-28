@@ -64,6 +64,7 @@ import { ConversationsView } from './components/ConversationsView.jsx'
 import { AccountSettingsView } from './components/AccountSettingsView.jsx'
 import { FavouritesView } from './components/FavouritesView.jsx'
 import { Switch } from './components/Switch.jsx'
+import { ConfirmDialog } from './components/ConfirmDialog.jsx'
 import { StatusPage } from './components/StatusPage.jsx'
 import { SKINS, applySkin } from './lib/skins.js'
 import { UIContext } from './ui/index.jsx'
@@ -231,6 +232,30 @@ export default function App() {
       storageSet('fetch-client-media', String(next))
       return next
     })
+  }
+
+  // On-device translation is off by default and opt-in behind a confirm:
+  // the first use downloads a ~3 GB model, so we want the user's explicit
+  // ok before flipping it on. Local-only (not synced) — whether to stash a
+  // multi-GB model on a device is a per-machine decision.
+  const [translationEnabled, setTranslationEnabled] = useState(() => {
+    return storageGet('translation-enabled') === 'true'
+  })
+  const [confirmingTranslation, setConfirmingTranslation] = useState(false)
+
+  function handleToggleTranslation(next) {
+    if (next && !translationEnabled) {
+      setConfirmingTranslation(true)
+      return
+    }
+    setTranslationEnabled(next)
+    storageSet('translation-enabled', String(next))
+  }
+
+  function confirmTranslation() {
+    setConfirmingTranslation(false)
+    setTranslationEnabled(true)
+    storageSet('translation-enabled', 'true')
   }
 
   async function handleClearNotifications() {
@@ -870,7 +895,9 @@ export default function App() {
       } else if (openPickerId) {
         e.preventDefault()
         setOpenPickerId(null)
-      } else if (settingsOpen) {
+      } else if (settingsOpen && !confirmingTranslation) {
+        // While the translation confirm dialog is up, Escape is owned by the
+        // dialog (it cancels it and keeps the settings menu open).
         e.preventDefault()
         setSettingsOpen(false)
       } else if (sidePanel) {
@@ -880,7 +907,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [composing, editing, openPickerId, settingsOpen, sidePanel])
+  }, [composing, editing, openPickerId, settingsOpen, confirmingTranslation, sidePanel])
 
   function updatePost(updated) {
     setTimeline((prev) => prev.map((p) => mergeStatusIntoRow(p, updated)))
@@ -1717,7 +1744,7 @@ export default function App() {
 
   return (
     <UIContext.Provider value={SKINS[skinId]?.components || {}}>
-    <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, defaultVisibility, instanceUrl: session.instanceUrl, token: session.token }}>
+    <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, translationEnabled, defaultVisibility, instanceUrl: session.instanceUrl, token: session.token }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
       {!online && (
         <div className="banner banner-offline">
@@ -1981,6 +2008,18 @@ export default function App() {
                   </div>
 
                   <div className="settings-group">
+                    <span className="settings-menu-heading">Translation</span>
+                    <label className="settings-menu-row">
+                      <span>Translate Foreign Posts</span>
+                      <Switch checked={translationEnabled} onChange={handleToggleTranslation} label="Translate Foreign Posts" />
+                    </label>
+                    <div className="settings-menu-note">
+                      Runs on-device in your browser (TranslateGemma / WebGPU). Post text never
+                      leaves your device. The ~3 GB model downloads only after you confirm.
+                    </div>
+                  </div>
+
+                  <div className="settings-group">
                     <span className="settings-menu-heading">Account</span>
                     <div className="settings-menu-row">
                       <span>Default Post Visibility</span>
@@ -2032,6 +2071,25 @@ export default function App() {
                   </button>
                 </div>
               </>
+            )}
+
+            {confirmingTranslation && (
+              <ConfirmDialog
+                title="Enable on-device translation?"
+                confirmLabel="Enable"
+                onCancel={() => setConfirmingTranslation(false)}
+                onConfirm={confirmTranslation}
+              >
+                <p>
+                  This turns on in-browser translation for posts in a language
+                  that isn't yours, using Google's TranslateGemma model.
+                </p>
+                <p className="confirm-note">
+                  The first translation downloads a ~3 GB model and the WebGPU
+                  runtime to your device (one-time, then cached). Everything
+                  runs locally — post text is never sent to a server.
+                </p>
+              </ConfirmDialog>
             )}
 
       {tier === 'wide' ? (

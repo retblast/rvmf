@@ -21,7 +21,7 @@ import {
   Languages,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
-import { PickerContext, useEscapeKey, showToast, downloadAllMedia } from '../hooks'
+import { PickerContext, AppSettingsContext, useEscapeKey, showToast, downloadAllMedia } from '../hooks'
 import { formatRelativeTime, htmlToPlainText, processStatusContent, renderEmojiText, renderPlainText } from '../lib/render.jsx'
 import { translateText } from '../lib/translate'
 import { isForeignStatus, modelLangName, resolveModelCode } from '../lib/languages'
@@ -59,6 +59,10 @@ function userLanguage() {
 // different from the user's. The model (~3 GB) is downloaded and the request
 // runs fully client-side on first use — post text never leaves the device.
 function TranslatedText({ status }) {
+  // The feature is opt-in via a settings toggle (default off). Fail closed:
+  // if the setting isn't explicitly enabled (or the context isn't provided,
+  // e.g. in isolation tests), the control stays hidden.
+  const { translationEnabled } = useContext(AppSettingsContext)
   const browserLang = userLanguage()
   // Show the control only when the post's base language differs from the
   // user's, and target the translation at the user's browser language.
@@ -72,7 +76,7 @@ function TranslatedText({ status }) {
   const [translated, setTranslated] = useState(null)
   const [error, setError] = useState(null)
 
-  if (!foreign || !sourceCode) return null
+  if (!translationEnabled || !foreign || !sourceCode) return null
 
   async function handleTranslate() {
     if (phase === 'loading') return
