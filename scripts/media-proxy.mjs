@@ -1,0 +1,94 @@
+// Shared media proxy, used by BOTH the Vite dev server (vite.config.js) and
+// the standalone production server (server.mjs), so the two never drift.
+//
+// The browser can't fetch arbitrary remote media directly — CORS forbids it,
+// and some instances require the Authorization header. This endpoint accepts
+// `GET /media-proxy?url=<encoded>` and proxies the resource back to the
+// client: it forwards the caller's Authorization header upstream (so tokens
+// are only ever used toward the origin the browser already decided to send
+// them to) and returns the body with permissive CORS so <img>/<video> and
+// blob fetches work cross-origin.
+
+// Single choke point for sending a plain-text response. Every exit path goes
+// through here, so a second writeHead on an already-sent response — the thing
+// that used to crash servers on flaky connections — cannot happen by
+// construction.
+function respondOnce(res, status, text) {
+  if (res.headersSent || res.destroyed || res.writableEnded) return
+  try {
+    res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' })
+    res.end(text)
+  } catch {
+    try { res.destroy() } catch { /* already dead */ }
+  }
+}
+
+// Insert the Authorization header from the inbound request into the fetch to
+// the target, but only if the caller is hitting the resource on the same host
+// they authenticated against. The browser already gates this before it ever
+// sends the header here (see the client media fetcher), so this is a second,
+// defensive line — never proactively forward to arbitrary hosts.
+function upstreamHeaders(req) {
+  const headers = {}
+  const auth = req.headers.authorization
+  if (auth) headers['Authorization'] = auth
+  return headers
+}
+
+// Parse and validate the `url` query parameter. Returns a URL object or
+// null. SSRF guard: only http(s) targets may be proxied — without this the
+// server would be an open proxy (and a way to hit internal addresses).
+function parseTarget(reqUrl) {
+  const url = new URL(reqUrl, 'http://localhost')
+  const target = url.searchParams.get('url')
+  if (!target) return null
+  let parsed
+  try {
+    parsed = new URL(target)
+  } catch {
+    return null
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+  return parsed
+}
+
+// Handle one /media-proxy request. Works with both Connect-style middleware
+// (Vite dev) and node:http request/response objects, which share the
+// Surface used here (writeHead/end/headersSent/destroyed/writableEnded).
+export async function handleMediaProxy(req, res, { fetchImpl = fetch } = {}) {
+  if (res.destroyed || res.writableEnded) return
+  const target = parseTarget(req.url || '/')
+  if (!target) {
+    respondOnce(res, 400, 'Missing or invalid url parameter')
+    return
+  }
+  try {
+    const proxyRes = await fetchImpl(target.toString(), {
+      headers: upstreamHeaders(req),
+      redirect: 'follow',
+    })
+    if (res.headersSent || res.destroyed || res.writableEnded) return
+    const ct = proxyRes.headers.get('content-type') || 'application/octet-stream'
+    try {
+      res.writeHead(proxyRes.status, {
+        'Content-Type': ct,
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=86400',
+      })
+    } catch {
+      try { res.destroy() } catch { /* already dead */ }
+      return
+    }
+    // Headers are out — past this point a failure can only end in tearing
+    // the socket down, never in writing new headers.
+    try {
+      const body = await proxyRes.arrayBuffer()
+      if (res.writableEnded || res.destroyed) return
+      res.end(Buffer.from(body))
+    } catch {
+      try { res.destroy() } catch { /* already dead */ }
+    }
+  } catch {
+    respondOnce(res, 502, 'Proxy fetch failed')
+  }
+}

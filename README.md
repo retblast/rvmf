@@ -158,6 +158,108 @@ Then open http://localhost:5173.
 
 The dev server also runs a `/media-proxy` middleware (with SSRF guards) that fetches remote media with CORS headers, forwarding Authorization headers upstream.
 
+## Deployment (hosting under a subdomain)
+
+rvmf is a static Single-Page App plus a tiny Node server. The server (`server.mjs`) serves the built bundle *and* the `/media-proxy` endpoint, so a single reverse-proxy rule can put the whole thing online at the root of a subdomain (e.g. `rvmf.domain.com`).
+
+Because every path the app uses — fingerprinted assets (`/assets/...`), the media proxy (`/media-proxy`), and the OAuth redirect URI (built from `window.location.origin`) — is root-relative, **subdomain hosting needs no path-prefix or `base` configuration**. Point a subdomain at your host, proxy it to `server.mjs`, done.
+
+### Prerequisites
+
+- **Node.js 22+** and **npm** — that's it. No Nix, no container needed, works on any distro (systemd below is optional and shown only as a common example).
+- A domain whose DNS you can configure, and a host (VPS, home server) with ports 80/443 reachable and a reverse proxy installed.
+
+### 1. Build and run
+
+```bash
+npm ci            # install dependencies
+npm run build     # compile into dist/
+npm run serve     # production server on 0.0.0.0:4173
+```
+
+The server is configured by environment variables:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `HOST` | `0.0.0.0` | Interface to bind (behind a reverse proxy, `0.0.0.0` or the loopback is fine) |
+| `PORT` | `4173` | Port to listen on (set a nonstandard one if you like) |
+| `RVMF_DIST` | `./dist` | Directory holding the built bundle |
+
+A minimal systemd unit for keeping it alive (adjust the path to where you cloned the repo):
+
+```ini
+[Unit]
+Description=rvmf frontend
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/rvmf
+ExecStart=/usr/bin/npm run serve
+Restart=on-failure
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Don't expose port `4173` publicly on its own. Keep it bound to loopback (or firewall it off) and let the reverse proxy below be the only thing talking to it.
+
+### 2. Point DNS at your host
+
+Add a record for `rvmf.domain.com` that resolves to your host — an `A` record with the host's IPv4 (or `AAAA` for IPv6, or a `CNAME` if the box already has a name). Wait for it to propagate.
+
+### 3. Reverse proxy to the server
+
+The proxy terminates TLS in front of the Node server and forwards `/`, `/assets/...`, and `/media-proxy` to it. Both examples below send **the entire subdomain** through — that is what makes remote media keep working, because the media proxy shares the same origin as the page.
+
+#### Caddy
+
+Caddy needs no certificate setup — it provisions and renews Let's Encrypt certs automatically. It also passes `Host` through and adds `X-Forwarded-For`/`X-Forwarded-Proto` itself, so this one block is all you need:
+
+```caddyfile
+rvmf.domain.com {
+    reverse_proxy 127.0.0.1:4173
+}
+```
+
+That single `reverse_proxy` line covers static assets, SPA deep links, and `/media-proxy` — the whole origin flows through untouched.
+
+#### nginx
+
+nginx needs the forwarding headers declared explicitly. With a single `location /` catch-all, assets, deep links, and the media proxy all reach the server unchanged:
+
+```nginx
+server {
+    listen 80;
+    server_name rvmf.domain.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:4173;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Terminate TLS and redirect HTTP to HTTPS with certbot (or your CA of choice):
+
+```bash
+sudo certbot --nginx -d rvmf.domain.com
+```
+
+### How the media proxy works behind the proxy
+
+The browser can't fetch fediverse media directly (CORS forbids it), so the app pulls images/video/audio through its own origin at `/media-proxy?url=<encoded>`. Since the reverse proxy forwards the entire subdomain, those requests reach `server.mjs` on the same origin as the page, and the proxy returns the upstream bytes with permissive CORS. The `Authorization` header the browser adds toward its own origin flows through the proxy to the media host intact.
+
+Because requests keep the `Host` header of your subdomain, everything stays same-origin — which is exactly what the app's `window.location.origin`-derived redirect URI and media fetcher assume. So: keep the whole subdomain proxied to `server.mjs`, and every feature (timelines, compose, media, media downloads) works unchanged.
+
+### Gotchas
+
+- **Serve over HTTPS.** The OAuth redirect URI comes from `window.location.origin`. If the browser sees `http://`, login redirects will use the wrong scheme. Caddy handles this automatically; with nginx, make sure requests are served on 443 (as in the certbot step above).
+- **This is subdomain hosting, not sub-path hosting.** Hosting under a *path* (e.g. `domain.com/rvmf/`) is a different story — it would need a Vite `base`, path-aware media-proxy routing, and redirect-URI handling. If you want that, it's future work; the examples above assume the subdomain root.
+
 ## Project structure
 
 ```
