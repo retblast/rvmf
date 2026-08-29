@@ -73,6 +73,9 @@ describe('NLLB (default)', () => {
     // fp32 weights (NOT the quantized "merged" files that hit the onnxruntime
     // MatMulNBits/DequantizeLinear "Missing required scale" regression).
     expect(options.dtype).toBe('fp32')
+    // Skip the buggy ORT graph-optimizer QDQ fusion so session creation can't
+    // abort on it, regardless of the weights file.
+    expect(options.session_options.graphOptimizationLevel).toBe('basic')
 
     const [text, opts] = getArgs()
     expect(text).toBe('hello')

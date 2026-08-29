@@ -32,9 +32,12 @@ const PROVIDERS = {
     // int4/int8 files hit a known onnxruntime-web graph-optimizer regression
     // (TransposeDQWeightsForMatMulNBits) that aborts session creation with
     // "Missing required scale: ...weight_merged_0_scale" (see transformers.js
-    // #1635). fp32 avoids that buggy quantized path entirely. ORT/wasm can't
-    // run fp16, so fp32 is the reliable CPU build.
+    // #1635). fp32 avoids that quantized file, and ORT/wasm can't run fp16 so
+    // fp32 is the correct CPU build. Belt-and-suspenders: drop the ORT graph
+    // optimizer to 'basic' so the buggy QDQ fusion pass can't run at all,
+    // regardless of which weights file is selected.
     dtype: 'fp32',
+    session_options: { graphOptimizationLevel: 'basic' },
     requiresWebGPU: false,
   },
   'gemma-webgpu': {
@@ -104,6 +107,7 @@ function getPipeline(provider, onProgress) {
         },
       }
       if (cfg.dtype) options.dtype = cfg.dtype
+      if (cfg.session_options) options.session_options = cfg.session_options
       return pipeline(cfg.task, cfg.modelId, options)
     })()
   }
