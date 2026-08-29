@@ -31,5 +31,12 @@
     "jsdom": "^30.0.1",
     "vite": "^5.4.1",
     "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "onnxruntime-node": {
+      "scripts": {
+        "postinstall": ""
+      }
+    }
   }
 }
