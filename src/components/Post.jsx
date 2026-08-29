@@ -31,6 +31,7 @@ import {
   detectScriptLanguage,
 } from '../lib/languages'
 import { Avatar, MediaGrid, ProxiedImg } from './Media.jsx'
+import { GifVideo } from './GifVideo.jsx'
 import { COMMON_EMOJI } from './Emoji.jsx'
 import { ReplyComposerFields } from './ReplyComposer.jsx'
 
@@ -405,7 +406,7 @@ export function ThreadReply({
         style={{ '--reply-depth': depth }}
         data-status-id={status.id}
       >
-        <Avatar name={rawName} src={account.avatar} onClick={() => onOpenProfile?.(account)} />
+        <Avatar name={rawName} src={account.avatar} staticSrc={account.avatar_static} onClick={() => onOpenProfile?.(account)} />
         <div
           className="reply-body"
           onClick={(e) => {
@@ -634,7 +635,7 @@ function ReactionChips({ reactions, statusId, instanceUrl, token, onReact }) {
           }}
         >
           {r.url ? (
-            <ProxiedImg direct className="reaction-emoji-img" src={r.url} alt={r.name} />
+            <GifVideo direct className="reaction-emoji-img" src={r.url} alt={r.name} />
           ) : (
             <span className="reaction-emoji-text">{r.name}</span>
           )}
@@ -725,7 +726,7 @@ function AccountsPopover({ kind, statusId, instanceUrl, token, onClose, onOpenPr
               className="search-account-row"
               onClick={() => { onClose(); onOpenProfile?.(account) }}
             >
-              <Avatar name={account.display_name || account.username} src={account.avatar} />
+              <Avatar name={account.display_name || account.username} src={account.avatar} staticSrc={account.avatar_static} />
               <div className="search-account-names">
                 <span className="post-name">{account.display_name || account.username}</span>
                 <span className="post-handle">@{account.acct || account.username}</span>
@@ -818,7 +819,7 @@ export function QuoteCard({ status, instanceUrl, onOpenThread }) {
   return (
     <div className="quote-card" onClick={(e) => { e.stopPropagation(); onOpenThread(status) }}>
       <div className="quote-card-meta">
-        <Avatar name={rawName} src={account.avatar} size={16} />
+        <Avatar name={rawName} src={account.avatar} staticSrc={account.avatar_static} size={16} />
         <span className="quote-card-name">{name}</span>
         <span className="quote-card-handle">@{account.acct || account.username}</span>
       </div>
@@ -1202,7 +1203,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
         </div>
       )}
       <div className="post-row-main">
-        <Avatar name={displayNameRaw} src={account.avatar} onClick={() => onOpenProfile?.(account)} />
+        <Avatar name={displayNameRaw} src={account.avatar} staticSrc={account.avatar_static} onClick={() => onOpenProfile?.(account)} />
         <div
           className="post-body"
           onClick={(e) => {
@@ -1400,7 +1401,7 @@ function notificationVerb(type, notification) {
       const emojiUrl = notification?.emoji_url
       const emojiName = notification?.emoji || notification?.reaction?.content || '🧩'
       const emoji = emojiUrl
-        ? <ProxiedImg direct src={emojiUrl} alt={emojiName} className="inline-custom-emoji" />
+        ? <GifVideo direct src={emojiUrl} alt={emojiName} className="inline-custom-emoji" />
         : String(emojiName).startsWith(':')
           ? <ProxiedImg alt={emojiName} className="inline-custom-emoji" fallbackText={String(emojiName).replaceAll(':', '')} />
           : emojiName
@@ -1475,7 +1476,7 @@ export const NotificationRow = memo(function NotificationRow({
       </div>
       <div className="notif-body">
         <div className="notif-header">
-          <Avatar name={rawName} src={account.avatar} size={22} onClick={() => onOpenProfile?.(account)} />
+          <Avatar name={rawName} src={account.avatar} staticSrc={account.avatar_static} size={22} onClick={() => onOpenProfile?.(account)} />
           <span className="notif-text">
             <span className="post-name clickable" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(account) }}>{name}</span> {notificationVerb(notification.type, notification)}
           </span>

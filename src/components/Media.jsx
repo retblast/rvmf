@@ -15,22 +15,32 @@ import {
   safeProxyUrl,
   useCursorPreview,
   useClientMedia,
+  useGifVideo,
   isUrlKnownFailed,
   markUrlFailed,
   downloadAttachment,
 } from '../hooks'
 import { lookupEmojiUrl } from '../lib/emojiRegistry.js'
+import { isGifUrl } from '../lib/gif/core.js'
+import { GifVideo } from './GifVideo.jsx'
 
 // The initials circle is always the base layer; the photo overlays it once
 // loaded. That way initials double as both the loading placeholder and the
 // permanent fallback when the avatar can't be fetched. State resets when
 // `src` changes so a reused Avatar doesn't show one user's fallback under
-// another user's photo.
-export function Avatar({ name, src, large, size, onClick }) {
+// another user's photo. With GIF->AV1 conversion on, animated avatars are
+// converted and played on hover (GIF decode is intrinsic to the source
+// pixels, so converting a small display avatar still saves power).
+export function Avatar({ name, src, staticSrc, large, size, onClick }) {
+  const { gifConversionEnabled, gifIncludeLarge, gifHoverAnimate } = useContext(AppSettingsContext)
   const [imgState, setImgState] = useState('loading')
   useEffect(() => {
     setImgState('loading')
   }, [src])
+  // Avatars are decorative: they only animate on hover. Without a static
+  // (avatar_static) image the initials stay visible until conversion lands.
+  const convert = gifConversionEnabled && gifHoverAnimate
+  const { status, videoUrl } = useGifVideo(src, { active: convert, includeLarge: gifIncludeLarge })
   const style = size ? { width: size, height: size } : undefined
   const cls = `avatar${large ? ' lg' : ''}${onClick ? ' clickable' : ''}`
   const initials = (typeof name === 'string' ? name : '?')
@@ -39,18 +49,43 @@ export function Avatar({ name, src, large, size, onClick }) {
     .join('')
     .slice(0, 2)
     .toUpperCase()
-  return (
-    <div className={cls} style={style} onClick={onClick}>
-      {initials}
-      {src && imgState !== 'error' && (
+
+  let media = null
+  if (src && imgState !== 'error') {
+    if (convert && status === 'ready' && videoUrl) {
+      media = (
+        <video
+          className="avatar-img"
+          style={style}
+          src={videoUrl}
+          poster={staticSrc || undefined}
+          muted
+          loop
+          playsInline
+          preload="auto"
+          data-rvmf-animatable="true"
+          onLoadedData={() => setImgState('ok')}
+          onError={() => setImgState('error')}
+        />
+      )
+    } else if (convert && !staticSrc) {
+      media = null // initials until the conversion is ready
+    } else {
+      media = (
         <ProxiedImg
           className="avatar-img"
           style={style}
-          src={src}
+          src={convert && staticSrc ? staticSrc : src}
           onLoad={() => setImgState('ok')}
           onError={() => setImgState('error')}
         />
-      )}
+      )
+    }
+  }
+  return (
+    <div className={cls} style={style} onClick={onClick}>
+      {initials}
+      {media}
     </div>
   )
 }
@@ -303,6 +338,40 @@ function ImageMedia({ attachment, description, showImg, imgSrc, imgLoading, imgE
   )
 }
 
+// GIF attachments that pass client-side conversion render as video; the
+// blurhash stays underneath so the slot keeps a placeholder either way.
+function ImageGifMedia({ attachment, description, showImg, imgLoading, imgError, clientMode, onOpenLightbox }) {
+  const [imgReady, setImgReady] = useState(false)
+  const aspectRatio = attachmentAspect(attachment)
+  const showPlaceholder = Boolean(attachment.blurhash) && !(clientMode ? !imgLoading : imgReady)
+  return (
+    <button
+      type="button"
+      className={`media-item media-image${showPlaceholder ? ' media-loading' : ''}${imgError ? ' media-error' : ''}`}
+      onClick={() => onOpenLightbox(attachment)}
+      aria-label={description || 'Open image'}
+      title={description || undefined}
+    >
+      {attachment.blurhash && !imgError && (
+        <div className="media-blurhash-wrap" style={aspectRatio ? { aspectRatio: `${aspectRatio}` } : undefined}>
+          <BlurhashPlaceholder hash={attachment.blurhash} aspectRatio={aspectRatio} />
+        </div>
+      )}
+      {showImg && (
+        <GifVideo
+          className="media-img-gif"
+          src={attachment.url}
+          staticSrc={attachment.preview_url || attachment.url}
+          alt={description || ''}
+          onLoad={() => setImgReady(true)}
+        />
+      )}
+      {!attachment.blurhash && imgLoading && <div className="media-loading-overlay"><div className="media-spinner" /></div>}
+      {imgError && <div className="media-error-overlay"><span>Failed to load</span></div>}
+    </button>
+  )
+}
+
 function MediaItem({ attachment, onOpenLightbox }) {
   const { type, url, preview_url: previewUrl, remote_url: remoteUrl, description } = attachment
   const remoteFallback = attachment._remote_fallback || null
@@ -357,6 +426,19 @@ function MediaItem({ attachment, onOpenLightbox }) {
   if (type === 'image') {
     const showImg = fetchClientMedia ? (imgBlob || imgError) : true
     const imgSrc = imgBlob || safeProxyUrl(previewUrl || url)
+    if (isGifUrl(url)) {
+      return (
+        <ImageGifMedia
+          attachment={attachment}
+          description={description}
+          showImg={showImg}
+          imgLoading={imgLoading}
+          imgError={imgError}
+          clientMode={Boolean(fetchClientMedia)}
+          onOpenLightbox={onOpenLightbox}
+        />
+      )
+    }
     return (
       <ImageMedia
         attachment={attachment}

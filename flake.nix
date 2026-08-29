@@ -28,7 +28,7 @@
         ortNpmDeps = (pkgs.fetchNpmDeps {
           name = "rvmf-0.1.0-npm-deps";
           src = ./.;
-          hash = "sha256-JnoKGJaYtUeW0mPMSES9WrDD3I/iyoacf5sM3crLjd8=";
+          hash = "sha256-TaQtRXoY5+TI+7klW9T0psZNxgUIXIZerIOTIk1v+UE=";
         }).overrideAttrs skipOrtInstall;
         mitraPkg = pkgs.stdenv.mkDerivation {
           pname = "mitra";

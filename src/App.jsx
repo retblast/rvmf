@@ -58,6 +58,9 @@ import InstanceIcon from './components/InstanceIcon.jsx'
 import { applyOsAccent } from './lib/osAccent'
 import { storageGet, storageSet } from './lib/storage.js'
 import { PROVIDER_IDS, DEFAULT_PROVIDER, unloadProvider } from './lib/translate.js'
+import { GIF_LARGE_BYTES } from './lib/gif/convert.js'
+import { gifCacheClear, gifCacheSweep } from './lib/gif/cache.js'
+import { installGifHoverAnimator } from './lib/gif/hoverAnimator.js'
 import { ListsView } from './components/ListsView.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { GroupsView } from './components/GroupsView.jsx'
@@ -276,6 +279,58 @@ export default function App() {
     setTranslationProvider(provider)
     storageSet('translation-provider', provider)
   }
+
+  // GIF -> AV1 power saver. Local-only (not synced), like translation:
+  // whether this browser re-encodes GIFs is a per-device decision.
+  const [gifConversionEnabled, setGifConversionEnabled] = useState(() => {
+    return storageGet('gif-conversion-enabled') === 'true'
+  })
+  const [gifIncludeLarge, setGifIncludeLarge] = useState(() => {
+    return storageGet('gif-conversion-large') === 'true'
+  })
+  const [gifHoverAnimate, setGifHoverAnimate] = useState(() => {
+    return storageGet('gif-hover-animate') === 'true'
+  })
+
+  function toggleGifConversion() {
+    setGifConversionEnabled((prev) => {
+      const next = !prev
+      storageSet('gif-conversion-enabled', String(next))
+      // Stashed conversions are meaningless while the feature is off —
+      // drop them so a re-enable starts clean (and frees the space).
+      if (!next) gifCacheClear()
+      return next
+    })
+  }
+
+  function toggleGifIncludeLarge() {
+    setGifIncludeLarge((prev) => {
+      const next = !prev
+      storageSet('gif-conversion-large', String(next))
+      return next
+    })
+  }
+
+  function toggleGifHoverAnimate() {
+    setGifHoverAnimate((prev) => {
+      const next = !prev
+      storageSet('gif-hover-animate', String(next))
+      return next
+    })
+  }
+
+  // Cache housekeeping + the hover animator's document listeners. Installed
+  // once; the animator only acts on videos that opted in via the
+  // data-rvmf-animatable attribute, so it's inert while the feature is off.
+  useEffect(() => {
+    gifCacheSweep()
+    const timer = setInterval(() => gifCacheSweep(), 60 * 60 * 1000)
+    const uninstall = installGifHoverAnimator()
+    return () => {
+      clearInterval(timer)
+      uninstall()
+    }
+  }, [])
 
   async function handleClearNotifications() {
     if (!session || clearingNotifications) return
@@ -1763,7 +1818,7 @@ export default function App() {
 
   return (
     <UIContext.Provider value={SKINS[skinId]?.components || {}}>
-    <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, translationEnabled, translationProvider, defaultVisibility, instanceUrl: session.instanceUrl, token: session.token }}>
+    <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, translationEnabled, translationProvider, defaultVisibility, gifConversionEnabled, gifIncludeLarge, gifHoverAnimate, instanceUrl: session.instanceUrl, token: session.token }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
       {!online && (
         <div className="banner banner-offline">
@@ -2023,6 +2078,35 @@ export default function App() {
                         <span>Reveal Media on Hover (Peek)</span>
                         <Switch checked={peekSpoilerMedia} onChange={togglePeekSpoilerMedia} label="Reveal Media on Hover (Peek)" />
                       </label>
+                    )}
+                  </div>
+
+                  <div className="settings-group">
+                    <span className="settings-menu-heading">GIF Power Saver</span>
+                    <label className="settings-menu-row">
+                      <span>Convert GIFs to AV1</span>
+                      <Switch checked={gifConversionEnabled} onChange={toggleGifConversion} label="Convert GIFs to AV1" />
+                    </label>
+                    <div className="settings-menu-note">
+                      Re-encodes animated GIFs as AV1 video on this device so scrolling drains less battery. Conversions live in a private cache that expires after 30 days of disuse.
+                    </div>
+                    {gifConversionEnabled && (
+                      <>
+                        <label className="settings-menu-row settings-menu-subrow">
+                          <span>Convert Large GIFs Too</span>
+                          <Switch checked={gifIncludeLarge} onChange={toggleGifIncludeLarge} label="Convert Large GIFs Too" />
+                        </label>
+                        <div className="settings-menu-note">
+                          By default GIFs over {Math.round(GIF_LARGE_BYTES / 1024 / 1024)} MB stay as-is — conversion is slower for them.
+                        </div>
+                        <label className="settings-menu-row settings-menu-subrow">
+                          <span>Animate on Hover</span>
+                          <Switch checked={gifHoverAnimate} onChange={toggleGifHoverAnimate} label="Animate on Hover" />
+                        </label>
+                        <div className="settings-menu-note">
+                          Emojis and avatars stay still until you hover them.
+                        </div>
+                      </>
                     )}
                   </div>
 

@@ -1,10 +1,17 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { ensureGifConverted } from './lib/gif/convert.js'
 
 // A handful of cross-cutting display preferences that MediaItem needs deep
 // in the tree (timeline post, nested reply, notification preview, panel —
 // four+ levels of prop drilling for something this minor isn't worth it).
 // Persisted so it survives a reload.
-export const AppSettingsContext = createContext({ hoverPreviewsEnabled: true })
+export const AppSettingsContext = createContext({
+  hoverPreviewsEnabled: true,
+  fetchClientMedia: false,
+  gifConversionEnabled: false,
+  gifIncludeLarge: false,
+  gifHoverAnimate: false,
+})
 export const PickerContext = createContext({ openPickerId: null, setOpenPickerId: () => {} })
 
 // Transient confirmation toast. Fire-and-forget from anywhere via a
@@ -287,6 +294,46 @@ export function useClientMedia(...args) {
     load()
     return () => { cancelled = true }
   }, [key])
+
+  return state
+}
+
+// Convert a GIF URL into a playable AV1/VP9 WebM (see lib/gif). Returns
+// { status, videoUrl }: 'static' when the feature is off, the browser
+// can't encode, or the conversion was skipped/failed; 'ready' with an
+// object URL of the encoded blob otherwise. The object URL is created and
+// revoked per mount; the underlying Blob is shared through the IndexedDB
+// cache, so dozens of rows can display the same GIF without re-encoding.
+export function useGifVideo(src, { active = false, includeLarge = false } = {}) {
+  const { instanceUrl, token } = useContext(AppSettingsContext)
+  const [state, setState] = useState({ status: 'static', videoUrl: null })
+  const key = src || ''
+
+  useEffect(() => {
+    if (!active || !key) {
+      setState({ status: 'static', videoUrl: null })
+      return undefined
+    }
+    let cancelled = false
+    let objectUrl = null
+    ensureGifConverted(key, { instanceUrl, token, includeLarge })
+      .then((converted) => {
+        if (cancelled) return
+        if (!converted?.blob) {
+          setState({ status: 'static', videoUrl: null })
+          return
+        }
+        objectUrl = URL.createObjectURL(converted.blob)
+        setState({ status: 'ready', videoUrl: objectUrl })
+      })
+      .catch(() => {
+        if (!cancelled) setState({ status: 'static', videoUrl: null })
+      })
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [key, active, includeLarge, instanceUrl, token])
 
   return state
 }

@@ -1,4 +1,4 @@
-import { ProxiedImg } from '../components/Media.jsx'
+import { GifVideo } from '../components/GifVideo.jsx'
 
 export function formatRelativeTime(iso) {
   const diffSec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
@@ -65,11 +65,16 @@ export function renderEmojiText(text, emojis) {
     if (!emoji) continue
     if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index))
     parts.push(
-      <ProxiedImg
+      // Display names are decorative: they only convert (and animate on
+      // hover) when the hover toggle is on; otherwise the static frame is
+      // cheaper and matches the old rendering.
+      <GifVideo
         key={`de-${key++}`}
         direct
         className="custom-emoji"
-        src={emoji.static_url || emoji.url}
+        src={emoji.url}
+        staticSrc={emoji.static_url || emoji.url}
+        staticFirst
         alt={match[0]}
         title={match[0]}
         fallbackText={match[1]}
@@ -265,11 +270,12 @@ function renderRichText(text, mentions, emojis) {
       const emoji = emojiMap.get(shortcode)
       if (emoji) {
         parts.push(
-          <ProxiedImg
+          <GifVideo
             key={`e-${key++}`}
             direct
             className="custom-emoji"
             src={emoji.url}
+            staticSrc={emoji.static_url || emoji.url}
             alt={token}
             title={token}
           />

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, ListPlus, LoaderCircle, Settings2 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { formatRelativeTime, processStatusContent } from '../lib/render.jsx'
-import { Avatar, ProxiedImg } from './Media.jsx'
+import { Avatar } from './Media.jsx'
+import { GifVideo } from './GifVideo.jsx'
 import { PostRow } from './Post.jsx'
 import { ProfileEditDialog } from './ProfileEdit.jsx'
 
@@ -255,7 +256,7 @@ function PeopleListPanel({ kind, account, isOwn, instanceUrl, token, onOpenProfi
             const person = kind === 'subscribers' ? (item.sender || {}) : item
             return (
               <div key={item.id} className="search-account-row">
-                <Avatar name={person.display_name || person.username} src={person.avatar} onClick={() => onOpenProfile?.(person)} />
+                <Avatar name={person.display_name || person.username} src={person.avatar} staticSrc={person.avatar_static} onClick={() => onOpenProfile?.(person)} />
                 <button
                   type="button"
                   className="search-account-names"
@@ -445,12 +446,12 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
       <div className="profile-view">
         <div className="profile-header-wrap">
           {account.header && account.header !== '' && (
-            <ProxiedImg className="profile-header-img" src={account.header} alt="" />
+            <GifVideo className="profile-header-img" src={account.header} alt="" />
           )}
           <button className="icon-btn profile-back-btn" onClick={onClose}><ArrowLeft size={16} /></button>
         </div>
         <div className="profile-info">
-          <Avatar name={displayName} src={account.avatar} large />
+          <Avatar name={displayName} src={account.avatar} staticSrc={account.avatar_static} large />
           <div className="profile-names">
             <span className="profile-display-name">{displayName}</span>
             <span className="profile-handle">@{account.acct || account.username}</span>

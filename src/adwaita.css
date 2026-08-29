@@ -2061,6 +2061,22 @@ span.img-placeholder.custom-emoji {
   object-fit: cover;
 }
 
+/* Converted GIF attachments render as video in the same slot shape as the
+   <img> they replace, so the grid doesn't care which one is mounted. */
+.media-image video.media-img-gif {
+  width: 100%;
+  height: 100%;
+  max-height: 420px;
+  display: block;
+  object-fit: cover;
+}
+
+.media-grid.count-1 .media-image video.media-img-gif {
+  height: auto;
+  max-height: 420px;
+  object-fit: contain;
+}
+
 .media-video {
   cursor: default;
 }
