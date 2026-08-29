@@ -70,6 +70,9 @@ describe('NLLB (default)', () => {
     expect(task).toBe('translation')
     expect(modelId).toBe('Xenova/nllb-200-distilled-600M')
     expect(options.device).toBe('wasm')
+    // fp32 weights (NOT the quantized "merged" files that hit the onnxruntime
+    // MatMulNBits/DequantizeLinear "Missing required scale" regression).
+    expect(options.dtype).toBe('fp32')
 
     const [text, opts] = getArgs()
     expect(text).toBe('hello')

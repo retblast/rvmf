@@ -2,8 +2,9 @@
 // ONNX Runtime. Two selectable providers:
 //
 //   - "nllb-wasm" (default): Xenova/nllb-200-distilled-600M on the CPU (WASM).
-//     Small (~1 GB), fast on integrated GPUs/CPUs, multilingual (FLORES-200
-//     codes). Numerically safe and reliable — this is the recommended path.
+//     fp32 weights (see the provider config: the quantized files are broken by
+//     an onnxruntime-web optimizer regression), so a few GB, but garbage-free
+//     and numerically safe on integrated GPUs/CPUs — the recommended path.
 //   - "gemma-webgpu": onnx-community/translategemma-text-4b-it-ONNX on WebGPU.
 //     Higher quality but ~3 GB and GPU-dependent; its fp16 WebGPU path is
 //     prone to a known ONNX Runtime overflow that yields "<unusedN>" garbage,
@@ -27,6 +28,13 @@ const PROVIDERS = {
     task: 'translation',
     modelId: 'Xenova/nllb-200-distilled-600M',
     device: 'wasm',
+    // Full-precision weights, on purpose: the repo's quantized "merged"
+    // int4/int8 files hit a known onnxruntime-web graph-optimizer regression
+    // (TransposeDQWeightsForMatMulNBits) that aborts session creation with
+    // "Missing required scale: ...weight_merged_0_scale" (see transformers.js
+    // #1635). fp32 avoids that buggy quantized path entirely. ORT/wasm can't
+    // run fp16, so fp32 is the reliable CPU build.
+    dtype: 'fp32',
     requiresWebGPU: false,
   },
   'gemma-webgpu': {
