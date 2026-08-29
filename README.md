@@ -126,7 +126,7 @@ Reached from the settings menu:
 
 ## Testing
 
-- **`npm test`** — Vitest unit/component tests: the pure libraries (rich-text rendering, quarantined-image recovery, reply trees, storage migration, blurhash, emoji filtering, TranslateGemma language mapping + translation orchestration) and key component behaviors (composer validation, visibility handling, cross-copy status merging, the reusable confirm dialog).
+- **`npm test`** — Vitest unit/component tests: the pure libraries (rich-text rendering, quarantined-image recovery, reply trees, storage migration, blurhash, emoji filtering, canonical language mapping + translation orchestration for both the NLLB and TranslateGemma providers, including the garbage-guard, watchdog, and idle-release paths) and key component behaviors (composer validation, visibility handling, cross-copy status merging, the reusable confirm dialog).
 - **`nix run .#e2e`** — full E2E suite against a real backend, fully hermetic:
   1. throwaway PostgreSQL in a temp dir
   2. a pinned real Mitra server (upstream release deb extracted by the flake — `packages.mitra`)
@@ -382,8 +382,13 @@ src/
                      provider-selectable singleton pipelines (NLLB on WASM by
                      default, optional TranslateGemma on WebGPU q4f16) that
                      take a plain-text post and return its translated text.
-                     Includes a WebGPU <unusedN> garbage guard and a watchdog
-                     timeout. Never imported or run until a user requests a
+                     NLLB uses int8 (q8) weights with the ORT graph optimizer
+                     set to basic (dodging an onnxruntime-web QDQ fusion
+                     crash, and fp32's OOM). Includes a WebGPU <unusedN>
+                     garbage guard, a watchdog timeout, and idle-release that
+                     disposes the model after 10 s without a translation so a
+                     ~1.3 GB / ~3 GB model isn't pinned for the session.
+                     Never imported or run until a user requests a
                      translation.
 
     languages.js       Provider vocabularies (NLLB FLORES-200 + TranslateGemma
