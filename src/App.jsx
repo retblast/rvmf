@@ -57,6 +57,7 @@ import { MutedAccountsView } from './components/MutedAccountsView.jsx'
 import InstanceIcon from './components/InstanceIcon.jsx'
 import { applyOsAccent } from './lib/osAccent'
 import { storageGet, storageSet } from './lib/storage.js'
+import { PROVIDER_IDS, DEFAULT_PROVIDER } from './lib/translate.js'
 import { ListsView } from './components/ListsView.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { GroupsView } from './components/GroupsView.jsx'
@@ -242,6 +243,12 @@ export default function App() {
     return storageGet('translation-enabled') === 'true'
   })
   const [confirmingTranslation, setConfirmingTranslation] = useState(false)
+  // Which on-device translator to use: the lightweight CPU model (default) or
+  // the larger GPU model. Local-only, persisted alongside the enable toggle.
+  const [translationProvider, setTranslationProvider] = useState(() => {
+    const stored = storageGet('translation-provider')
+    return PROVIDER_IDS.includes(stored) ? stored : DEFAULT_PROVIDER
+  })
 
   function handleToggleTranslation(next) {
     if (next && !translationEnabled) {
@@ -256,6 +263,11 @@ export default function App() {
     setConfirmingTranslation(false)
     setTranslationEnabled(true)
     storageSet('translation-enabled', 'true')
+  }
+
+  function handleTranslationProvider(provider) {
+    setTranslationProvider(provider)
+    storageSet('translation-provider', provider)
   }
 
   async function handleClearNotifications() {
@@ -1744,7 +1756,7 @@ export default function App() {
 
   return (
     <UIContext.Provider value={SKINS[skinId]?.components || {}}>
-    <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, translationEnabled, defaultVisibility, instanceUrl: session.instanceUrl, token: session.token }}>
+    <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, translationEnabled, translationProvider, defaultVisibility, instanceUrl: session.instanceUrl, token: session.token }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
       {!online && (
         <div className="banner banner-offline">
@@ -2014,9 +2026,34 @@ export default function App() {
                       <Switch checked={translationEnabled} onChange={handleToggleTranslation} label="Translate Foreign Posts" />
                     </label>
                     <div className="settings-menu-note">
-                      Runs on-device in your browser (TranslateGemma / WebGPU). Post text never
-                      leaves your device. The ~3 GB model downloads only after you confirm.
+                      Runs on-device in your browser — post text never leaves your device.
                     </div>
+                    {translationEnabled && (
+                      <div className="settings-menu-row settings-menu-subrow settings-menu-radio-group">
+                        <span className="settings-menu-radios">
+                          {PROVIDER_IDS.map((id) => (
+                            <label
+                              key={id}
+                              className="settings-menu-radio"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="radio"
+                                name="translation-provider"
+                                value={id}
+                                checked={translationProvider === id}
+                                onChange={() => handleTranslationProvider(id)}
+                              />
+                              <span>
+                                {id === 'nllb-wasm'
+                                  ? 'CPU (NLLB) — faster on most devices'
+                                  : 'GPU (TranslateGemma) — higher quality, needs WebGPU'}
+                              </span>
+                            </label>
+                          ))}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="settings-group">
@@ -2082,12 +2119,14 @@ export default function App() {
               >
                 <p>
                   This turns on in-browser translation for posts in a language
-                  that isn't yours, using Google's TranslateGemma model.
+                  that isn't yours. Translations run on-device — post text is
+                  never sent to a server.
                 </p>
                 <p className="confirm-note">
-                  The first translation downloads a ~3 GB model and the WebGPU
-                  runtime to your device (one-time, then cached). Everything
-                  runs locally — post text is never sent to a server.
+                  The default uses the fast, lightweight NLLB model (~1 GB,
+                  CPU). You can switch to the higher-quality TranslateGemma
+                  model (WebGPU) from the Translation settings. Models download
+                  once, then stay cached.
                 </p>
               </ConfirmDialog>
             )}

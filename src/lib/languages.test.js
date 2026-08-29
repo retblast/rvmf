@@ -5,6 +5,10 @@ import {
   isForeignStatus,
   modelLangName,
   detectScriptLanguage,
+  canonicalizeLanguage,
+  canonicalLangName,
+  canonicalLanguages,
+  resolveLanguageCode,
 } from './languages.js'
 
 describe('resolveModelCode', () => {
@@ -94,20 +98,20 @@ describe('modelLangName', () => {
 
 describe('detectScriptLanguage', () => {
   it('detects single-script languages confidently', () => {
-    expect(detectScriptLanguage('こんにちは、元気ですか')).toBe('ja_JP') // kana -> Japanese
-    expect(detectScriptLanguage('안녕하세요')).toBe('ko_KR')          // Hangul -> Korean
-    expect(detectScriptLanguage('你好世界')).toBe('zh_TW')           // Han -> Traditional
-    expect(detectScriptLanguage('مرحبا بالعالم')).toBe('ar_SA')      // Arabic
-    expect(detectScriptLanguage('שלום עולם')).toBe('he_IL')          // Hebrew
-    expect(detectScriptLanguage('नमस्ते दुनिया')).toBe('hi_IN')      // Devanagari
-    expect(detectScriptLanguage('สวัสดีชาวโลก')).toBe('th_TH')       // Thai
-    expect(detectScriptLanguage('வணக்கம் உலகம்')).toBe('ta_IN')      // Tamil
-    expect(detectScriptLanguage('Γεια σου κόσμε')).toBe('el_GR')     // Greek
-    expect(detectScriptLanguage('Привет мир')).toBe('ru_RU')         // Cyrillic
+    expect(detectScriptLanguage('こんにちは、元気ですか')).toBe('ja') // kana -> Japanese
+    expect(detectScriptLanguage('안녕하세요')).toBe('ko')          // Hangul -> Korean
+    expect(detectScriptLanguage('你好世界')).toBe('zh')           // Han -> Chinese
+    expect(detectScriptLanguage('مرحبا بالعالم')).toBe('ar')      // Arabic
+    expect(detectScriptLanguage('שלום עולם')).toBe('he')          // Hebrew
+    expect(detectScriptLanguage('नमस्ते दुनिया')).toBe('hi')      // Devanagari
+    expect(detectScriptLanguage('สวัสดีชาวโลก')).toBe('th')       // Thai
+    expect(detectScriptLanguage('வணக்கம் உலகம்')).toBe('ta')      // Tamil
+    expect(detectScriptLanguage('Γεια σου κόσμε')).toBe('el')     // Greek
+    expect(detectScriptLanguage('Привет мир')).toBe('ru')         // Cyrillic
   })
 
   it('prefers Japanese over Han characters when kana is present (shared script)', () => {
-    expect(detectScriptLanguage('ボタンを押してください')).toBe('ja_JP')
+    expect(detectScriptLanguage('ボタンを押してください')).toBe('ja')
   })
 
   it('returns null for ambiguous Latin-script text and empty input', () => {
@@ -115,5 +119,53 @@ describe('detectScriptLanguage', () => {
     expect(detectScriptLanguage('')).toBeNull()
     expect(detectScriptLanguage(null)).toBeNull()
     expect(detectScriptLanguage(undefined)).toBeNull()
+  })
+})
+
+describe('canonicalizeLanguage', () => {
+  it('normalises tags and BCP-47 values to a canonical ISO id', () => {
+    expect(canonicalizeLanguage('ja')).toBe('ja')
+    expect(canonicalizeLanguage('ja-JP')).toBe('ja')
+    expect(canonicalizeLanguage('en-US')).toBe('en')
+    expect(canonicalizeLanguage('zh-Hans')).toBe('zh')
+    expect(canonicalizeLanguage('HE')).toBe('he')
+    expect(canonicalizeLanguage('iw')).toBe('he') // deprecated alias
+  })
+
+  it('returns null for unsupported or empty input', () => {
+    expect(canonicalizeLanguage('xx')).toBeNull()
+    expect(canonicalizeLanguage('')).toBeNull()
+    expect(canonicalizeLanguage(null)).toBeNull()
+  })
+})
+
+describe('canonicalLanguages / canonicalLangName', () => {
+  it('offers a shared picker list with human names', () => {
+    const list = canonicalLanguages()
+    expect(list.some((l) => l.code === 'ja' && l.label === 'Japanese')).toBe(true)
+    expect(list.some((l) => l.code === 'en' && l.label === 'English')).toBe(true)
+  })
+
+  it('falls back to the id for an unknown canonical language', () => {
+    expect(canonicalLangName('zz')).toBe('zz')
+  })
+})
+
+describe('resolveLanguageCode', () => {
+  it('maps a canonical id to the NLLB FLORES code', () => {
+    expect(resolveLanguageCode('ja', 'nllb-wasm')).toBe('jpn_Jpan')
+    expect(resolveLanguageCode('en', 'nllb-wasm')).toBe('eng_Latn')
+    expect(resolveLanguageCode('ko', 'nllb-wasm')).toBe('kor_Hang')
+  })
+
+  it('maps a canonical id to the TranslateGemma locale', () => {
+    expect(resolveLanguageCode('ja', 'gemma-webgpu')).toBe('ja_JP')
+    expect(resolveLanguageCode('en', 'gemma-webgpu')).toBe('en')
+    expect(resolveLanguageCode('ko', 'gemma-webgpu')).toBe('ko_KR')
+  })
+
+  it('returns null for unsupported languages', () => {
+    expect(resolveLanguageCode('xx', 'nllb-wasm')).toBeNull()
+    expect(resolveLanguageCode('xx', 'gemma-webgpu')).toBeNull()
   })
 })

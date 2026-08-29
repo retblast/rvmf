@@ -100,13 +100,98 @@ export function resolveModelCode(tag) {
 export const SUPPORTED_CODES = Object.keys(MODEL_LANG_NAMES).sort()
 
 // `{ code, label }` pairs for populating a `<select>` of source languages.
+// Note: the `<select>` (and the source-language detection) work in *canonical*
+// ISO 639-1 ids (`ja`, `ko`, `ru`…) that each provider maps to its own model
+// code internally. See `canonicalLanguages`/`resolveLanguageCode` below.
 export const SUPPORTED_LANGUAGES = SUPPORTED_CODES.map((code) => ({
   code,
   label: MODEL_LANG_NAMES[code],
 }))
 
-// Best-effort script-based guess of a text's language, resolved to a model
-// code, or null when the evidence isn't decisive.
+// ---------------------------------------------------------------------------
+// Canonical languages + NLLB (wasm) provider
+//
+// The app works in *canonical* ISO 639-1 ids (e.g. `ja`, `en`, `ko`) as a
+// neutral shared identifier. Each translation provider maps those ids to its
+// own model code:
+//   - TranslateGemma ("gemma-webgpu") mirrors a 2-char ISO code onto a locale
+//     like `ja_JP` (via `resolveModelCode` above).
+//   - NLLB ("nllb-wasm") uses FLORES-200 codes like `jpn_Jpan` (ISO 639-3
+//     language + script), via the map below.
+// ---------------------------------------------------------------------------
+
+// Canonical ISO 639-1 id -> FLORES-200 language code for NLLB-200-distilled.
+// This is also the single source of truth for which canonical languages are
+// offered in the picker.
+const NLLB_FLORES = {
+  ar: 'arb_Arab', bg: 'bul_Cyrl', bn: 'ben_Beng', ca: 'cat_Latn',
+  cs: 'ces_Latn', da: 'dan_Latn', de: 'deu_Latn', el: 'ell_Grek',
+  en: 'eng_Latn', es: 'spa_Latn', et: 'est_Latn', fa: 'pes_Arab',
+  fi: 'fin_Latn', fil: 'tgl_Latn', fr: 'fra_Latn', gu: 'guj_Gujr',
+  he: 'heb_Hebr', hi: 'hin_Deva', hr: 'hrv_Latn', hu: 'hun_Latn',
+  id: 'ind_Latn', is: 'isl_Latn', it: 'ita_Latn', ja: 'jpn_Jpan',
+  kn: 'kan_Knda', ko: 'kor_Hang', lt: 'lit_Latn', lv: 'lvs_Latn',
+  ml: 'mal_Mlym', mr: 'mar_Deva', nl: 'nld_Latn', no: 'nob_Latn',
+  pa: 'pan_Guru', pl: 'pol_Latn', pt: 'por_Latn', ro: 'ron_Latn',
+  ru: 'rus_Cyrl', sk: 'slk_Latn', sl: 'slv_Latn', sr: 'srp_Cyrl',
+  sv: 'swe_Latn', sw: 'swh_Latn', ta: 'tam_Taml', te: 'tel_Telu',
+  th: 'tha_Thai', tr: 'tur_Latn', uk: 'ukr_Cyrl', ur: 'urd_Arab',
+  vi: 'vie_Latn', zh: 'zho_Hans', zu: 'zul_Latn',
+}
+
+// Human-readable name per canonical id (best-effort; falls back to the id).
+const CANONICAL_NAMES = {
+  ar: 'Arabic', bg: 'Bulgarian', bn: 'Bengali', ca: 'Catalan', cs: 'Czech',
+  da: 'Danish', de: 'German', el: 'Greek', en: 'English', es: 'Spanish',
+  et: 'Estonian', fa: 'Persian', fi: 'Finnish', fil: 'Filipino', fr: 'French',
+  gu: 'Gujarati', he: 'Hebrew', hi: 'Hindi', hr: 'Croatian', hu: 'Hungarian',
+  id: 'Indonesian', is: 'Icelandic', it: 'Italian', ja: 'Japanese',
+  kn: 'Kannada', ko: 'Korean', lt: 'Lithuanian', lv: 'Latvian', ml: 'Malayalam',
+  mr: 'Marathi', nl: 'Dutch', no: 'Norwegian', pa: 'Punjabi', pl: 'Polish',
+  pt: 'Portuguese', ro: 'Romanian', ru: 'Russian', sk: 'Slovak', sl: 'Slovenian',
+  sr: 'Serbian', sv: 'Swedish', sw: 'Swahili', ta: 'Tamil', te: 'Telugu',
+  th: 'Thai', tr: 'Turkish', uk: 'Ukrainian', ur: 'Urdu', vi: 'Vietnamese',
+  zh: 'Chinese', zu: 'Zulu',
+}
+
+// The canonical ids the app supports — shared by the picker, detection, and
+// both providers.
+export const CANONICAL_LANGUAGE_IDS = Object.keys(NLLB_FLORES).sort()
+
+// `{ code, label }` for the source-language picker, keyed by canonical id.
+export const canonicalLanguages = () =>
+  CANONICAL_LANGUAGE_IDS.map((id) => ({ code: id, label: CANONICAL_NAMES[id] || id }))
+
+export function canonicalLangName(id) {
+  return CANONICAL_NAMES[id] || id || 'unknown language'
+}
+
+// Normalise an arbitrary BCP-47 / ISO 639-1 tag (or a provider code) down to a
+// canonical ISO 639-1 id when it's one of the supported languages, else null.
+//
+//   'ja'    -> 'ja'    'ja-JP' -> 'ja'    'jpn_Jpan' -> 'ja'
+//   'en-US' -> 'en'    'he'    -> 'he'    'fil'      -> 'fil'
+//   'xx'    -> null
+export function canonicalizeLanguage(tag) {
+  if (!tag) return null
+  const lower = String(tag).replace(/_/g, '-').toLowerCase()
+  const [first] = lower.split('-')
+  const alias = { iw: 'he', in: 'id', ji: 'yi' }
+  const id = alias[first] || first
+  return NLLB_FLORES[id] ? id : null
+}
+
+// Resolve a source/target (a raw BCP-47/ISO tag or canonical id) to the
+// provider's model code, or null if unsupported by that provider.
+export function resolveLanguageCode(tag, provider) {
+  const id = canonicalizeLanguage(tag)
+  if (!id) return null
+  if (provider === 'nllb-wasm') return NLLB_FLORES[id]
+  return resolveModelCode(id) // gemma-webgpu
+}
+
+// Best-effort script-based guess of a text's language as a *canonical* ISO
+// 639-1 id, or null when the evidence isn't decisive.
 //
 // This is only used as a fallback when the post has no usable language tag,
 // and — because a wrong guess yields a garbage translation — we restrict it
@@ -133,16 +218,16 @@ export function detectScriptLanguage(text) {
     else if (c >= 0x0B80 && c <= 0x0BFF) tamil++
   }
   // Kana is uniquely Japanese; its presence outweighs any shared Han chars.
-  if (kana > 0) return 'ja_JP'
-  if (hangul > 0) return 'ko_KR'
-  if (han > 0) return 'zh_TW' // Simplified Chinese; model only ships Traditional (zh_TW).
-  if (arabic > 0) return 'ar_SA'
-  if (hebrew > 0) return 'he_IL'
-  if (devanagari > 0) return 'hi_IN'
-  if (thai > 0) return 'th_TH'
-  if (tamil > 0) return 'ta_IN'
-  if (greek > 0) return 'el_GR'
-  if (cyrillic > 0) return 'ru_RU' // Cyrillic spans ru/uk/bg/mk/sr; default RU, correctable in UI.
+  if (kana > 0) return 'ja'
+  if (hangul > 0) return 'ko'
+  if (han > 0) return 'zh' // Sim./Trad. Chinese both map to canonical 'zh'.
+  if (arabic > 0) return 'ar'
+  if (hebrew > 0) return 'he'
+  if (devanagari > 0) return 'hi'
+  if (thai > 0) return 'th'
+  if (tamil > 0) return 'ta'
+  if (greek > 0) return 'el'
+  if (cyrillic > 0) return 'ru' // Cyrillic spans ru/uk/bg/mk/sr; default RU, correctable in UI.
   return null
 }
 

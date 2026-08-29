@@ -75,9 +75,11 @@ A key theme is that I don't have money for a subscription to any service, so all
 - **Enabled from settings** — a "Translate Foreign Posts" toggle in the settings menu (default **off**). Turning it on the first time shows a confirmation explaining that a model will be downloaded, so the heavy download is never a surprise.
 - With it on, every post (timeline rows and thread replies) gains a small **translate toggle** among its action buttons (next to like/favourite etc.). Tapping it swaps the post to an on-device translation; tapping again (or the "show original" ✕) swaps back. Because Fediverse language tags are often missing or wrong, the button is **always available** rather than gated on a language-mismatch heuristic — you decide what to translate. The target language comes from your browser's `navigator.language`.
 - The source language is resolved by falling back in order: an explicit pick from the UI, then the post's language tag, then a conservative **script-based guess** (kana → Japanese, Hangul → Korean, Han → Chinese, Cyrillic → Russian, Devanagari → Hindi, Arabic, Hebrew, Thai, Tamil, Greek, …). When nothing resolves, a **source-language picker** appears instead of an error. Because a wrong source yields a bad translation, any detected source is surfaced as a small correctable dropdown in the translated header — it's never trusted silently.
-- Translation runs **entirely in your browser** on Google's **TranslateGemma 4B** model via Transformers.js + ONNX Runtime Web (WebGPU). No part of the post ever reaches a translation server — it's a faithful, private pass over the author's own text.
-- Everything is **opt-in and lazy**: the ~3 GB quantized model and the ONNX WebGPU runtime are only downloaded on the first actual translation (both served from the same origin as the app), so it takes a while that once; later translations reuse the cached model. A determinate progress bar shows the download, switching to an indeterminate "Translating…" bar during inference.
-- Translated text renders through the same safe, link/mention-aware rich-text pipeline as normal posts, with a "show original" close affordance. Requires a **WebGPU-capable browser** (Chrome/Edge, or Firefox with WebGPU enabled); unsupported browsers get a clear error instead of a broken spinner.
+- Translation runs **entirely in your browser** over Transformers.js + ONNX Runtime Web; no part of the post ever reaches a translation server. Two providers are selectable via radio buttons in settings, so you pick the right engineering trade-off for your hardware:
+  - **NLLB (default, CPU)** — Meta's `nllb-200-distilled-600M` on **WebAssembly**. ~600 M params, no GPU required, works in every browser, and is the reliable choice. (Licensed **CC-BY-NC-4.0** — fine for personal use, not for commercial redistribution.)
+  - **TranslateGemma (optional, GPU)** — Google's `Translategemma 4B` quantized (`q4f16`) on **WebGPU**. Higher quality but needs a WebGPU-capable browser and ~3 GB of VRAM; on some Intel iGPUs it can hit a known fp16 overflow that yields `<unusedN>` garbage, which the app detects and rejects with a clear error instead of showing broken text.
+- Everything is **opt-in and lazy**: a model is only downloaded on the first actual translation (served from the same origin as the app), so it takes a while that once; later translations reuse the cached model. A determinate progress bar shows the download, switching to an indeterminate "Translating…" bar during inference. Inference is guarded by a ~2-minute watchdog that reports a stall rather than spinning forever.
+- Translated text renders through the same safe, link/mention-aware rich-text pipeline as normal posts, with a "show original" close affordance. The TranslateGemma option requires a **WebGPU-capable browser** (Chrome/Edge, or Firefox with WebGPU enabled); unsupported browsers get a clear error instead of a broken spinner. The default NLLB option needs no special browser support at all.
 
 ### Profiles
 
@@ -376,14 +378,18 @@ src/
                      reply tree helpers, Mitra signed-proxy URL decoding,
                      quarantined-image recovery.
 
-    translate.js       On-device TranslateGemma wrapper — lazily loaded
-                     singleton pipeline (WebGPU, q4f16) that takes a
-                     plain-text post and returns its translated text. Never
-                     imported or run until a user requests a translation.
+    translate.js       On-device translation wrapper — lazily loaded,
+                     provider-selectable singleton pipelines (NLLB on WASM by
+                     default, optional TranslateGemma on WebGPU q4f16) that
+                     take a plain-text post and return its translated text.
+                     Includes a WebGPU <unusedN> garbage guard and a watchdog
+                     timeout. Never imported or run until a user requests a
+                     translation.
 
-    languages.js       TranslateGemma locale vocabulary + resolver that maps
-                     BCP-47/ISO-639-1 tags (status language, navigator.language)
-                     onto the model's exact codes, and the source-language
+    languages.js       Provider vocabularies (NLLB FLORES-200 + TranslateGemma
+                     locales), a canonical ISO-639-1 layer, and resolvers that
+                     map BCP-47/status/navigator.language tags onto each
+                     model's exact codes, plus the source-language script
                      detection used when translating a post.
 
     blurhash.js        Minimal pure-JS blurhash decoder for placeholders.

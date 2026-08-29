@@ -1468,6 +1468,41 @@ button {
   text-transform: capitalize;
 }
 
+/* Translation provider radios: a stacked set of labelled options in the
+   settings row, distinct from the switch row that precedes them. The row
+   base rule (settings-menu-row) is declared later, so qualify with the extra
+   class to reliably override its horizontal alignment. */
+.settings-menu-row.settings-menu-radio-group {
+  flex-direction: column;
+  align-items: stretch;
+}
+.settings-menu-radios {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 0 4px;
+}
+.settings-menu-radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.settings-menu-radio:hover {
+  background: var(--hover-overlay);
+}
+.settings-menu-radio input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+.settings-menu-radio span {
+  text-transform: none;
+}
+
 .group-create {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-control);

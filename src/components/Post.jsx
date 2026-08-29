@@ -25,10 +25,10 @@ import { PickerContext, AppSettingsContext, useEscapeKey, showToast, downloadAll
 import { formatRelativeTime, htmlToPlainText, processStatusContent, renderEmojiText, renderPlainText } from '../lib/render.jsx'
 import { translateText } from '../lib/translate'
 import {
+  canonicalizeLanguage,
+  canonicalLangName,
+  canonicalLanguages,
   detectScriptLanguage,
-  modelLangName,
-  resolveModelCode,
-  SUPPORTED_LANGUAGES,
 } from '../lib/languages'
 import { Avatar, MediaGrid, ProxiedImg } from './Media.jsx'
 import { COMMON_EMOJI } from './Emoji.jsx'
@@ -71,9 +71,9 @@ export function useTranslation(status) {
   // The feature is opt-in via a settings toggle (default off). Fail closed:
   // if the setting isn't explicitly enabled (or the context isn't provided,
   // e.g. in isolation tests), no toggle is offered.
-  const { translationEnabled } = useContext(AppSettingsContext)
+  const { translationEnabled, translationProvider } = useContext(AppSettingsContext)
   const browserLang = userLanguage()
-  const targetCode = resolveModelCode(browserLang) || 'en'
+  const targetCode = canonicalizeLanguage(browserLang) || 'en'
 
   // phase: 'idle' | 'needs-source' | 'loading' | 'done' | 'error'
   const [phase, setPhase] = useState('idle')
@@ -88,12 +88,13 @@ export function useTranslation(status) {
   // Resolve the source language for this post: explicit user choice first,
   // then the post's language tag, then a conservative script guess. The script
   // guess / tag are only ever surfaced as a correctable choice, and when
-  // nothing resolves we enter 'needs-source' and ask the user.
+  // nothing resolves we enter 'needs-source' and ask the user. This is a
+  // canonical ISO id (`ja`) that each provider maps to its own model code.
   const sourceCode =
     sourceOverride ??
-    resolveModelCode(status?.language) ??
+    canonicalizeLanguage(status?.language) ??
     detectScriptLanguage(htmlToPlainText(status?.content))
-  const sourceLangName = modelLangName(sourceCode)
+  const sourceLangName = canonicalLangName(sourceCode)
 
   // Actually run the translation for a given source code, reporting progress.
   async function runTranslate(code) {
@@ -111,7 +112,7 @@ export function useTranslation(status) {
         )
       }
       const source = htmlToPlainText(status.content)
-      const result = await translateText(source, code, targetCode, setProgress)
+      const result = await translateText(source, code, targetCode, setProgress, translationProvider)
       setTranslated(result)
       setPhase('done')
     } catch (err) {
@@ -191,8 +192,8 @@ function SourceLanguageSelect({ value, disabled, onChange }) {
       onChange={(e) => onChange(e.target.value)}
     >
       <option value="" disabled>Choose source language…</option>
-      {SUPPORTED_LANGUAGES.map(({ code, label }) => (
-        <option key={code} value={code}>{label} — {code.split('_')[0]}</option>
+      {canonicalLanguages().map(({ code, label }) => (
+        <option key={code} value={code}>{label}</option>
       ))}
     </select>
   )

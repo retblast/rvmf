@@ -13,7 +13,7 @@ vi.mock('../lib/translate', () => ({
 
 function Provider({ children }) {
   return (
-    <AppSettingsContext.Provider value={{ translationEnabled: true }}>
+    <AppSettingsContext.Provider value={{ translationEnabled: true, translationProvider: 'nllb-wasm' }}>
       {children}
     </AppSettingsContext.Provider>
   )
@@ -26,7 +26,7 @@ function Harness({ status }) {
   return (
     <div>
       <button onClick={t.toggle}>toggle</button>
-      <button onClick={() => t.changeSource('fr_FR')}>set-fr</button>
+      <button onClick={() => t.changeSource('fr')}>set-fr</button>
       <span data-testid="shown">{String(t.shown)}</span>
       <span data-testid="phase">{t.phase}</span>
       <span data-testid="source">{t.sourceCode || ''}</span>
@@ -104,12 +104,12 @@ describe('useTranslation', () => {
   it('falls back to a script guess when the tag is missing', async () => {
     translateText.mockResolvedValue('ru: …')
     const user = userEvent.setup()
-    // No language tag, but Cyrillic content -> should guess ru_RU.
+    // No language tag, but Cyrillic content -> should guess ru.
     setup({ language: null, content: '<p>Привет, как дела?</p>' })
 
     await user.click(screen.getByRole('button', { name: 'toggle' }))
     await waitFor(() => expect(screen.getByTestId('phase').textContent).toBe('done'))
-    expect(screen.getByTestId('source').textContent).toBe('ru_RU')
+    expect(screen.getByTestId('source').textContent).toBe('ru')
     expect(translateText).toHaveBeenCalledTimes(1)
   })
 
@@ -125,7 +125,7 @@ describe('useTranslation', () => {
     // Switching the source while the translated view is up re-translates.
     await user.click(screen.getByRole('button', { name: 'set-fr' }))
     await waitFor(() => expect(screen.getByTestId('phase').textContent).toBe('done'))
-    expect(screen.getByTestId('source').textContent).toBe('fr_FR')
+    expect(screen.getByTestId('source').textContent).toBe('fr')
     expect(translateText).toHaveBeenCalledTimes(2)
   })
 })
