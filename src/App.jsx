@@ -57,7 +57,7 @@ import { MutedAccountsView } from './components/MutedAccountsView.jsx'
 import InstanceIcon from './components/InstanceIcon.jsx'
 import { applyOsAccent } from './lib/osAccent'
 import { storageGet, storageSet } from './lib/storage.js'
-import { PROVIDER_IDS, DEFAULT_PROVIDER } from './lib/translate.js'
+import { PROVIDER_IDS, DEFAULT_PROVIDER, unloadProvider } from './lib/translate.js'
 import { ListsView } from './components/ListsView.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { GroupsView } from './components/GroupsView.jsx'
@@ -257,6 +257,10 @@ export default function App() {
     }
     setTranslationEnabled(next)
     storageSet('translation-enabled', String(next))
+    // Turning the feature off should stop pinning the loaded model in memory —
+    // release whichever provider(s) were loaded so the freed memory returns to
+    // the browser/GPU immediately.
+    if (!next) PROVIDER_IDS.forEach(unloadProvider)
   }
 
   function confirmTranslation() {
@@ -266,6 +270,9 @@ export default function App() {
   }
 
   function handleTranslationProvider(provider) {
+    // Switching providers should not keep the previous model resident (esp.
+    // the ~3 GB WebGPU Gemma) — release the one we're leaving.
+    if (provider !== translationProvider) unloadProvider(translationProvider)
     setTranslationProvider(provider)
     storageSet('translation-provider', provider)
   }

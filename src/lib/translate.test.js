@@ -3,6 +3,10 @@ import {
   translateText,
   resetTranslator,
   setInferenceTimeoutMs,
+  setUnloadTimeoutMs,
+  UNLOAD_TIMEOUT_MS,
+  unloadProvider,
+  PROVIDER_IDS,
   DEFAULT_PROVIDER,
 } from './translate.js'
 
@@ -32,12 +36,16 @@ beforeEach(() => {
   pipeline.mockReset()
   resetTranslator()
   setInferenceTimeoutMs(120_000)
+  setUnloadTimeoutMs(UNLOAD_TIMEOUT_MS)
   // The gemma provider gates on WebGPU; satisfy it in jsdom so those tests can run.
   Object.defineProperty(navigator, 'gpu', { configurable: true, value: {} })
 })
 
 afterEach(() => {
   vi.restoreAllMocks()
+  // Cancel any pending idle-release timers so they can't leak into other tests,
+  // and drop cached pipelines so a scheduled dispose can't touch a later mock.
+  for (const id of PROVIDER_IDS) unloadProvider(id)
 })
 
 describe('provider selection', () => {
@@ -181,5 +189,56 @@ describe('cached pipelines are independent per provider', () => {
     await translateText('d', 'en', 'ja', undefined, 'gemma-webgpu')
     // Two distinct providers -> two loads, both cached after the first.
     expect(pipeline).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('idle model release (unload)', () => {
+  // Build a pipeline whose callable also carries a `dispose` spy, so we can
+  // assert Transformers.js's dispose hook is invoked on release.
+  const disposably = () => {
+    const dispose = vi.fn()
+    const gen = async () => NLLB_OUT('x')
+    gen.dispose = dispose
+    return { gen, dispose }
+  }
+
+  it('unloadProvider disposes the model and lets the next call reload it', async () => {
+    pipeline.mockImplementation(async () => disposably().gen)
+    await translateText('a', 'en', 'ja')
+    expect(pipeline).toHaveBeenCalledTimes(1)
+
+    unloadProvider('nllb-wasm')
+
+    // Cached pipeline was dropped, so the next translation re-creates it.
+    await translateText('b', 'en', 'ja')
+    expect(pipeline).toHaveBeenCalledTimes(2)
+  })
+
+  it('releases the model after the idle timeout once no further translation happens', async () => {
+    const { gen, dispose } = disposably()
+    pipeline.mockImplementation(async () => gen)
+    setUnloadTimeoutMs(30)
+    await translateText('a', 'en', 'ja')
+    expect(dispose).not.toHaveBeenCalled()
+
+    await new Promise((r) => setTimeout(r, 120)) // well past 30 ms with no activity
+    expect(dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('a fresh translation before the timeout resets the countdown', async () => {
+    const { gen, dispose } = disposably()
+    pipeline.mockImplementation(async () => gen)
+    setUnloadTimeoutMs(80)
+    await translateText('a', 'en', 'ja') // release scheduled ~t=80
+
+    await new Promise((r) => setTimeout(r, 30))
+    await translateText('b', 'en', 'ja') // reschedules release ~t=30+80=110
+
+    // Still within the rescheduled window -> not released yet.
+    await new Promise((r) => setTimeout(r, 60)) // ~t=90 (90 < 110)
+    expect(dispose).not.toHaveBeenCalled()
+
+    await new Promise((r) => setTimeout(r, 60)) // ~t=150 (150 > 110) -> released
+    expect(dispose).toHaveBeenCalledTimes(1)
   })
 })

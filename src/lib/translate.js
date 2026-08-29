@@ -59,9 +59,54 @@ export const INFERENCE_TIMEOUT_MS = 120_000
 export let inferenceTimeoutMs = INFERENCE_TIMEOUT_MS
 export function setInferenceTimeoutMs(ms) { inferenceTimeoutMs = ms }
 
+// Release the model after this long without a translation, so its (large)
+// memory — q8 NLLB ~1.3 GB+ in the WASM heap, or Gemma ~3 GB of VRAM — isn't
+// pinned for the whole page session. Overridable in tests.
+export const UNLOAD_TIMEOUT_MS = 10_000
+export let unloadTimeoutMs = UNLOAD_TIMEOUT_MS
+export function setUnloadTimeoutMs(ms) { unloadTimeoutMs = ms }
+
 // One shared pipeline per provider — creating a second instance would re-download
 // weights. Concurrent translate() calls for a provider await the same load.
 const pipelinePromises = {}
+
+// Idle-unload bookkeeping.
+let unloadTimer = null
+
+function cancelUnload() {
+  if (unloadTimer) {
+    clearTimeout(unloadTimer)
+    unloadTimer = null
+  }
+}
+
+function scheduleUnload(provider) {
+  cancelUnload()
+  unloadTimer = setTimeout(() => {
+    unloadTimer = null
+    unloadProvider(provider)
+  }, unloadTimeoutMs)
+}
+
+/**
+ * Release a provider's loaded model: dispose its ONNX session and forget the
+ * cached pipeline so the memory is reclaimed and the next translation reloads
+ * it. Best-effort and re-entrant (safe to call repeatedly / while loading).
+ */
+export function unloadProvider(provider) {
+  cancelUnload()
+  const pending = pipelinePromises[provider]
+  if (pending !== undefined) {
+    pending
+      .then((gen) => {
+        if (gen?.dispose) {
+          try { gen.dispose() } catch { /* already freed */ }
+        }
+      })
+      .catch(() => { /* load failed; nothing to dispose */ })
+  }
+  resetTranslator(provider)
+}
 
 // Transformers.js calls the progress_callback many times; keep the callback
 // that should receive normalized progress here so a cached pipeline still
@@ -205,12 +250,18 @@ export async function translateText(text, source, target, onProgress, provider =
     ? output?.[0]?.translation_text
     : output?.[0]?.generated_text?.at?.(-1)?.content
 
-  if (typeof translated !== 'string' || isGarbage(text, translated)) {
-    throw new Error(
-      provider === 'gemma-webgpu'
-        ? 'The GPU model produced garbled output (a known WebGPU fp16 issue). Try the CPU model instead.'
-        : 'The translation model returned an empty or unusable result.'
-    )
+  try {
+    if (typeof translated !== 'string' || isGarbage(text, translated)) {
+      throw new Error(
+        provider === 'gemma-webgpu'
+          ? 'The GPU model produced garbled output (a known WebGPU fp16 issue). Try the CPU model instead.'
+          : 'The translation model returned an empty or unusable result.'
+      )
+    }
+    return translated
+  } finally {
+    // Translation happened — restart the idle countdown. If nothing else
+    // translates within unloadTimeoutMs, the model is disposed and released.
+    scheduleUnload(provider)
   }
-  return translated
 }
