@@ -14,6 +14,22 @@
         # amd64 debs only, so the server package is x86_64-linux only.
         mitraVersion = "5.10.0";
         isX86 = system == "x86_64-linux";
+
+        # onnxruntime-node (a transitive dep of @huggingface/transformers) runs a
+        # postinstall that tries to fetch CUDA binaries from api.nuget.org, which
+        # never resolves inside the network-less sandbox. This app uses the
+        # WebGPU/WASM backend, never the native node backend, so the download is
+        # safely skipped via the documented env-var escape hatch (the install
+        # script reads ONNXRUNTIME_NODE_INSTALL). We apply it to both the npm
+        # deps FOD fetch and the main build (which also runs `npm rebuild`).
+        skipOrtInstall = attrs: attrs // {
+          env = (attrs.env or { }) // { ONNXRUNTIME_NODE_INSTALL = "skip"; };
+        };
+        ortNpmDeps = (pkgs.fetchNpmDeps {
+          name = "rvmf-0.1.0-npm-deps";
+          src = ./.;
+          hash = "sha256-JnoKGJaYtUeW0mPMSES9WrDD3I/iyoacf5sM3crLjd8=";
+        }).overrideAttrs skipOrtInstall;
         mitraPkg = pkgs.stdenv.mkDerivation {
           pname = "mitra";
           version = mitraVersion;
@@ -60,7 +76,9 @@
             version = "0.1.0";
             src = ./.;
 
-            npmDepsHash = "sha256-JnoKGJaYtUeW0mPMSES9WrDD3I/iyoacf5sM3crLjd8=";
+            npmDeps = ortNpmDeps;
+
+            env.ONNXRUNTIME_NODE_INSTALL = "skip";
 
             installPhase = ''
               mkdir -p $out
