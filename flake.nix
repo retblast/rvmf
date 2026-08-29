@@ -60,7 +60,7 @@
             version = "0.1.0";
             src = ./.;
 
-            npmDepsHash = "sha256-YCMZObZTnuje+M1g01xqUEZdzkkgtz7BuCQoNvDIhH0=";
+            npmDepsHash = "sha256-JnoKGJaYtUeW0mPMSES9WrDD3I/iyoacf5sM3crLjd8=";
 
             installPhase = ''
               mkdir -p $out
