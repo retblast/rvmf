@@ -70,11 +70,10 @@ describe('NLLB (default)', () => {
     expect(task).toBe('translation')
     expect(modelId).toBe('Xenova/nllb-200-distilled-600M')
     expect(options.device).toBe('wasm')
-    // fp32 weights (NOT the quantized "merged" files that hit the onnxruntime
-    // MatMulNBits/DequantizeLinear "Missing required scale" regression).
-    expect(options.dtype).toBe('fp32')
-    // Skip the buggy ORT graph-optimizer QDQ fusion so session creation can't
-    // abort on it, regardless of the weights file.
+    // Quantized int8 weights that fit the WASM heap (fp32 bad_allocs), with
+    // the ORT graph optimizer dropped to 'basic' so the buggy
+    // MatMulNBits/DequantizeLinear "Missing required scale" fusion is skipped.
+    expect(options.dtype).toBe('q8')
     expect(options.session_options.graphOptimizationLevel).toBe('basic')
 
     const [text, opts] = getArgs()

@@ -2,9 +2,10 @@
 // ONNX Runtime. Two selectable providers:
 //
 //   - "nllb-wasm" (default): Xenova/nllb-200-distilled-600M on the CPU (WASM).
-//     fp32 weights (see the provider config: the quantized files are broken by
-//     an onnxruntime-web optimizer regression), so a few GB, but garbage-free
-//     and numerically safe on integrated GPUs/CPUs — the recommended path.
+//     Quantized int8 weights plus `graphOptimizationLevel: 'basic'` — small
+//     enough for the WASM heap (fp32 OOMs) and immune to the onnxruntime-web
+//     QDQ fusion regression that aborts session creation. Numerically safe on
+//     integrated GPUs/CPUs — the recommended path.
 //   - "gemma-webgpu": onnx-community/translategemma-text-4b-it-ONNX on WebGPU.
 //     Higher quality but ~3 GB and GPU-dependent; its fp16 WebGPU path is
 //     prone to a known ONNX Runtime overflow that yields "<unusedN>" garbage,
@@ -28,15 +29,14 @@ const PROVIDERS = {
     task: 'translation',
     modelId: 'Xenova/nllb-200-distilled-600M',
     device: 'wasm',
-    // Full-precision weights, on purpose: the repo's quantized "merged"
-    // int4/int8 files hit a known onnxruntime-web graph-optimizer regression
-    // (TransposeDQWeightsForMatMulNBits) that aborts session creation with
-    // "Missing required scale: ...weight_merged_0_scale" (see transformers.js
-    // #1635). fp32 avoids that quantized file, and ORT/wasm can't run fp16 so
-    // fp32 is the correct CPU build. Belt-and-suspenders: drop the ORT graph
-    // optimizer to 'basic' so the buggy QDQ fusion pass can't run at all,
-    // regardless of which weights file is selected.
-    dtype: 'fp32',
+    // Quantized int8 weights: fp32 doesn't fit the browser WASM heap (~2 GB)
+    // and aborts session creation with std::bad_alloc (ERROR_CODE 6). The
+    // repo's quantized "merged" file DID hit a separate onnxruntime-web QDQ
+    // fusion bug ("Missing required scale: ...weight_merged_0_scale"), so —
+    // alongside using q8 — we drop the ORT graph optimizer to 'basic' to stop
+    // that buggy TransposeDQWeightsForMatMulNBits pass from running at all.
+    // Small + reliable on the CPU, which is the point of this provider.
+    dtype: 'q8',
     session_options: { graphOptimizationLevel: 'basic' },
     requiresWebGPU: false,
   },
