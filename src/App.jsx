@@ -57,6 +57,7 @@ import { MutedAccountsView } from './components/MutedAccountsView.jsx'
 import InstanceIcon from './components/InstanceIcon.jsx'
 import { applyOsAccent } from './lib/osAccent'
 import { storageGet, storageSet } from './lib/storage.js'
+import { PROVIDER_IDS, DEFAULT_PROVIDER, unloadProvider } from './lib/translate.js'
 import { ListsView } from './components/ListsView.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { GroupsView } from './components/GroupsView.jsx'
@@ -64,6 +65,7 @@ import { ConversationsView } from './components/ConversationsView.jsx'
 import { AccountSettingsView } from './components/AccountSettingsView.jsx'
 import { FavouritesView } from './components/FavouritesView.jsx'
 import { Switch } from './components/Switch.jsx'
+import { ConfirmDialog } from './components/ConfirmDialog.jsx'
 import { StatusPage } from './components/StatusPage.jsx'
 import { SKINS, applySkin } from './lib/skins.js'
 import { UIContext } from './ui/index.jsx'
@@ -231,6 +233,48 @@ export default function App() {
       storageSet('fetch-client-media', String(next))
       return next
     })
+  }
+
+  // On-device translation is off by default and opt-in behind a confirm:
+  // the first use downloads a ~3 GB model, so we want the user's explicit
+  // ok before flipping it on. Local-only (not synced) — whether to stash a
+  // multi-GB model on a device is a per-machine decision.
+  const [translationEnabled, setTranslationEnabled] = useState(() => {
+    return storageGet('translation-enabled') === 'true'
+  })
+  const [confirmingTranslation, setConfirmingTranslation] = useState(false)
+  // Which on-device translator to use: the lightweight CPU model (default) or
+  // the larger GPU model. Local-only, persisted alongside the enable toggle.
+  const [translationProvider, setTranslationProvider] = useState(() => {
+    const stored = storageGet('translation-provider')
+    return PROVIDER_IDS.includes(stored) ? stored : DEFAULT_PROVIDER
+  })
+
+  function handleToggleTranslation(next) {
+    if (next && !translationEnabled) {
+      setConfirmingTranslation(true)
+      return
+    }
+    setTranslationEnabled(next)
+    storageSet('translation-enabled', String(next))
+    // Turning the feature off should stop pinning the loaded model in memory —
+    // release whichever provider(s) were loaded so the freed memory returns to
+    // the browser/GPU immediately.
+    if (!next) PROVIDER_IDS.forEach(unloadProvider)
+  }
+
+  function confirmTranslation() {
+    setConfirmingTranslation(false)
+    setTranslationEnabled(true)
+    storageSet('translation-enabled', 'true')
+  }
+
+  function handleTranslationProvider(provider) {
+    // Switching providers should not keep the previous model resident (esp.
+    // the ~3 GB WebGPU Gemma) — release the one we're leaving.
+    if (provider !== translationProvider) unloadProvider(translationProvider)
+    setTranslationProvider(provider)
+    storageSet('translation-provider', provider)
   }
 
   async function handleClearNotifications() {
@@ -870,7 +914,9 @@ export default function App() {
       } else if (openPickerId) {
         e.preventDefault()
         setOpenPickerId(null)
-      } else if (settingsOpen) {
+      } else if (settingsOpen && !confirmingTranslation) {
+        // While the translation confirm dialog is up, Escape is owned by the
+        // dialog (it cancels it and keeps the settings menu open).
         e.preventDefault()
         setSettingsOpen(false)
       } else if (sidePanel) {
@@ -880,7 +926,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [composing, editing, openPickerId, settingsOpen, sidePanel])
+  }, [composing, editing, openPickerId, settingsOpen, confirmingTranslation, sidePanel])
 
   function updatePost(updated) {
     setTimeline((prev) => prev.map((p) => mergeStatusIntoRow(p, updated)))
@@ -1717,7 +1763,7 @@ export default function App() {
 
   return (
     <UIContext.Provider value={SKINS[skinId]?.components || {}}>
-    <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, defaultVisibility, instanceUrl: session.instanceUrl, token: session.token }}>
+    <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, translationEnabled, translationProvider, defaultVisibility, instanceUrl: session.instanceUrl, token: session.token }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
       {!online && (
         <div className="banner banner-offline">
@@ -1981,6 +2027,43 @@ export default function App() {
                   </div>
 
                   <div className="settings-group">
+                    <span className="settings-menu-heading">Translation</span>
+                    <label className="settings-menu-row">
+                      <span>Translate Foreign Posts</span>
+                      <Switch checked={translationEnabled} onChange={handleToggleTranslation} label="Translate Foreign Posts" />
+                    </label>
+                    <div className="settings-menu-note">
+                      Runs on-device in your browser — post text never leaves your device.
+                    </div>
+                    {translationEnabled && (
+                      <div className="settings-menu-row settings-menu-subrow settings-menu-radio-group">
+                        <span className="settings-menu-radios">
+                          {PROVIDER_IDS.map((id) => (
+                            <label
+                              key={id}
+                              className="settings-menu-radio"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="radio"
+                                name="translation-provider"
+                                value={id}
+                                checked={translationProvider === id}
+                                onChange={() => handleTranslationProvider(id)}
+                              />
+                              <span>
+                                {id === 'nllb-wasm'
+                                  ? 'CPU (NLLB) — faster on most devices'
+                                  : 'GPU (TranslateGemma) — higher quality, needs WebGPU'}
+                              </span>
+                            </label>
+                          ))}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="settings-group">
                     <span className="settings-menu-heading">Account</span>
                     <div className="settings-menu-row">
                       <span>Default Post Visibility</span>
@@ -2032,6 +2115,27 @@ export default function App() {
                   </button>
                 </div>
               </>
+            )}
+
+            {confirmingTranslation && (
+              <ConfirmDialog
+                title="Enable on-device translation?"
+                confirmLabel="Enable"
+                onCancel={() => setConfirmingTranslation(false)}
+                onConfirm={confirmTranslation}
+              >
+                <p>
+                  This turns on in-browser translation for posts in a language
+                  that isn't yours. Translations run on-device — post text is
+                  never sent to a server.
+                </p>
+                <p className="confirm-note">
+                  The default uses the fast, lightweight NLLB model (~1 GB,
+                  CPU). You can switch to the higher-quality TranslateGemma
+                  model (WebGPU) from the Translation settings. Models download
+                  once, then stay cached.
+                </p>
+              </ConfirmDialog>
             )}
 
       {tier === 'wide' ? (

@@ -70,6 +70,17 @@ A key theme is that I don't have money for a subscription to any service, so all
 - **Post options menu** — copy link, mute account, block account.
 - **Hide/show media** per post without leaving the timeline.
 
+### On-device translation
+
+- **Enabled from settings** — a "Translate Foreign Posts" toggle in the settings menu (default **off**). Turning it on the first time shows a confirmation explaining that a model will be downloaded, so the heavy download is never a surprise.
+- With it on, every post (timeline rows and thread replies) gains a small **translate toggle** among its action buttons (next to like/favourite etc.). Tapping it swaps the post to an on-device translation; tapping again (or the "show original" ✕) swaps back. Because Fediverse language tags are often missing or wrong, the button is **always available** rather than gated on a language-mismatch heuristic — you decide what to translate. The target language comes from your browser's `navigator.language`.
+- The source language is resolved by falling back in order: an explicit pick from the UI, then the post's language tag, then a conservative **script-based guess** (kana → Japanese, Hangul → Korean, Han → Chinese, Cyrillic → Russian, Devanagari → Hindi, Arabic, Hebrew, Thai, Tamil, Greek, …). When nothing resolves, a **source-language picker** appears instead of an error. Because a wrong source yields a bad translation, any detected source is surfaced as a small correctable dropdown in the translated header — it's never trusted silently.
+- Translation runs **entirely in your browser** over Transformers.js + ONNX Runtime Web; no part of the post ever reaches a translation server. Two providers are selectable via radio buttons in settings, so you pick the right engineering trade-off for your hardware:
+  - **NLLB (default, CPU)** — Meta's `nllb-200-distilled-600M` on **WebAssembly** with **int8 (`q8`) weights** that fit the WASM heap (fp32 runs out of memory), plus the ORT graph optimizer set to `basic` to avoid a buggy onnxruntime-web QDQ fusion pass that can abort session creation with "Missing required scale … weight_merged_0_scale". No GPU required, works in every browser. (Licensed **CC-BY-NC-4.0** — fine for personal use, not for commercial redistribution.)
+  - **TranslateGemma (optional, GPU)** — Google's `Translategemma 4B` quantized (`q4f16`) on **WebGPU**. Higher quality but needs a WebGPU-capable browser and ~3 GB of VRAM; on some Intel iGPUs it can hit a known fp16 overflow that yields `<unusedN>` garbage, which the app detects and rejects with a clear error instead of showing broken text.
+- Everything is **opt-in and lazy**: a model is only downloaded on the first actual translation (served from the same origin as the app), so it takes a while that once; later translations reuse the cached model. A determinate progress bar shows the download, switching to an indeterminate "Translating…" bar during inference. Inference is guarded by a ~2-minute watchdog that reports a stall rather than spinning forever. Because a translation model is large (~1.3 GB NLLB in WASM, or ~3 GB gemma in VRAM), the app **releases it after 10 s without a new translation** — disposing the ONNX session and forgetting the cached pipeline so the memory returns to the browser/GPU instead of staying pinned for the whole session. Turning translation off (or switching providers) releases it immediately. The next translate re-downloads/re-creates it on demand.
+- Translated text renders through the same safe, link/mention-aware rich-text pipeline as normal posts, with a "show original" close affordance. The TranslateGemma option requires a **WebGPU-capable browser** (Chrome/Edge, or Firefox with WebGPU enabled); unsupported browsers get a clear error instead of a broken spinner. The default NLLB option needs no special browser support at all.
+
 ### Profiles
 
 - **Profile view** — header banner, overlapping avatar, display name (with custom emoji), handle, bio, stats, and follow indicators ("Mutual", "Follows you").
@@ -115,7 +126,7 @@ Reached from the settings menu:
 
 ## Testing
 
-- **`npm test`** — Vitest unit/component tests: the pure libraries (rich-text rendering, quarantined-image recovery, reply trees, storage migration, blurhash, emoji filtering) and key component behaviors (composer validation, visibility handling, cross-copy status merging).
+- **`npm test`** — Vitest unit/component tests: the pure libraries (rich-text rendering, quarantined-image recovery, reply trees, storage migration, blurhash, emoji filtering, canonical language mapping + translation orchestration for both the NLLB and TranslateGemma providers, including the garbage-guard, watchdog, and idle-release paths) and key component behaviors (composer validation, visibility handling, cross-copy status merging, the reusable confirm dialog).
 - **`nix run .#e2e`** — full E2E suite against a real backend, fully hermetic:
   1. throwaway PostgreSQL in a temp dir
   2. a pinned real Mitra server (upstream release deb extracted by the flake — `packages.mitra`)
@@ -347,6 +358,10 @@ src/
 
     ErrorBoundary.jsx  Per-section crash containment.
 
+    ConfirmDialog.jsx  Reusable confirm modal (reuses the dialog chrome);
+                      used to gate heavy opt-in actions like enabling
+                      on-device translation.
+
   lib/
     mitra.js           API client. Everything the app does against the
                      instance lives here, through apiFetch() which adds
@@ -362,6 +377,25 @@ src/
                      hashtags, URLs, custom emoji — no dangerouslySetInnerHTML),
                      reply tree helpers, Mitra signed-proxy URL decoding,
                      quarantined-image recovery.
+
+    translate.js       On-device translation wrapper — lazily loaded,
+                     provider-selectable singleton pipelines (NLLB on WASM by
+                     default, optional TranslateGemma on WebGPU q4f16) that
+                     take a plain-text post and return its translated text.
+                     NLLB uses int8 (q8) weights with the ORT graph optimizer
+                     set to basic (dodging an onnxruntime-web QDQ fusion
+                     crash, and fp32's OOM). Includes a WebGPU <unusedN>
+                     garbage guard, a watchdog timeout, and idle-release that
+                     disposes the model after 10 s without a translation so a
+                     ~1.3 GB / ~3 GB model isn't pinned for the session.
+                     Never imported or run until a user requests a
+                     translation.
+
+    languages.js       Provider vocabularies (NLLB FLORES-200 + TranslateGemma
+                     locales), a canonical ISO-639-1 layer, and resolvers that
+                     map BCP-47/status/navigator.language tags onto each
+                     model's exact codes, plus the source-language script
+                     detection used when translating a post.
 
     blurhash.js        Minimal pure-JS blurhash decoder for placeholders.
 
