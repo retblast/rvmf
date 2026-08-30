@@ -14,10 +14,10 @@ import { gifCachePut, gifCacheGet } from './cache.js'
 
 export { GIF_LARGE_BYTES, GIF_MIN_BYTES }
 
-// URLs that were checked and bounced (too small, not a GIF, transparent,
-// fetch failed) are remembered briefly so scrolling doesn't re-fetch and
-// re-decode them on every remount. A 'large' skip is bypassed when the
-// user widens the gate later.
+// URLs that were checked and bounced (too small, not a GIF, fetch failed)
+// are remembered briefly so scrolling doesn't re-fetch and re-decode them
+// on every remount. A 'large' skip is bypassed when the user widens the
+// gate later.
 const SKIP_TTL_MS = 10 * 60 * 1000
 const skippedUrls = new Map() // url -> { reason, at }
 
@@ -33,6 +33,9 @@ function isSkipped(url, includeLarge) {
 
 function rememberSkip(url, reason) {
   skippedUrls.set(url, { reason, at: Date.now() })
+  // Debug-level so it's invisible by default; flip the console filter to
+  // see why a URL is staying static instead of converting.
+  console.debug('[gif] skip', url, reason)
 }
 
 // Test seam: clear the session memo (also handy if a URL was fixed live).
@@ -153,11 +156,12 @@ export async function ensureGifConverted(url, { instanceUrl, token, includeLarge
         const result = await runExclusive(() => impl.worker(bytes))
         if (!result?.blob) { rememberSkip(url, 'encode'); return null }
         await gifCachePut(url, result)
+        console.debug('[gif] converted', url, result.codec, result.blob.size, 'bytes')
         return result
       } catch (err) {
         // Errors carry a machine-readable code from the worker pipeline
-        // (transparent, unsupported, too-large...); anything else is a
-        // generic failure. Either way: static fallback, remembered briefly.
+        // (unsupported, too-large...); anything else is a generic failure.
+        // Either way: static fallback, remembered briefly.
         rememberSkip(url, err?.code || 'error')
         return null
       } finally {

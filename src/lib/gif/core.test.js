@@ -196,12 +196,21 @@ describe('frame composition', () => {
     expect(source.hasAlpha).toBe(true)
   })
 
-  it('rejects transparent GIFs before encoding', async () => {
+  it('encodes transparent GIFs as opaque flattened frames', async () => {
     const gif = makeTinyGif([
       { delay: 10, disposal: 1, transparent: true, indexes: [0, 1, 2, 3] },
+      { delay: 10, disposal: 1, transparent: true, indexes: [4, 5, 6, 7] },
     ])
-    await expect(gifBytesToWebm(gif.buffer, fakeDeps())).rejects.toMatchObject({ code: 'transparent' })
-    expect(FakeVideoEncoder.encoders.length).toBe(0)
+    await expect(gifBytesToWebm(gif.buffer, fakeDeps())).resolves.toBeDefined()
+    expect(FakeVideoEncoder.encoders.length).toBe(1)
+    // AV1/VP9 in WebM carry no alpha, so every frame handed to the canvas
+    // must be fully opaque: transparent GIF pixels get blended onto white.
+    const draws = FakeCanvas.instances[0].ctx.putImageData.mock.calls
+    expect(draws.length).toBe(2)
+    for (const [imageData] of draws) {
+      const px = imageData.data
+      for (let p = 3; p < px.length; p += 4) expect(px[p]).toBe(255)
+    }
   })
 })
 

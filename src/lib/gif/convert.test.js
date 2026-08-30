@@ -110,8 +110,8 @@ describe('ensureGifConverted', () => {
   it('maps worker failures to a remembered static fallback', async () => {
     const fakes = installFakes({
       worker: vi.fn(async () => {
-        const err = new Error('transparent')
-        err.code = 'transparent'
+        const err = new Error('encode')
+        err.code = 'encode'
         throw err
       }),
     })

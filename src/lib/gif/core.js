@@ -8,9 +8,10 @@ import { parseGIF, decompressFrames } from 'gifuct-js'
 import { Muxer, ArrayBufferTarget } from 'webm-muxer'
 
 // Below this size animated GIFs are cheaper to decode than they are to
-// encode; above this size a conversion is too slow to bother with unless
-// the user opts into large files.
-export const GIF_MIN_BYTES = 4 * 1024
+// encode (custom emoji sit just above this, so keep it low); above this
+// size a conversion is too slow to bother with unless the user opts into
+// large files.
+export const GIF_MIN_BYTES = 1024
 export const GIF_LARGE_BYTES = 5 * 1024 * 1024
 
 // Safety valve: total composed pixels across all frames. Guards against
@@ -89,11 +90,12 @@ export function createGifFrameSource(parsedGif) {
   let prevSnapshot = null
   let hasAlpha = false
 
-  // Transparency is a conversion blocker, and the caller checks it before
-  // configuring an encoder. Run one dry composition pass at creation so
-  // `hasAlpha` is authoritative: disposal-2 clears and any patch pixel
-  // with alpha < 255 make the composed output transparent. The cursor and
-  // buffer are rewound afterward; the real pass replays identically.
+  // `hasAlpha` is authoritative, so run one dry composition pass at
+  // creation: disposal-2 clears and any patch pixel with alpha < 255 make
+  // the composed output transparent. The encoder flattens those pixels
+  // onto a background because VP9/AV1 have no alpha channel in WebM. The
+  // cursor and buffer are rewound afterward; the real pass replays
+  // identically.
   for (let i = 0; i < frames.length; i++) composeNext()
   index = -1
   prevDisposal = 0
@@ -159,8 +161,8 @@ export function createGifFrameSource(parsedGif) {
     const rect = clampRect(frame.dims, paddedWidth, paddedHeight)
     if (rect) {
       // Any patch pixel with alpha < 255 means real transparency; the
-      // conversion is skipped upstream because alpha layers would show
-      // as black boxes in many decoders.
+      // encoder flattens such frames because AV1/VP9 in WebM carry no
+      // alpha channel.
       for (let p = 3; p < frame.patch.length; p += 4) {
         if (frame.patch[p] !== 255) { hasAlpha = true; break }
       }
@@ -211,6 +213,24 @@ async function pickCodec(encoderCtor, config) {
   return null
 }
 
+// WebM/AV1 have no alpha channel, so transparent GIF pixels are blended
+// onto a background (white by default — what most light themes show).
+// Fully opaque frames skip this entirely, so it's a no-op in the common
+// case. A future setting could let users pick the flatten color.
+export function flattenAlphaFrame(data, r = 255, g = 255, b = 255) {
+  for (let p = 0; p < data.length; p += 4) {
+    const a = data[p + 3]
+    if (a === 255) continue
+    const src = a / 255
+    const bg = 1 - src
+    data[p] = Math.round(data[p] * src + r * bg)
+    data[p + 1] = Math.round(data[p + 1] * src + g * bg)
+    data[p + 2] = Math.round(data[p + 2] * src + b * bg)
+    data[p + 3] = 255
+  }
+  return data
+}
+
 // Encodes a composed frame source (as produced by createGifFrameSource)
 // into a WebM blob. `deps` defaults to the browser globals; tests inject
 // fakes for VideoEncoder/VideoFrame/ImageData and the muxer.
@@ -230,7 +250,8 @@ export async function encodeFramesToWebm(source, deps) {
     ArrayBufferTarget,
   }
   if (source.frameCount === 0) throw new GifConversionError('empty', 'GIF has no drawable frames')
-  if (source.hasAlpha) throw new GifConversionError('transparent', 'GIF uses transparency; skipping conversion')
+  // Transparent GIFs are allowed through: their frames are flattened onto
+  // a background in the encode loop below (see flattenAlphaFrame).
 
   const totalPixelWork = source.width * source.height * source.frameCount
   if (totalPixelWork > GIF_MAX_PIXEL_WORK) {
@@ -286,6 +307,7 @@ export async function encodeFramesToWebm(source, deps) {
     const step = source.next()
     const durationUs = Math.round(step.delay * 1000)
     imageData.data.set(source.data)
+    if (source.hasAlpha) flattenAlphaFrame(imageData.data)
     if (canvasCtx) canvasCtx.putImageData(imageData, 0, 0)
     const frame = new D.VideoFrame(frameSource, {
       timestamp: timestampUs,

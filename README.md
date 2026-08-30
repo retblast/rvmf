@@ -85,9 +85,9 @@ A key theme is that I don't have money for a subscription to any service, so all
 
 - **Enabled from settings** — a "Convert GIFs to AV1" toggle in the settings menu (default **off**). When on, animated GIFs in posts and media are decoded once on-device and re-encoded to AV1 video (VP9 on machines/browsers without AV1 encoding), so the browser no longer has to chew through thousands of frames of GIF for every autoplay or loop.
 - The converted video is stored in an IndexedDB cache with a decay timer (30 days of non-use, one day shaved per day idle; next display restores the full timer). A "Convert Large GIFs Too" sub-toggle extends conversion to files over 5 MB (default **off**, because they encode slowly). Toggling the master setting off clears the cache immediately.
-- Emojis and avatars are **hover-to-animate** — surfaced as static images by default and played only while the pointer is over the post/row (a separate "Animate on Hover" toggle, on by default). Content GIFs and reaction/notification emoji animate directly.
+- Emojis and avatars are **hover-to-animate** — surfaced as static images by default and played only while the pointer is over the post/row (a separate "Animate on Hover" toggle, off by default; avatars only convert at all when it's on).
 - Everything is **local and opt-in**: no part of a GIF ever leaves the browser except the original fetch through the instance's media proxy. Conversions run in a Web Worker, one at a time, so a busy timeline can't spin up a codec per row.
-- **Limitations:** GIFs that use transparency stay as plain GIFs (alpha layers encode as black boxes in AV1/VP9). Browsers without WebCodecs encode support (`VideoEncoder` with AV1/VP9) also keep plain GIFs — the hover/AV1 path simply never engages there, with no error surface.
+- **Limitations:** transparent GIF pixels are flattened onto a white background when converted (VP9/AV1 in WebM carry no alpha channel), so transparency-dependent fringes can look off on dark themes. Browsers without WebCodecs encode support (`VideoEncoder` with AV1/VP9) keep plain GIFs — the hover/AV1 path simply never engages there, with no error surface.
 
 ### Profiles
 
