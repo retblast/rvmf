@@ -56,6 +56,10 @@ export function Avatar({ name, src, staticSrc, large, size, onClick }) {
     if (convert && status === 'ready' && videoUrl) {
       media = (
         <video
+          // Keyed by hover mode so flipping the toggle remounts the video:
+          // `autoplay` only kicks in at load, so a reused element that was
+          // paused for hover mode would never resume after hover is off.
+          key={gifHoverAnimate ? 'hover' : 'auto'}
           className="avatar-img"
           style={style}
           src={videoUrl}

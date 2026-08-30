@@ -51,6 +51,11 @@ export function GifVideo({
   if (convert && status === 'ready' && videoUrl) {
     return (
       <video
+        // Keyed by hover mode: flipping the toggle must remount the video,
+        // because mutating `autoplay` on an existing element never starts
+        // playback — without a fresh element videos would stay paused
+        // forever after toggling hover off.
+        key={hoverMode ? 'hover' : 'auto'}
         className={className}
         style={style}
         src={videoUrl}

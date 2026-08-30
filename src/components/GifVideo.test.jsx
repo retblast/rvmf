@@ -79,6 +79,32 @@ describe('GifVideo', () => {
     expect(container.querySelector('video')).toBeNull()
   })
 
+  it('remounts videos when the hover mode flips so autoplay actually resumes', async () => {
+    ensureGifConverted.mockResolvedValue({ blob: new Blob(['webm'], { type: 'video/webm' }) })
+    const { container, rerender } = renderGifVideo(
+      {},
+      { gifConversionEnabled: true, gifHoverAnimate: true }
+    )
+    await waitFor(() => expect(container.querySelector('video')).not.toBeNull())
+    const hoverVid = container.querySelector('video')
+    expect(hoverVid.autoplay).toBe(false)
+
+    // Toggle hover off: the video must be a NEW element (with autoplay
+    // already set at mount), not the reused paused one.
+    rerender(
+      <AppSettingsContext.Provider
+        value={{ fetchClientMedia: false, gifConversionEnabled: true, gifIncludeLarge: false, gifHoverAnimate: false }}
+      >
+        <GifVideo src={SRC} staticSrc={STATIC} alt=":dance:" />
+      </AppSettingsContext.Provider>
+    )
+    const autoVid = container.querySelector('video')
+    expect(autoVid).not.toBeNull()
+    expect(autoVid).not.toBe(hoverVid)
+    expect(autoVid.autoplay).toBe(true)
+    expect(autoVid.hasAttribute('data-rvmf-animatable')).toBe(false)
+  })
+
   it('renders the source image while a static-less conversion awaits', async () => {
     ensureGifConverted.mockResolvedValue(null)
     const { container } = renderGifVideo(

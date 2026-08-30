@@ -71,6 +71,30 @@ describe('Avatar', () => {
     expect(video.getAttribute('poster')).toBe(STATIC)
   })
 
+  it('remounts the avatar video when hover mode flips so autoplay resumes', async () => {
+    ensureGifConverted.mockResolvedValue({ blob: BLOB })
+    const { container, rerender } = renderAvatar(
+      {},
+      { gifConversionEnabled: true, gifHoverAnimate: true }
+    )
+    await waitFor(() => expect(container.querySelector('video')).not.toBeNull())
+    const hoverVid = container.querySelector('video')
+    expect(hoverVid.autoplay).toBe(false)
+
+    rerender(
+      <AppSettingsContext.Provider
+        value={{ fetchClientMedia: false, gifConversionEnabled: true, gifIncludeLarge: false, gifHoverAnimate: false }}
+      >
+        <Avatar name="Reka" src={SRC} staticSrc={STATIC} />
+      </AppSettingsContext.Provider>
+    )
+    const autoVid = container.querySelector('video')
+    expect(autoVid).not.toBeNull()
+    expect(autoVid).not.toBe(hoverVid)
+    expect(autoVid.autoplay).toBe(true)
+    expect(autoVid.hasAttribute('data-rvmf-animatable')).toBe(false)
+  })
+
   it('stays on the static image while conversion is pending or skipped', async () => {
     ensureGifConverted.mockResolvedValue(null)
     const { container } = renderAvatar({}, { gifConversionEnabled: true })
