@@ -91,23 +91,38 @@ export function createGifFrameSource(parsedGif) {
   let hasAlpha = false
 
   // `hasAlpha` is authoritative, so run one dry composition pass at
-  // creation: disposal-2 clears and any patch pixel with alpha < 255 make
-  // the composed output transparent. The encoder flattens those pixels
-  // onto a background because VP9/AV1 have no alpha channel in WebM. The
-  // cursor and buffer are rewound afterward; the real pass replays
-  // identically.
-  for (let i = 0; i < frames.length; i++) composeNext()
+  // creation: any composed frame containing a pixel with alpha < 255 (a
+  // disposal-2 clear, an area no frame ever draws, or a semi-transparent
+  // patch) means the encoder must flatten that frame onto a background
+  // because VP9/AV1 have no alpha channel in WebM. The cursor and buffer
+  // are rewound afterward; the real pass replays identically.
+  for (let i = 0; i < frames.length; i++) {
+    composeNext()
+    if (!hasAlpha && frameHasTransparency()) hasAlpha = true
+  }
   index = -1
   prevDisposal = 0
   prevDims = null
   prevSnapshot = null
+
+  // True when any pixel of the composed canvas has alpha < 255. Only the
+  // real canvas counts: the padding row/column added for odd dimensions
+  // is never drawn and must not count as user-visible transparency.
+  function frameHasTransparency() {
+    for (let y = 0; y < height; y++) {
+      const start = y * paddedWidth * 4
+      for (let x = 0; x < width; x++) {
+        if (data[start + x * 4 + 3] !== 255) return true
+      }
+    }
+    return false
+  }
 
   function clearRegion(rect) {
     for (let y = 0; y < rect.height; y++) {
       const start = ((rect.top + y) * paddedWidth + rect.left) * 4
       data.fill(0, start, start + rect.width * 4)
     }
-    hasAlpha = true
   }
 
   function drawPatch(patch, rect) {
@@ -115,7 +130,19 @@ export function createGifFrameSource(parsedGif) {
     for (let y = 0; y < rect.height; y++) {
       const srcStart = y * srcStride * 4
       const dstStart = ((rect.top + y) * paddedWidth + rect.left) * 4
-      data.set(patch.subarray(srcStart, srcStart + rect.width * 4), dstStart)
+      for (let x = 0; x < rect.width; x++) {
+        const sp = srcStart + x * 4
+        // A transparent GIF pixel is "don't draw", not "erase": it leaves
+        // the underlying canvas untouched so earlier frames' content shows
+        // through (delta-encoded stickers rely on this heavily). GIFs only
+        // carry one-bit alpha; a partial alpha pixel is copied as-is.
+        if (patch[sp + 3] === 0) continue
+        const dp = dstStart + x * 4
+        data[dp] = patch[sp]
+        data[dp + 1] = patch[sp + 1]
+        data[dp + 2] = patch[sp + 2]
+        data[dp + 3] = patch[sp + 3]
+      }
     }
   }
 
@@ -159,15 +186,7 @@ export function createGifFrameSource(parsedGif) {
     prevDisposal = frame.disposalType
 
     const rect = clampRect(frame.dims, paddedWidth, paddedHeight)
-    if (rect) {
-      // Any patch pixel with alpha < 255 means real transparency; the
-      // encoder flattens such frames because AV1/VP9 in WebM carry no
-      // alpha channel.
-      for (let p = 3; p < frame.patch.length; p += 4) {
-        if (frame.patch[p] !== 255) { hasAlpha = true; break }
-      }
-      drawPatch(frame.patch, rect)
-    }
+    if (rect) drawPatch(frame.patch, rect)
 
     return { index, delay: frame.delay }
   }

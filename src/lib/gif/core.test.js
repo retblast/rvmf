@@ -196,6 +196,29 @@ describe('frame composition', () => {
     expect(source.hasAlpha).toBe(true)
   })
 
+  it('keeps previous frame content under transparent patch pixels', () => {
+    // Frame 0 paints all four pixels opaque. Frame 1 is an all-transparent
+    // delta patch ("don't draw anything"), so every pixel must keep frame
+    // 0's colors and the animation stays fully opaque. Overwriting the
+    // canvas with transparent black is how delta-encoded stickers get
+    // mangled into blank frames.
+    const gif = makeTinyGif([
+      { delay: 10, disposal: 1, indexes: [0, 1, 2, 3] },
+      { delay: 10, disposal: 1, transparent: true, indexes: [0, 0, 0, 0] },
+    ])
+    const source = gifBytesToFrameSource(gif.buffer)
+    expect(source.hasAlpha).toBe(false)
+
+    source.next()
+    expect(source.next()).toEqual({ index: 1, delay: 100 })
+    // Frame 0's palette stays exactly as composed: red, green, blue, red
+    // (the test helper's LZW packs its final pixel as the first index).
+    expect([...source.data.slice(0, 4)]).toEqual([255, 0, 0, 255])
+    expect([...source.data.slice(4, 8)]).toEqual([0, 255, 0, 255])
+    expect([...source.data.slice(8, 12)]).toEqual([0, 0, 255, 255])
+    expect([...source.data.slice(12, 16)]).toEqual([255, 0, 0, 255])
+  })
+
   it('encodes transparent GIFs as opaque flattened frames', async () => {
     const gif = makeTinyGif([
       { delay: 10, disposal: 1, transparent: true, indexes: [0, 1, 2, 3] },
