@@ -65,16 +65,15 @@ export function renderEmojiText(text, emojis) {
     if (!emoji) continue
     if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index))
     parts.push(
-      // Display names are decorative: they only convert (and animate on
-      // hover) when the hover toggle is on; otherwise the static frame is
-      // cheaper and matches the old rendering.
+      // Display-name emoji convert like every other GIF when the master
+      // toggle is on; in hover mode they animate on hover, otherwise the
+      // converted video autoplays.
       <GifVideo
         key={`de-${key++}`}
         direct
         className="custom-emoji"
         src={emoji.url}
         staticSrc={emoji.static_url || emoji.url}
-        staticFirst
         alt={match[0]}
         title={match[0]}
         fallbackText={match[1]}

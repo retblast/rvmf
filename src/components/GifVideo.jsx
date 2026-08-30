@@ -1,10 +1,10 @@
 // Renders a GIF source as a converted AV1/VP9 <video> when the "Convert
 // GIFs to AV1" setting is on, and as a plain image otherwise (or while
-// conversion runs). With hover-to-animate on, converted videos render
-// paused with data-rvmf-animatable and the document-level hover animator
-// plays them; `staticFirst` surfaces (avatars, display-name emoji) only
-// convert at all when hover mode is enabled — they're decorative, so a
-// static image is cheaper unless the user opted into hover.
+// conversion runs). The hover setting only decides how converted videos
+// play: with hover-to-animate on they render paused with
+// data-rvmf-animatable for the document-level hover animator, otherwise
+// they autoplay. Every surface — media, emoji, headers — converts the
+// same way.
 import { useContext } from 'react'
 import { AppSettingsContext, useGifVideo } from '../hooks'
 import { ProxiedImg } from './Media.jsx'
@@ -12,7 +12,6 @@ import { ProxiedImg } from './Media.jsx'
 export function GifVideo({
   src,
   staticSrc,
-  staticFirst = false,
   className,
   alt,
   title,
@@ -25,16 +24,14 @@ export function GifVideo({
 }) {
   const { gifConversionEnabled, gifIncludeLarge, gifHoverAnimate } = useContext(AppSettingsContext)
   const hoverMode = gifHoverAnimate
-  const convert = gifConversionEnabled && (hoverMode || !staticFirst)
+  const convert = gifConversionEnabled
   const { status, videoUrl } = useGifVideo(src, { active: convert, includeLarge: gifIncludeLarge })
 
   function renderStatic() {
     if (!src) return null
-    // staticFirst without a static image (e.g. an animated avatar with no
-    // avatar_static) renders nothing while awaiting conversion — callers
-    // like Avatar layer their own placeholder underneath.
-    const displaySrc = convert && hoverMode && staticFirst && !staticSrc ? null : (staticSrc || src)
-    if (displaySrc === null) return null
+    // The static frame (when one exists) stays up while conversion runs
+    // or skips; without one the source image itself is the placeholder.
+    const displaySrc = staticSrc || src
     return (
       <ProxiedImg
         src={displaySrc}

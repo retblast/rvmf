@@ -61,7 +61,7 @@ describe('GifVideo', () => {
   it('renders a paused, hover-animated video in hover mode', async () => {
     ensureGifConverted.mockResolvedValue({ blob: new Blob(['webm'], { type: 'video/webm' }) })
     const { container } = renderGifVideo(
-      { staticFirst: true },
+      {},
       { gifConversionEnabled: true, gifHoverAnimate: true }
     )
     await waitFor(() => expect(container.querySelector('video')).not.toBeNull())
@@ -79,20 +79,23 @@ describe('GifVideo', () => {
     expect(container.querySelector('video')).toBeNull()
   })
 
-  it('staticFirst surfaces with no static image render nothing while awaiting conversion', async () => {
+  it('renders the source image while a static-less conversion awaits', async () => {
     ensureGifConverted.mockResolvedValue(null)
     const { container } = renderGifVideo(
-      { staticSrc: undefined, staticFirst: true },
+      { staticSrc: undefined },
       { gifConversionEnabled: true, gifHoverAnimate: true }
     )
     await waitFor(() => expect(ensureGifConverted).toHaveBeenCalled())
-    expect(container.querySelector('img')).toBeNull()
+    const img = container.querySelector('img')
+    expect(img).not.toBeNull()
+    expect(img.getAttribute('src')).toContain('dance.gif')
     expect(container.querySelector('video')).toBeNull()
   })
 
-  it('does not attempt conversion for staticFirst surfaces while hover is off', async () => {
-    const { container } = renderGifVideo({ staticFirst: true }, { gifConversionEnabled: true })
+  it('attempts conversion for every surface even when hover is off', async () => {
+    ensureGifConverted.mockResolvedValue(null)
+    const { container } = renderGifVideo({}, { gifConversionEnabled: true })
+    await waitFor(() => expect(ensureGifConverted).toHaveBeenCalled())
     expect(container.querySelector('img')).not.toBeNull()
-    expect(ensureGifConverted).not.toHaveBeenCalled()
   })
 })
