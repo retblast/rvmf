@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, ListPlus, LoaderCircle, Settings2 } from 'lucide-react'
+import { useContext, useEffect, useRef, useState } from 'react'
+import { ArrowLeft, ListPlus, LoaderCircle, RefreshCw, Settings2 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { formatRelativeTime, processStatusContent } from '../lib/render.jsx'
+import { AppSettingsContext } from '../hooks'
+import { isGifUrl } from '../lib/gif/core.js'
+import { forgetGifConversion } from '../lib/gif/convert.js'
 import { Avatar } from './Media.jsx'
 import { GifVideo } from './GifVideo.jsx'
 import { PostRow } from './Post.jsx'
@@ -302,6 +305,9 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
   const [loadingMore, setLoadingMore] = useState(false)
   const [peopleList, setPeopleList] = useState(null)
   const [backfilling, setBackfilling] = useState(false)
+  const [avatarRetryNonce, setAvatarRetryNonce] = useState(0)
+  const [avatarRetrying, setAvatarRetrying] = useState(false)
+  const { gifConversionEnabled } = useContext(AppSettingsContext)
 
   function tabParams(t) {
     switch (t) {
@@ -360,6 +366,22 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
       console.error(err)
     } finally {
       setFollowBusy(false)
+    }
+  }
+
+  // A single bad conversion (or a transient fetch/encode failure) can
+  // leave one avatar stuck on its static frame for the 10-minute skip
+  // window or on a corrupted cached blob until it ages out. Retry clears
+  // both for this profile's avatar and remounts it so the pipeline runs
+  // again from scratch.
+  async function retryAvatarConversion() {
+    if (!account?.avatar || avatarRetrying) return
+    setAvatarRetrying(true)
+    try {
+      await forgetGifConversion(account.avatar)
+      setAvatarRetryNonce((n) => n + 1)
+    } finally {
+      setAvatarRetrying(false)
     }
   }
 
@@ -451,7 +473,27 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
           <button className="icon-btn profile-back-btn" onClick={onClose}><ArrowLeft size={16} /></button>
         </div>
         <div className="profile-info">
-          <Avatar name={displayName} src={account.avatar} staticSrc={account.avatar_static} large />
+          <div className="profile-avatar-wrap">
+            <Avatar
+              key={`avatar-${account.id}-${avatarRetryNonce}`}
+              name={displayName}
+              src={account.avatar}
+              staticSrc={account.avatar_static}
+              large
+            />
+            {gifConversionEnabled && isGifUrl(account.avatar) && (
+              <button
+                type="button"
+                className="icon-btn profile-avatar-retry"
+                onClick={retryAvatarConversion}
+                disabled={avatarRetrying}
+                aria-label="Retry GIF to AV1 conversion for this avatar"
+                title="Retry the GIF-to-AV1 conversion for this avatar"
+              >
+                <RefreshCw size={14} className={avatarRetrying ? 'spin' : undefined} />
+              </button>
+            )}
+          </div>
           <div className="profile-names">
             <span className="profile-display-name">{displayName}</span>
             <span className="profile-handle">@{account.acct || account.username}</span>

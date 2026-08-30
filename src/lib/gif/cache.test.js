@@ -6,6 +6,7 @@ import {
   GIF_CACHE_MAX_ENTRIES,
   gifCacheGet,
   gifCachePut,
+  gifCacheDelete,
   gifCacheSweep,
   gifCacheClear,
   gifCacheStats,
@@ -97,5 +98,15 @@ describe('gif cache', () => {
     await gifCachePut('https://x.example/b.gif', payload())
     await gifCacheClear()
     expect(await gifCacheStats()).toEqual({ count: 0, totalBytes: 0 })
+  })
+
+  it('delete removes a single entry', async () => {
+    await gifCachePut('https://x.example/a.gif', payload())
+    await gifCachePut('https://x.example/b.gif', payload())
+    await gifCacheDelete('https://x.example/a.gif')
+    expect(await gifCacheGet('https://x.example/a.gif')).toBeNull()
+    expect(await gifCacheGet('https://x.example/b.gif')).not.toBeNull()
+    await gifCacheDelete(null)
+    expect(await gifCacheStats()).toEqual({ count: 1, totalBytes: 64 })
   })
 })

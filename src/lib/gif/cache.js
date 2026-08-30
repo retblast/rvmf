@@ -185,6 +185,14 @@ export async function gifCachePut(key, payload) {
   return entry
 }
 
+// Drop one URL's cached blob so the next request converts it fresh. Used
+// by the profile "retry conversion" button when an avatar's encode landed
+// in a bad state.
+export async function gifCacheDelete(key) {
+  if (!key) return
+  await getDriver().delete(key)
+}
+
 // Decay every entry by the days elapsed since its last display and drop
 // the exhausted ones. Cheap and idempotent — safe to call on an interval.
 export async function gifCacheSweep() {

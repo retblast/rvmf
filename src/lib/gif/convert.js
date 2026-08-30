@@ -10,7 +10,7 @@ import {
   isGifUrl,
   videoEncodingAvailable,
 } from './core.js'
-import { gifCachePut, gifCacheGet } from './cache.js'
+import { gifCachePut, gifCacheGet, gifCacheDelete } from './cache.js'
 
 export { GIF_LARGE_BYTES, GIF_MIN_BYTES }
 
@@ -41,6 +41,15 @@ function rememberSkip(url, reason) {
 // Test seam: clear the session memo (also handy if a URL was fixed live).
 export function resetGifConversionMemo() {
   skippedUrls.clear()
+}
+
+// Forget a single URL's skip memo and cached blob so the next mount runs
+// the whole pipeline from scratch — the profile "retry avatar conversion"
+// button, for when a transient failure or a bad encode left one avatar
+// stuck on the static frame.
+export async function forgetGifConversion(url) {
+  skippedUrls.delete(url)
+  await gifCacheDelete(url)
 }
 
 async function fetchGifBytes(url, instanceUrl, token) {

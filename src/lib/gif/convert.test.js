@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { ensureGifConverted, setGifConversionDeps, resetGifConversionMemo, GIF_LARGE_BYTES, GIF_MIN_BYTES } from './convert.js'
+import { ensureGifConverted, setGifConversionDeps, resetGifConversionMemo, forgetGifConversion, GIF_LARGE_BYTES, GIF_MIN_BYTES } from './convert.js'
 import { createMemoryDriver, setGifCacheDriver } from './cache.js'
 import { makeTinyGif, makeLargeGifBytes } from './testHelpers.js'
 
@@ -127,5 +127,35 @@ describe('ensureGifConverted', () => {
     })
     expect(await ensureGifConverted(GIF_URL, {})).toBeNull()
     expect(fakes.fetchBytes).toHaveBeenCalledTimes(1)
+  })
+
+  it('forgetGifConversion clears a remembered skip so the URL converts again', async () => {
+    const fakes = installFakes({
+      worker: vi.fn(async () => {
+        const err = new Error('encode')
+        err.code = 'encode'
+        throw err
+      }),
+    })
+    expect(await ensureGifConverted(GIF_URL, {})).toBeNull()
+    expect(await ensureGifConverted(GIF_URL, {})).toBeNull()
+    expect(fakes.worker).toHaveBeenCalledTimes(1) // memoized
+
+    fakes.worker.mockResolvedValue(WORKER_RESULT)
+    await forgetGifConversion(GIF_URL)
+    const result = await ensureGifConverted(GIF_URL, {})
+    expect(result).not.toBeNull()
+    expect(fakes.worker).toHaveBeenCalledTimes(2) // re-encode attempted
+  })
+
+  it('forgetGifConversion drops the cached blob so a stale encode can be replaced', async () => {
+    const fakes = installFakes()
+    expect(await ensureGifConverted(GIF_URL, {})).not.toBeNull()
+    expect(await ensureGifConverted(GIF_URL, {})).not.toBeNull()
+    expect(fakes.worker).toHaveBeenCalledTimes(1) // served from cache after the first encode
+
+    await forgetGifConversion(GIF_URL)
+    expect(await ensureGifConverted(GIF_URL, {})).not.toBeNull()
+    expect(fakes.worker).toHaveBeenCalledTimes(2) // re-encoded, not reused
   })
 })
