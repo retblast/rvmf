@@ -83,11 +83,28 @@ class FakeArrayBufferTarget {
   }
 }
 
+// The canvas VideoFrame source mirrors how Chromium needs frames handed
+// over (ImageData alone fails its overload resolution).
+class FakeCanvas {
+  static instances = []
+  constructor(width, height) {
+    this.width = width
+    this.height = height
+    this.ctx = { putImageData: vi.fn() }
+    FakeCanvas.instances.push(this)
+  }
+  getContext() {
+    return this.ctx
+  }
+}
+
 function fakeDeps(overrides = {}) {
   muxers.length = 0
   FakeVideoEncoder.encoders.length = 0
+  FakeCanvas.instances.length = 0
   return {
     ImageDataCtor: FakeImageData,
+    CanvasCtor: FakeCanvas,
     VideoEncoder: FakeVideoEncoder,
     VideoFrame: FakeVideoFrame,
     MuxerCtor: FakeWebmMuxer,
@@ -207,6 +224,8 @@ describe('encoding', () => {
     expect(muxer.opts.video.width).toBe(2)
     expect(muxer.opts.video.height).toBe(2)
     expect(muxer.chunks).toHaveLength(3)
+    // Every frame was drawn into the canvas that backs the VideoFrames.
+    expect(FakeCanvas.instances[0].ctx.putImageData).toHaveBeenCalledTimes(3)
 
     expect(result.blob).toBeInstanceOf(Blob)
     expect(result.blob.type).toBe('video/webm')

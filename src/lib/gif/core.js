@@ -217,6 +217,13 @@ async function pickCodec(encoderCtor, config) {
 export async function encodeFramesToWebm(source, deps) {
   const D = deps || {
     ImageDataCtor: ImageData,
+    // OffscreenCanvas is worker-safe; a document canvas is the main-thread
+    // fallback when something ever runs the pipeline outside a worker.
+    CanvasCtor: typeof OffscreenCanvas !== 'undefined'
+      ? OffscreenCanvas
+      : typeof document !== 'undefined'
+        ? (() => document.createElement('canvas'))
+        : undefined,
     VideoEncoder: typeof globalThis !== 'undefined' ? globalThis.VideoEncoder : undefined,
     VideoFrame: typeof globalThis !== 'undefined' ? globalThis.VideoFrame : undefined,
     MuxerCtor: Muxer,
@@ -262,13 +269,25 @@ export async function encodeFramesToWebm(source, deps) {
     encoder.addEventListener('dequeue', resolve, { once: true })
   })
   const imageData = new D.ImageDataCtor(source.paddedWidth, source.paddedHeight)
+  // VideoFrame's accepted sources are canvas/ImageBitmap/VideoFrame — an
+  // ImageData alone throws "overload resolution failed" in Chromium. Draw
+  // each composed frame into a reusable canvas so the VideoFrame gets a
+  // source every browser accepts.
+  let frameSource = imageData
+  let canvasCtx = null
+  if (D.CanvasCtor) {
+    const canvas = new D.CanvasCtor(source.paddedWidth, source.paddedHeight)
+    canvasCtx = canvas.getContext('2d')
+    frameSource = canvas
+  }
   let timestampUs = 0
 
   for (let i = 0; i < source.frameCount; i++) {
     const step = source.next()
     const durationUs = Math.round(step.delay * 1000)
     imageData.data.set(source.data)
-    const frame = new D.VideoFrame(imageData, {
+    if (canvasCtx) canvasCtx.putImageData(imageData, 0, 0)
+    const frame = new D.VideoFrame(frameSource, {
       timestamp: timestampUs,
       duration: durationUs,
     })
