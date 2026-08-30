@@ -29,17 +29,18 @@ import { GifVideo } from './GifVideo.jsx'
 // permanent fallback when the avatar can't be fetched. State resets when
 // `src` changes so a reused Avatar doesn't show one user's fallback under
 // another user's photo. With GIF->AV1 conversion on, animated avatars are
-// converted and played on hover (GIF decode is intrinsic to the source
-// pixels, so converting a small display avatar still saves power).
+// converted too; in hover mode they play on hover, otherwise they autoplay.
 export function Avatar({ name, src, staticSrc, large, size, onClick }) {
   const { gifConversionEnabled, gifIncludeLarge, gifHoverAnimate } = useContext(AppSettingsContext)
   const [imgState, setImgState] = useState('loading')
   useEffect(() => {
     setImgState('loading')
   }, [src])
-  // Avatars are decorative: they only animate on hover. Without a static
-  // (avatar_static) image the initials stay visible until conversion lands.
-  const convert = gifConversionEnabled && gifHoverAnimate
+  // Avatars convert whenever the master toggle is on; the hover setting
+  // only decides whether they autoplay or play on hover. Without a static
+  // (avatar_static) image the initials stay visible until the conversion
+  // lands.
+  const convert = gifConversionEnabled
   const { status, videoUrl } = useGifVideo(src, { active: convert, includeLarge: gifIncludeLarge })
   const style = size ? { width: size, height: size } : undefined
   const cls = `avatar${large ? ' lg' : ''}${onClick ? ' clickable' : ''}`
@@ -63,7 +64,8 @@ export function Avatar({ name, src, staticSrc, large, size, onClick }) {
           loop
           playsInline
           preload="auto"
-          data-rvmf-animatable="true"
+          autoPlay={!gifHoverAnimate}
+          data-rvmf-animatable={gifHoverAnimate ? 'true' : undefined}
           onLoadedData={() => setImgState('ok')}
           onError={() => setImgState('error')}
         />
