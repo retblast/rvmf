@@ -315,7 +315,7 @@ function attachmentAspect(attachment) {
 // until the browser has actually painted the image — in direct mode
 // the <img> starts loading immediately, so the hook's loading flag
 // alone can't drive this.
-function ImageMedia({ attachment, description, showImg, imgSrc, imgLoading, imgError, clientMode, onOpenLightbox }) {
+function ImageMedia({ attachment, instanceUrl, token, description, showImg, imgSrc, imgLoading, imgError, clientMode, onOpenLightbox }) {
   const [imgReady, setImgReady] = useState(false)
   const aspectRatio = attachmentAspect(attachment)
   const showPlaceholder = Boolean(attachment.blurhash) && !(clientMode ? !imgLoading : imgReady)
@@ -340,6 +340,14 @@ function ImageMedia({ attachment, description, showImg, imgSrc, imgLoading, imgE
           download={filenameForAttachment(attachment, attachment.meta?.mime_type || null)}
           alt={description || ''}
           onLoad={() => setImgReady(true)}
+          onContextMenu={(e) => {
+            // The thumbnail may display from a blob: URL when client media
+            // fetching is on — browsers ignore the download attribute for
+            // blob: sources, so intercept and save with the real name.
+            e.preventDefault()
+            const blobUrl = imgSrc.startsWith('blob:') ? imgSrc : null
+            downloadAttachment(attachment, { instanceUrl, token }, blobUrl).catch(() => {})
+          }}
         />
       )}
       {!attachment.blurhash && imgLoading && <div className="media-loading-overlay"><div className="media-spinner" /></div>}
@@ -459,6 +467,8 @@ function MediaItem({ attachment, onOpenLightbox }) {
         imgError={imgError}
         clientMode={Boolean(fetchClientMedia)}
         onOpenLightbox={onOpenLightbox}
+        instanceUrl={instanceUrl}
+        token={token}
       />
     )
   }
@@ -641,7 +651,8 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
   async function handleDownload() {
     if (dlState === 'busy') return
     setDlState('busy')
-    const ok = await downloadAttachment(attachment, { instanceUrl, token })
+    const blobUrl = displaySrc.startsWith('blob:') ? displaySrc : null
+    const ok = await downloadAttachment(attachment, { instanceUrl, token }, blobUrl)
     setDlState(ok ? 'done' : 'idle')
     setTimeout(() => setDlState('idle'), 1200)
   }
@@ -687,6 +698,15 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
             download={filenameForAttachment(attachment, attachment.meta?.mime_type || null)}
             alt={attachment.description || ''}
             onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => {
+              // The displayed <img> may load from a blob: URL when client
+              // media-fetching is on.  Browsers ignore the download
+              // attribute for blob: sources, so intercept the context menu
+              // and save programmatically with the real filename.
+              e.preventDefault()
+              const blobUrl = displaySrc.startsWith('blob:') ? displaySrc : null
+              downloadAttachment(attachment, { instanceUrl, token }, blobUrl).catch(() => {})
+            }}
           />
           {attachment.description && (
             <div className="lightbox-caption" onClick={(e) => e.stopPropagation()}>

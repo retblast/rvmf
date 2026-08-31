@@ -168,4 +168,30 @@ describe('downloadAttachment', () => {
 
     expect(ok).toBe(false)
   })
+
+  it('uses an existing blob URL without re-fetching', async () => {
+    installDownloadDom()
+    const blob = new Blob(['bytes'], { type: 'image/jpeg' })
+    const blobUrl = 'blob:http://localhost/test'
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: () => 'image/jpeg' },
+        blob: async () => blob,
+      })
+      // No more calls expected — existingBlobUrl should short-circuit.
+
+    const ok = await downloadAttachment(
+      { id: '99', url: 'https://inst.example/pic.jpg' },
+      { instanceUrl: 'https://inst.example', token: 'abc' },
+      blobUrl
+    )
+
+    expect(ok).toBe(true)
+    // Only the blob URL fetch should have happened; the normal media fetch
+    // pipeline should not have been invoked.
+    expect(fetchMock.mock.calls.length).toBe(1)
+    expect(String(fetchMock.mock.calls[0][0])).toBe(blobUrl)
+  })
 })

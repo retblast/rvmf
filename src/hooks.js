@@ -211,7 +211,7 @@ function filenameBaseFromAttachment(att) {
   for (const name of candidates) {
     if (name && typeof name === 'string' && name.trim().length > 0) {
       // Strip path components and null-bytes that could break the save dialog.
-      return name.split('/').pop().replace(/\x00/g, '');
+      return name.split('/').pop().split('\x00').join('');
     }
   }
   return null;
@@ -245,25 +245,40 @@ export function filenameForAttachment(att, contentType) {
   return `${fallback}.${ext}`
 }
 
-// Save a single attachment to disk. Returns true on success, false if every
-// candidate URL failed (unreachable, timeout, or non-media body).
-export async function downloadAttachment(att, { instanceUrl, token }) {
+// Trigger a save dialog for a blob with a specific filename.  Used when
+// we already have the Blob object (e.g. from a client-side media fetch)
+// and just need to attach the right name to the save.
+function saveBlob(blob, filename) {
+  const blobUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = blobUrl
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 0)
+}
+
+// Save an attachment using the right filename, preferring any already-fetched
+// blob URL (avoids re-fetching client-side media) and falling back to the
+// normal URL fetch pipeline.  Returns true on success, false if every
+// candidate URL failed.
+export async function downloadAttachment(att, { instanceUrl, token }, existingBlobUrl = null) {
+  const name = filenameForAttachment(att, att.meta?.mime_type || null)
+  // Fast path: if the caller already has a blob URL, re-use those bytes.
+  if (existingBlobUrl) {
+    try {
+      const blob = await fetch(existingBlobUrl).then((r) => r.ok ? r.blob() : null)
+      if (blob) { saveBlob(blob, name); return true }
+    } catch { /* fall through to the fetch pipeline */ }
+  }
   for (const url of attachmentDownloadUrls(att)) {
     try {
       const media = await fetchDownloadableMedia(url, instanceUrl, token)
       if (!media) continue
-      const blobUrl = URL.createObjectURL(media.blob)
-      const link = document.createElement('a')
-      link.href = blobUrl
-      link.download = filenameForAttachment(att, media.contentType)
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      URL.revokeObjectURL(blobUrl)
+      saveBlob(media.blob, filenameForAttachment(att, media.contentType))
       return true
-    } catch {
-      // try the next candidate URL
-    }
+    } catch { /* try the next candidate URL */ }
   }
   return false
 }
