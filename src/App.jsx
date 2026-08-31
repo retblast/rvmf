@@ -57,7 +57,7 @@ import { MutedAccountsView } from './components/MutedAccountsView.jsx'
 import InstanceIcon from './components/InstanceIcon.jsx'
 import { applyOsAccent } from './lib/osAccent'
 import { storageGet, storageSet } from './lib/storage.js'
-import { PROVIDER_IDS, DEFAULT_PROVIDER, unloadProvider } from './lib/translate.js'
+import { PROVIDERS, PROVIDER_IDS, DEFAULT_PROVIDER, unloadProvider } from './lib/translate.js'
 import { GIF_LARGE_BYTES } from './lib/gif/convert.js'
 import { gifCacheClear, gifCacheSweep } from './lib/gif/cache.js'
 import { installGifHoverAnimator } from './lib/gif/hoverAnimator.js'
@@ -96,6 +96,13 @@ const NOTIF_POLICY_RULES = [
   ['for_private_mentions', 'From direct mentions'],
 ]
 
+// Hard cap on in-memory timeline rows. The server paginates the home feed
+// forever, and an unbounded array would quietly grow this session's heap
+// the whole time the tab is open. ~400 rows is well past any realistic
+// scrolling session (infinite scroll fetches older pages on demand), so
+// the array is trimmed to the newest TIMELINE_MAX_ROWS whenever it grows.
+const TIMELINE_MAX_ROWS = 400
+
 export default function App() {
   const { session, beginLogin, signup, logout, authError, completingLogin } = useMitraSession()
   const tier = useLayoutTier()
@@ -103,6 +110,11 @@ export default function App() {
   const refreshRef = useRef(() => {})
   const [view, setView] = useState('home')
   const [timeline, setTimeline] = useState([])
+  // Pagination cursor for the home feed, tracked separately from the array:
+  // with TIMELINE_MAX_ROWS trimming scroll-spam rows, the array's tail is
+  // "the oldest row still in memory", not the true fetch boundary — reading
+  // the cursor from the array would re-request the same page forever.
+  const lastStatusIdRef = useRef(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [composing, setComposing] = useState(false)
@@ -173,6 +185,21 @@ export default function App() {
     const rect = e?.currentTarget?.getBoundingClientRect()
     setSettingsAnchor(rect ? { top: rect.top, bottom: rect.bottom, left: rect.left } : null)
     setSettingsOpen(true)
+  }
+
+  // Anchor the settings panel to its trigger while capping its height to the
+  // space that actually fits the viewport; the panel scrolls internally when
+  // the content is taller than that.
+  function settingsMenuStyle() {
+    if (!settingsAnchor) return undefined
+    const fromBottom = settingsAnchor.bottom + 460 > window.innerHeight
+    const space = (fromBottom ? settingsAnchor.top : window.innerHeight - settingsAnchor.bottom) - 14
+    return {
+      top: fromBottom ? undefined : settingsAnchor.bottom + 6,
+      bottom: fromBottom ? window.innerHeight - settingsAnchor.top + 6 : undefined,
+      maxHeight: Math.max(160, space),
+      left: Math.max(8, Math.min(settingsAnchor.left, window.innerWidth - 340)),
+    }
   }
   const [clientName, setClientNameState] = useState(() => mitra.getClientName())
   const [notifPolicy, setNotifPolicy] = useState(null)
@@ -423,7 +450,8 @@ export default function App() {
     setHasMore(true)
     try {
       const statuses = await mitra.fetchHomeTimeline(session.instanceUrl, session.token)
-      setTimeline(statuses)
+      setTimeline(statuses.slice(0, TIMELINE_MAX_ROWS))
+      lastStatusIdRef.current = statuses[statuses.length - 1]?.id || null
       // Sync the home read marker to the newest post so other clients
       // (and future sessions) can resume from here.
       if (statuses[0]?.id) {
@@ -442,17 +470,18 @@ export default function App() {
     if (!session || loadingMore || !hasMore) return
     setLoadingMore(true)
     try {
-      const lastId = timeline[timeline.length - 1]?.id
+      const lastId = lastStatusIdRef.current
       if (!lastId) return
       const statuses = await mitra.fetchHomeTimeline(session.instanceUrl, session.token, { max_id: lastId })
-      setTimeline((prev) => [...prev, ...statuses])
+      setTimeline((prev) => [...prev, ...statuses].slice(0, TIMELINE_MAX_ROWS))
+      if (statuses.length > 0) lastStatusIdRef.current = statuses[statuses.length - 1].id || null
       if (statuses.length < 10) setHasMore(false)
     } catch {
       // silently fail — user can scroll again to retry
     } finally {
       setLoadingMore(false)
     }
-  }, [session, loadingMore, hasMore, timeline])
+  }, [session, loadingMore, hasMore])
 
   useEffect(() => {
     loadTimeline()
@@ -898,6 +927,13 @@ export default function App() {
 
   async function respondFollowRequest(accountId, action) {
     await mitra.respondFollowRequest(session.instanceUrl, session.token, accountId, action)
+    // A handled request must stop offering Accept/Reject immediately — the
+    // next 5s notification poll would catch it, but the action should take
+    // effect now. (This is why the poll no longer runs this fetch itself.)
+    mitra
+      .fetchAllPendingFollowAccountIds(session.instanceUrl, session.token)
+      .then((pending) => setPendingFollowIds(pending))
+      .catch(() => {})
   }
 
   async function handleDeleteStatus(statusId) {
@@ -1013,7 +1049,7 @@ export default function App() {
   }
 
   function prependPost(post) {
-    setTimeline((prev) => [post, ...prev])
+    setTimeline((prev) => [post, ...prev].slice(0, TIMELINE_MAX_ROWS))
   }
 
   // Fetches the ENTIRE descendant tree for `status` (not just its direct
@@ -1222,12 +1258,6 @@ export default function App() {
         .fetchNotifications(session.instanceUrl, session.token)
         .then((items) => setNotifications(items))
         .catch(() => {})
-      // Keep the set of still-pending follow requests in sync too, so a
-      // request handled elsewhere stops offering Accept/Reject live.
-      mitra
-        .fetchAllPendingFollowAccountIds(session.instanceUrl, session.token)
-        .then((pending) => setPendingFollowIds(pending))
-        .catch(() => {})
     }, 5000)
     return () => clearInterval(interval)
   }, [view, tier, session])
@@ -1302,6 +1332,10 @@ export default function App() {
 
   function closeSidePanel() {
     setSidePanel(null)
+    // Drop the loaded reply trees: an unbound map of every thread ever
+    // opened would grow this session's heap forever. Threads always
+    // force-refetch on open, so nothing is lost by clearing.
+    setReplyStates({})
   }
 
   // Favouriting/boosting a reply needs to update that exact node wherever
@@ -2009,15 +2043,7 @@ export default function App() {
                 <div className="settings-menu-backdrop" onClick={() => setSettingsOpen(false)} />
                 <div
                   className={`settings-menu${settingsAnchor ? '' : ' centered'}`}
-                  style={settingsAnchor ? {
-                    top: settingsAnchor.bottom + 460 > window.innerHeight
-                      ? undefined
-                      : settingsAnchor.bottom + 6,
-                    bottom: settingsAnchor.bottom + 460 > window.innerHeight
-                      ? window.innerHeight - settingsAnchor.top + 6
-                      : undefined,
-                    left: Math.max(8, Math.min(settingsAnchor.left, window.innerWidth - 340)),
-                  } : undefined}
+                  style={settingsMenuStyle()}
                 >
                   <div className="settings-group">
                     <span className="settings-menu-heading">Appearance</span>
@@ -2135,11 +2161,7 @@ export default function App() {
                                 checked={translationProvider === id}
                                 onChange={() => handleTranslationProvider(id)}
                               />
-                              <span>
-                                {id === 'nllb-wasm'
-                                  ? 'CPU (NLLB) — faster on most devices'
-                                  : 'GPU (TranslateGemma) — higher quality, needs WebGPU'}
-                              </span>
+                              <span>{PROVIDERS[id].uiLabel}</span>
                             </label>
                           ))}
                         </span>
@@ -2214,9 +2236,9 @@ export default function App() {
                   never sent to a server.
                 </p>
                 <p className="confirm-note">
-                  The default uses the fast, lightweight NLLB model (~1 GB,
-                  CPU). You can switch to the higher-quality TranslateGemma
-                  model (WebGPU) from the Translation settings. Models download
+                  The default uses the fast, lightweight Qwen model (~600 MB,
+                  CPU). You can switch to the higher-quality Gemma 4 model
+                  (WebGPU) from the Translation settings. Models download
                   once, then stay cached.
                 </p>
               </ConfirmDialog>

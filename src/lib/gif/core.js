@@ -5,7 +5,7 @@
 // thread only touches the cheap gate helpers (isGifUrl, detectGifBytes,
 // videoEncodingAvailable) and the constants.
 import { parseGIF, decompressFrames } from 'gifuct-js'
-import { Muxer, ArrayBufferTarget } from 'webm-muxer'
+import { Muxer, ArrayBufferTarget, FileSystemWritableFileStreamTarget } from 'webm-muxer'
 
 // Below this size animated GIFs are cheaper to decode than they are to
 // encode (custom emoji sit just above this, so keep it low); above this
@@ -14,9 +14,32 @@ import { Muxer, ArrayBufferTarget } from 'webm-muxer'
 export const GIF_MIN_BYTES = 1024
 export const GIF_LARGE_BYTES = 5 * 1024 * 1024
 
+// Absolute ceiling on the *input* GIF, applied even when the user widened
+// the "large" gate. Bounds main-thread transient RAM (fetchGifBytes holds
+// the bytes once before transferring them to the worker) and CPU time —
+// a GIF any bigger is almost certainly mislabeled content. This is a
+// sanity bound, not the real memory limiter (that's GIF_MAX_PATCH_BYTES).
+export const GIF_MAX_INPUT_BYTES = 25 * 1024 * 1024
+
+// Safety valve: the *real* memory limiter. gifuct's decompressFrames()
+// materializes every frame's RGBA patch at once (each patch is
+// dims.width * dims.height * 4 bytes), so a 200-frame full-frame GIF can
+// spike to hundreds of MB in the worker. Computed from parseGIF's frame
+// metadata BEFORE decompression, so a monster never even gets allocated.
+// 120 MB covers normal shareable GIFs (a 640x480 100-frame ≈ 123 MB) and
+// leaves headroom inside a short-lived worker we terminate afterwards.
+export const GIF_MAX_PATCH_BYTES = 120 * 1024 * 1024
+
 // Safety valve: total composed pixels across all frames. Guards against
-// multi-hundred-frame monsters pinning the worker's memory.
+// multi-hundred-frame monsters pinning the worker's CPU time, mirroring
+// the patch gate from the RAM side (an all-full-frame GIF hits both).
 export const GIF_MAX_PIXEL_WORK = 300 * 1000 * 1000
+
+// Estimated encoded-output ceiling: bitrate (capped at 8 Mbps) times
+// duration. ~1 minute of footage at the encoder's ceiling. Stops "GIFs"
+// that are really videos from chewing disk quota (and, on the in-memory
+// fallback path, a whole output buffer in the worker).
+export const GIF_MAX_OUTPUT_ESTIMATE_BYTES = 96 * 1024 * 1024
 
 // Keyframe every N frames so scrubbing/seeking stays cheap.
 export const GIF_KEYFRAME_INTERVAL = 30
@@ -250,14 +273,12 @@ export function flattenAlphaFrame(data, r = 255, g = 255, b = 255) {
   return data
 }
 
-// Encodes a composed frame source (as produced by createGifFrameSource)
-// into a WebM blob. `deps` defaults to the browser globals; tests inject
-// fakes for VideoEncoder/VideoFrame/ImageData and the muxer.
-export async function encodeFramesToWebm(source, deps) {
-  const D = deps || {
+// Browser globals the encode loop needs, resolved once. OffscreenCanvas
+// is worker-safe; a document canvas is the main-thread fallback when
+// something ever runs the pipeline outside a worker.
+function defaultDeps() {
+  return {
     ImageDataCtor: ImageData,
-    // OffscreenCanvas is worker-safe; a document canvas is the main-thread
-    // fallback when something ever runs the pipeline outside a worker.
     CanvasCtor: typeof OffscreenCanvas !== 'undefined'
       ? OffscreenCanvas
       : typeof document !== 'undefined'
@@ -267,7 +288,14 @@ export async function encodeFramesToWebm(source, deps) {
     VideoFrame: typeof globalThis !== 'undefined' ? globalThis.VideoFrame : undefined,
     MuxerCtor: Muxer,
     ArrayBufferTarget,
+    FileSystemWritableFileStreamTarget,
   }
+}
+
+// The actual encode loop, shared by the in-memory (blob) and on-disk
+// (OPFS) paths. `buildMuxer` wires the target so the exact same frames
+// can land in an ArrayBuffer or stream to a file.
+async function encodeFramesToContainer(source, D, buildMuxer) {
   if (source.frameCount === 0) throw new GifConversionError('empty', 'GIF has no drawable frames')
   // Transparent GIFs are allowed through: their frames are flattened onto
   // a background in the encode loop below (see flattenAlphaFrame).
@@ -282,19 +310,20 @@ export async function encodeFramesToWebm(source, deps) {
   const totalDelayMs = source.delayMs.reduce((a, b) => a + b, 0)
   const bitrate = bitrateFor(width, height, source.frameCount, totalDelayMs)
 
+  // Reject a degenerate output before the first frame encodes: at the
+  // bitrate ceiling (~8 Mbps) this is just bitrate * duration / 8.
+  // Catches "GIFs" that are really multi-minute videos.
+  const estimatedBytes = Math.ceil((bitrate * totalDelayMs) / 8000)
+  if (estimatedBytes > GIF_MAX_OUTPUT_ESTIMATE_BYTES) {
+    throw new GifConversionError('too-large', 'Converted video would be too large')
+  }
+
   const codec = await pickCodec(D.VideoEncoder, { width, height, bitrate, framerate: 24 })
   if (!codec) throw new GifConversionError('unsupported', 'No AV1/VP9 encoding support')
 
-  const muxer = new D.MuxerCtor({
-    target: new D.ArrayBufferTarget(),
-    video: {
-      // Matroska/WebM CodecID (V_AV1 / V_VP9), not the RFC codec string.
-      codec: codec === GIF_CODEC_VP9 ? 'V_VP9' : 'V_AV1',
-      width,
-      height,
-      frameRate: source.frameCount > 0 && totalDelayMs > 0 ? (source.frameCount * 1000) / totalDelayMs : undefined,
-    },
-  })
+  const muxer = buildMuxer(codec, width, height, source.frameCount > 0 && totalDelayMs > 0
+    ? (source.frameCount * 1000) / totalDelayMs
+    : undefined)
 
   let encoderError = null
   const encoder = new D.VideoEncoder({
@@ -343,6 +372,26 @@ export async function encodeFramesToWebm(source, deps) {
   encoder.close()
 
   muxer.finalize()
+  return { muxer, codec, width: source.width, height: source.height, frameCount: source.frameCount, durationMs: totalDelayMs }
+}
+
+// Encodes a composed frame source (as produced by createGifFrameSource)
+// into a WebM blob. `deps` defaults to the browser globals; tests inject
+// fakes for VideoEncoder/VideoFrame/ImageData and the muxer.
+export async function encodeFramesToWebm(source, deps) {
+  const D = deps || defaultDeps()
+  const { muxer, codec, width, height, frameCount, durationMs } = await encodeFramesToContainer(source, D, (codec, width, height, frameRate) =>
+    new D.MuxerCtor({
+      target: new D.ArrayBufferTarget(),
+      video: {
+        // Matroska/WebM CodecID (V_AV1 / V_VP9), not the RFC codec string.
+        codec: codec === GIF_CODEC_VP9 ? 'V_VP9' : 'V_AV1',
+        width,
+        height,
+        frameRate,
+      },
+    })
+  )
   const buffer = muxer.target.buffer
   if (!buffer || buffer.byteLength === 0) {
     throw new GifConversionError('encode', 'muxer produced no output')
@@ -350,17 +399,53 @@ export async function encodeFramesToWebm(source, deps) {
   return {
     blob: new Blob([buffer], { type: 'video/webm' }),
     codec,
-    width: source.width,
-    height: source.height,
-    frameCount: source.frameCount,
-    durationMs: totalDelayMs,
+    width,
+    height,
+    frameCount,
+    durationMs,
   }
 }
 
-// Full pipeline: GIF bytes -> parsed frames -> composed source -> WebM.
+// Same encode loop, but the muxer streams straight into a
+// FileSystemWritableFileStream (an OPFS file) so no output buffer ever
+// exists — "files way larger than the available RAM" territory. The
+// caller owns the writable: it created it, must close it after we return,
+// and reads the final size from the file handle. `deps.fsWritable` is the
+// stream; tests inject fakes for everything else.
+export async function encodeFramesToWebmFile(source, deps) {
+  const D = deps || defaultDeps()
+  if (!D.fsWritable || typeof D.FileSystemWritableFileStreamTarget !== 'function') {
+    throw new GifConversionError('opfs-unavailable', 'File system write target not available')
+  }
+  const writable = D.fsWritable
+  const { codec, width, height, frameCount, durationMs } = await encodeFramesToContainer(source, D, (codec, width, height, frameRate) =>
+    new D.MuxerCtor({
+      target: new D.FileSystemWritableFileStreamTarget(writable),
+      video: {
+        // Matroska/WebM CodecID (V_AV1 / V_VP9), not the RFC codec string.
+        codec: codec === GIF_CODEC_VP9 ? 'V_VP9' : 'V_AV1',
+        width,
+        height,
+        frameRate,
+      },
+    })
+  )
+  return { codec, width, height, frameCount, durationMs }
+}
+
+// Full pipeline: GIF bytes -> parsed frames -> composed source -> WebM
+// (in-memory blob; the OPFS path is gifBytesToWebmFile).
 export function gifBytesToWebm(arrayBuffer, deps) {
   const source = gifBytesToFrameSource(arrayBuffer)
   return encodeFramesToWebm(source, deps)
+}
+
+// Full pipeline ending in an OPFS file: GIF bytes -> composed source ->
+// WebM streamed into `fsWritable`. See encodeFramesToWebmFile for the
+// ownership contract (caller closes the writable, reads the size).
+export function gifBytesToWebmFile(arrayBuffer, fsWritable, deps) {
+  const source = gifBytesToFrameSource(arrayBuffer)
+  return encodeFramesToWebmFile(source, { ...(deps || defaultDeps()), fsWritable })
 }
 
 // Parse + compose without encoding. Exported for tests and for any caller
@@ -368,5 +453,16 @@ export function gifBytesToWebm(arrayBuffer, deps) {
 export function gifBytesToFrameSource(arrayBuffer) {
   const parsed = parseGIF(arrayBuffer)
   if (!parsed?.lsd) throw new GifConversionError('invalid', 'not a GIF')
+  // Sum the frames' rect areas BEFORE decompressFrames runs: gifuct only
+  // allocates pixel patches during decompression, so this is the cheapest
+  // possible point to reject a RAM monster (frame dims live in the parsed
+  // schema; the patches they'd become are width*height*4 bytes each).
+  const patchBytes = (parsed.frames || []).reduce((sum, f) => {
+    const d = f?.image?.descriptor
+    return sum + (d?.width || 0) * (d?.height || 0) * 4
+  }, 0)
+  if (patchBytes > GIF_MAX_PATCH_BYTES) {
+    throw new GifConversionError('too-large', 'GIF animation is too large to convert')
+  }
   return createGifFrameSource(parsed)
 }

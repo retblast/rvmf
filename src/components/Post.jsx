@@ -23,13 +23,8 @@ import {
 import * as mitra from '../lib/mitra'
 import { PickerContext, AppSettingsContext, useEscapeKey, showToast, downloadAllMedia } from '../hooks'
 import { formatRelativeTime, htmlToPlainText, processStatusContent, renderEmojiText, renderPlainText } from '../lib/render.jsx'
-import { translateText } from '../lib/translate'
-import {
-  canonicalizeLanguage,
-  canonicalLangName,
-  canonicalLanguages,
-  detectScriptLanguage,
-} from '../lib/languages'
+import { translateText, translationPressureNotice } from '../lib/translate'
+import { canonicalizeLanguage, canonicalLangName } from '../lib/languages'
 import { Avatar, MediaGrid, ProxiedImg } from './Media.jsx'
 import { GifVideo } from './GifVideo.jsx'
 import { COMMON_EMOJI } from './Emoji.jsx'
@@ -63,10 +58,12 @@ function userLanguage() {
 // On-device translation state for one post. Fediverse language tags are often
 // missing or wrong, so the translation *button* is always available (once the
 // feature is enabled) rather than gated on a language-mismatch heuristic — the
-// user decides what to translate. Translation still targets the user's browser
-// language and, when the post carries a resolvable source tag, uses it; the
-// model (~3 GB) is downloaded and the request runs fully client-side on first
-// use — post text never leaves the device.
+// user decides what to translate. Translation targets the user's browser
+// language and needs NO source language: both on-device translators are
+// instruction models that read the source from the text itself, so a missing
+// or wrong language tag can't corrupt the output. The model is downloaded and
+// the request runs fully client-side on first use — post text never leaves
+// the device.
 // Exported so unit tests can exercise the toggle behavior directly.
 export function useTranslation(status) {
   // The feature is opt-in via a settings toggle (default off). Fail closed:
@@ -76,46 +73,35 @@ export function useTranslation(status) {
   const browserLang = userLanguage()
   const targetCode = canonicalizeLanguage(browserLang) || 'en'
 
-  // phase: 'idle' | 'needs-source' | 'loading' | 'done' | 'error'
+  // phase: 'idle' | 'loading' | 'done' | 'error'
   const [phase, setPhase] = useState('idle')
   const [progress, setProgress] = useState(null) // null | { overall, file, ready }
   const [translated, setTranslated] = useState(null)
   const [error, setError] = useState(null)
   const [shown, setShown] = useState(false)
-  // A user-chosen source language, set via the picker. Takes precedence over
-  // the post's tag and the script guess so a wrong auto-fill can be corrected.
-  const [sourceOverride, setSourceOverride] = useState(null)
 
-  // Resolve the source language for this post: explicit user choice first,
-  // then the post's language tag, then a conservative script guess. The script
-  // guess / tag are only ever surfaced as a correctable choice, and when
-  // nothing resolves we enter 'needs-source' and ask the user. This is a
-  // canonical ISO id (`ja`) that each provider maps to its own model code.
-  const sourceCode =
-    sourceOverride ??
-    canonicalizeLanguage(status?.language) ??
-    detectScriptLanguage(htmlToPlainText(status?.content))
+  // The status language tag is only ever a cosmetic label ("Translated from
+  // Japanese"); it is not fed to the translator.
+  const sourceCode = canonicalizeLanguage(status?.language)
   const sourceLangName = canonicalLangName(sourceCode)
 
-  // Actually run the translation for a given source code, reporting progress.
-  async function runTranslate(code) {
+  // Actually run the translation, reporting download/inference progress.
+  async function runTranslate() {
     setPhase('loading')
     setProgress(null)
     setError(null)
     try {
-      // The 4 B parameter model only runs at a usable speed through the GPU.
-      // Turning on a clear WebGPU gate here is more honest than silently
-      // falling back to the CPU (which would take minutes per token).
-      if (typeof navigator !== 'undefined' && !navigator.gpu) {
-        throw new Error(
-          'On-device translation needs a WebGPU-capable browser ' +
-          '(Chrome/Edge, or Firefox with webgpu enabled).'
-        )
-      }
       const source = htmlToPlainText(status.content)
-      const result = await translateText(source, code, targetCode, setProgress, translationProvider)
+      const result = await translateText(source, sourceCode, targetCode, setProgress, translationProvider)
       setTranslated(result)
       setPhase('done')
+      // The model's heap stays reserved while the page is open; when the
+      // page is genuinely heavy, tell the user a reload hands it back.
+      // Best-effort — the notice must never fail a translation.
+      try {
+        const msg = await translationPressureNotice()
+        if (msg) showToast(msg)
+      } catch { /* notice is optional */ }
     } catch (err) {
       console.error(err)
       setError(String(err?.message || err))
@@ -132,19 +118,7 @@ export function useTranslation(status) {
     setShown(true)
     if (phase === 'loading') return
     if (phase === 'done') return
-    if (!sourceCode) {
-      setPhase('needs-source')
-      return
-    }
-    await runTranslate(sourceCode)
-  }
-
-  // Called when the user picks a source language. Re-runs translation so a
-  // wrong auto-fill (or a bad/absent tag) is corrected in place.
-  function changeSource(code) {
-    if (!code) return
-    setSourceOverride(code)
-    if (shown && code !== sourceCode) runTranslate(code)
+    await runTranslate()
   }
 
   return {
@@ -157,7 +131,6 @@ export function useTranslation(status) {
     translated,
     error,
     toggle,
-    changeSource,
   }
 }
 
@@ -177,35 +150,12 @@ function TranslateToggleButton({ active, disabled, onClick }) {
   )
 }
 
-// A compact `<select>` of the model's supported languages, used both to
-// correct a wrong/absent auto-detected source and to kick off translation when
-// no source could be detected. The post's tag and script guess are only ever
-// surfaced through this control — never trusted silently.
-function SourceLanguageSelect({ value, disabled, onChange }) {
-  return (
-    <select
-      className="post-translation-source"
-      value={value || ''}
-      disabled={disabled}
-      aria-label="Source language"
-      title="Source language"
-      onClick={(e) => e.stopPropagation()}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      <option value="" disabled>Choose source language…</option>
-      {canonicalLanguages().map(({ code, label }) => (
-        <option key={code} value={code}>{label}</option>
-      ))}
-    </select>
-  )
-}
-
 // The translated view shown in place of the original text: a "Translated from
-// X" heading with a show-original ✕, the translated text, the progress bar
-// while the model downloads/runs, an inline error, or a source-language
-// picker when the post has no usable tag and no decisive script guess.
+// X" heading (when the post carries a language tag) with a show-original ✕,
+// the translated text, the progress bar while the model downloads/runs, or an
+// inline error.
 function TranslatedBody({ status, t }) {
-  const { sourceCode, sourceLangName, phase, progress, translated, error, toggle, changeSource } = t
+  const { sourceCode, sourceLangName, phase, progress, translated, error, toggle } = t
 
   if (phase === 'loading') {
     // A real progress bar: determinate while the weights download, then an
@@ -246,8 +196,8 @@ function TranslatedBody({ status, t }) {
         <>
           <div className="post-translation-head">
             <span className="post-translation-label">
-              <Languages size={13} /> Translated from {sourceLangName || 'unknown language'}
-              <SourceLanguageSelect value={sourceCode} onChange={changeSource} />
+              <Languages size={13} />
+              {sourceCode ? `Translated from ${sourceLangName}` : 'Translated'}
             </span>
             <button
               className="post-translation-close"
@@ -262,22 +212,6 @@ function TranslatedBody({ status, t }) {
             {renderPlainText(translated, status.mentions, status.emojis)}
           </p>
         </>
-      )}
-      {phase === 'needs-source' && (
-        <div className="post-translation-head">
-          <span className="post-translation-label">
-            <Languages size={13} /> Couldn't detect the source language — pick one:
-            <SourceLanguageSelect value={sourceCode} onChange={changeSource} />
-          </span>
-          <button
-            className="post-translation-close"
-            aria-label="Show original"
-            title="Show original"
-            onClick={(e) => { e.stopPropagation(); toggle() }}
-          >
-            <X size={13} />
-          </button>
-        </div>
       )}
       {phase === 'error' && (
         <div className="banner banner-error">{error}</div>

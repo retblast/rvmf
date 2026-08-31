@@ -11,17 +11,20 @@ import {
 } from './translate.js'
 
 // Mock the heavy Transformers.js module so these tests exercise our
-// orchestration (provider selection, language resolution, singleton, output
+// orchestration (provider selection, prompt building, singleton, output
 // parsing, garbage guard, timeout) without downloading a model or needing a GPU.
 const pipeline = vi.fn()
 const env = { allowLocalModels: true }
+const AutoProcessor = { from_pretrained: vi.fn() }
+const Gemma4ForConditionalGeneration = { from_pretrained: vi.fn() }
 vi.mock('@huggingface/transformers', () => ({
   pipeline: (...args) => pipeline(...args),
   env,
+  AutoProcessor,
+  Gemma4ForConditionalGeneration,
 }))
 
-const NLLB_OUT = (text) => [{ translation_text: text }]
-const GEMMA_OUT = (content) => [{ generated_text: [{ content }] }]
+const QWEN_OUT = (content) => [{ generated_text: [{ content }] }]
 
 function captureGen(returnValueFactory) {
   let genArgs
@@ -32,134 +35,225 @@ function captureGen(returnValueFactory) {
   return { gen, getArgs: () => genArgs }
 }
 
+// Arrange the class-level Gemma 4 API (AutoProcessor + model) so the runner
+// path can be exercised; returns the spied processor/model. The real
+// Processor is a callable (it proxies to `_call`), so the mock is a vi.fn
+// with the processor methods attached.
+function gemma4Ready({ decoded = 'こんにちは' } = {}) {
+  const processor = vi.fn(async () => ({ input_ids: { dims: [1, 8] } }))
+  processor.apply_chat_template = vi.fn(() => 'templated-prompt')
+  processor.batch_decode = vi.fn(() => [decoded])
+  processor.dispose = vi.fn()
+  const model = {
+    // Mock tensor: the runner slices off the prompt prefix (returning itself)
+    // and hands it to batch_decode.
+    generate: vi.fn(async () => {
+      const generated = { slice: vi.fn(() => generated) }
+      return generated
+    }),
+    dispose: vi.fn(),
+  }
+  AutoProcessor.from_pretrained.mockResolvedValue(processor)
+  Gemma4ForConditionalGeneration.from_pretrained.mockResolvedValue(model)
+  return { processor, model }
+}
+
+const flush = () => new Promise((r) => setTimeout(r, 0))
+
 beforeEach(() => {
   pipeline.mockReset()
+  AutoProcessor.from_pretrained.mockReset()
+  Gemma4ForConditionalGeneration.from_pretrained.mockReset()
   resetTranslator()
   setInferenceTimeoutMs(120_000)
   setUnloadTimeoutMs(UNLOAD_TIMEOUT_MS)
-  // The gemma provider gates on WebGPU; satisfy it in jsdom so those tests can run.
+  // The gemma4 provider gates on WebGPU; satisfy it in jsdom so those tests can run.
   Object.defineProperty(navigator, 'gpu', { configurable: true, value: {} })
 })
 
 afterEach(() => {
   vi.restoreAllMocks()
   // Cancel any pending idle-release timers so they can't leak into other tests,
-  // and drop cached pipelines so a scheduled dispose can't touch a later mock.
+  // and drop cached generators so a scheduled dispose can't touch a later mock.
   for (const id of PROVIDER_IDS) unloadProvider(id)
 })
 
 describe('provider selection', () => {
-  it('defaults to the CPU NLLB provider', () => {
-    expect(DEFAULT_PROVIDER).toBe('nllb-wasm')
+  it('defaults to the CPU Qwen provider', () => {
+    expect(DEFAULT_PROVIDER).toBe('qwen-cpu')
   })
 
   it('rejects an unknown provider', async () => {
-    await expect(translateText('hi', 'en', 'ja', undefined, 'nope'))
+    await expect(translateText('hi', 'ja', 'en', undefined, 'nope'))
       .rejects.toThrow(/Unknown translation provider/)
   })
 
-  it('rejects unsupported source or target languages without loading a model', async () => {
-    await expect(translateText('hi', 'xx', 'en')).rejects.toThrow(/source language/)
-    await expect(translateText('hi', 'en', 'xx')).rejects.toThrow(/target language/)
+  it('rejects an unsupported target language without loading a model', async () => {
+    await expect(translateText('hi', 'ja', 'xx')).rejects.toThrow(/target language/)
     expect(pipeline).not.toHaveBeenCalled()
+    expect(AutoProcessor.from_pretrained).not.toHaveBeenCalled()
   })
 })
 
-describe('NLLB (default)', () => {
-  it('builds the translation pipeline and parses translation_text', async () => {
-    const { gen, getArgs } = captureGen(() => NLLB_OUT('こんにちは'))
+describe('Qwen (CPU default)', () => {
+  it('builds the text-generation pipeline and parses the chat output', async () => {
+    const { gen, getArgs } = captureGen(() => QWEN_OUT('こんにちは'))
     pipeline.mockResolvedValue(gen)
 
-    const out = await translateText('hello', 'en', 'ja')
+    const out = await translateText('hello', 'ja', 'en')
     expect(out).toBe('こんにちは')
 
     expect(pipeline).toHaveBeenCalledTimes(1)
     const [task, modelId, options] = pipeline.mock.calls[0]
-    expect(task).toBe('translation')
-    expect(modelId).toBe('Xenova/nllb-200-distilled-600M')
+    expect(task).toBe('text-generation')
+    expect(modelId).toBe('onnx-community/Qwen3-0.6B-ONNX')
     expect(options.device).toBe('wasm')
-    // Quantized int8 weights that fit the WASM heap (fp32 bad_allocs), with
-    // the ORT graph optimizer dropped to 'basic' so the buggy
-    // MatMulNBits/DequantizeLinear "Missing required scale" fusion is skipped.
+    // int8 weights that fit the ~2 GB WASM heap.
     expect(options.dtype).toBe('q8')
-    expect(options.session_options.graphOptimizationLevel).toBe('basic')
 
-    const [text, opts] = getArgs()
-    expect(text).toBe('hello')
-    expect(opts.src_lang).toBe('eng_Latn')
-    expect(opts.tgt_lang).toBe('jpn_Jpan')
+    const [messages, opts] = getArgs()
+    expect(messages[0].role).toBe('system')
+    expect(messages[1].role).toBe('user')
+    expect(messages[1].content).toContain('Translate the following text into English.')
+    expect(messages[1].content).toContain('hello')
+    // Deterministic, faithful-output generation.
     expect(opts.max_new_tokens).toBe(384)
+    expect(opts.do_sample).toBe(false)
+    // Qwen3 thinks by default; the off-switch must ride in the pipeline's
+    // tokenizer kwargs (a plain top-level key is swallowed by model.generate).
+    expect(opts.tokenizer_encode_kwargs).toEqual({ enable_thinking: false })
   })
 
-  it('throws when the model returns no translation', async () => {
+  it('strips any reasoning channel that still comes back', async () => {
+    const { gen } = captureGen(() =>
+      QWEN_OUT('<|start_of_reasoning|>The user wants a greeting.\n<|end_of_reasoning|>こんにちは')
+    )
+    pipeline.mockResolvedValue(gen)
+
+    await expect(translateText('hello', 'ja', 'en')).resolves.toBe('こんにちは')
+  })
+
+  it('strips response-channel wrappers and a template hint echo', async () => {
+    const { gen } = captureGen(() =>
+      QWEN_OUT('thinking\n\nresponse\n\n<|start_of_response|>こんにちは<|end_of_response|>')
+    )
+    pipeline.mockResolvedValue(gen)
+
+    await expect(translateText('hello', 'ja', 'en')).resolves.toBe('こんにちは')
+  })
+
+  it('ignores the source language entirely (no model language codes in the prompt)', async () => {
+    const { gen } = captureGen(() => QWEN_OUT('ok'))
+    pipeline.mockResolvedValue(gen)
+
+    // An unsupported source tag used to abort NLLB/TranslateGemma; an
+    // instruction model reads the source from the text, so it must not matter.
+    await expect(translateText('hi', 'xx', 'en')).resolves.toBe('ok')
+  })
+
+  it('works without WebGPU', async () => {
+    Object.defineProperty(navigator, 'gpu', { configurable: true, value: undefined })
+    pipeline.mockResolvedValue(captureGen(() => QWEN_OUT('x')).gen)
+
+    await expect(translateText('a', 'ja', 'en')).resolves.toBe('x')
+  })
+
+  it('throws when the model returns no usable output', async () => {
     pipeline.mockImplementation(async () => captureGen(() => []).gen)
-    await expect(translateText('a', 'en', 'ja')).rejects.toThrow(/empty or unusable/)
-  })
-
-  it('shares a single pipeline instance across calls', async () => {
-    pipeline.mockImplementation(async () => captureGen(() => NLLB_OUT('x')).gen)
-    await translateText('a', 'en', 'ja')
-    await translateText('b', 'en', 'ja')
-    expect(pipeline).toHaveBeenCalledTimes(1) // cached, not reloaded
+    await expect(translateText('a', 'ja', 'en')).rejects.toThrow(/empty or unusable/)
   })
 })
 
-describe('TranslateGemma (optional GPU provider)', () => {
-  it('uses the chat template and parses generated_text content', async () => {
-    const { gen, getArgs } = captureGen(() => GEMMA_OUT('こんにちは'))
-    pipeline.mockResolvedValue(gen)
+describe('Gemma 4 (optional GPU provider)', () => {
+  it('loads the class-level processor + model, applies the chat template, and decodes', async () => {
+    const { processor, model } = gemma4Ready({ decoded: 'こんにちは' })
 
-    const out = await translateText('hello', 'en', 'ja', undefined, 'gemma-webgpu')
+    const out = await translateText('hello', 'ja', 'en', undefined, 'gemma4-webgpu')
     expect(out).toBe('こんにちは')
 
-    const [task, modelId, options] = pipeline.mock.calls[0]
-    expect(task).toBe('text-generation')
-    expect(modelId).toBe('onnx-community/translategemma-text-4b-it-ONNX')
-    expect(options.device).toBe('webgpu')
+    expect(AutoProcessor.from_pretrained).toHaveBeenCalledTimes(1)
+    expect(AutoProcessor.from_pretrained).toHaveBeenCalledWith(
+      'onnx-community/gemma-4-E2B-it-ONNX',
+      expect.objectContaining({ progress_callback: expect.any(Function) }),
+    )
+    expect(Gemma4ForConditionalGeneration.from_pretrained).toHaveBeenCalledTimes(1)
+    expect(Gemma4ForConditionalGeneration.from_pretrained).toHaveBeenCalledWith(
+      'onnx-community/gemma-4-E2B-it-ONNX',
+      expect.objectContaining({ device: 'webgpu', dtype: 'q4f16' }),
+    )
 
-    const [messages, opts] = getArgs()
-    const content = messages[0].content[0]
-    expect(content.source_lang_code).toBe('en')
-    expect(content.target_lang_code).toBe('ja_JP')
-    expect(content.text).toBe('hello')
-    expect(opts.max_new_tokens).toBe(384)
+    const messages = processor.apply_chat_template.mock.calls[0][0]
+    expect(messages[1].content).toContain('Translate the following text into English.')
+    expect(messages[1].content).toContain('hello')
+    expect(processor.apply_chat_template).toHaveBeenCalledWith(
+      expect.any(Array),
+      expect.objectContaining({ enable_thinking: false, add_generation_prompt: true }),
+    )
+    expect(processor).toHaveBeenCalledWith(
+      'templated-prompt',
+      null,
+      null,
+      expect.objectContaining({ add_special_tokens: false }),
+    )
+    expect(model.generate).toHaveBeenCalledWith(
+      expect.objectContaining({ do_sample: false, max_new_tokens: 384 }),
+    )
+    expect(processor.batch_decode).toHaveBeenCalledWith(expect.anything(), { skip_special_tokens: true })
   })
 
-  it('rejects when the GPU produces <unusedN> garbage (known WebGPU fp16 issue)', async () => {
-    const garbage = '<unused57>'.repeat(100)
-    pipeline.mockImplementation(async () => captureGen(() => GEMMA_OUT(garbage)).gen)
-    await expect(translateText('a', 'en', 'ja', undefined, 'gemma-webgpu'))
+  it('rejects without WebGPU instead of silently falling back to the CPU', async () => {
+    Object.defineProperty(navigator, 'gpu', { configurable: true, value: undefined })
+
+    await expect(translateText('a', 'ja', 'en', undefined, 'gemma4-webgpu'))
+      .rejects.toThrow(/WebGPU/)
+    expect(AutoProcessor.from_pretrained).not.toHaveBeenCalled()
+  })
+
+  it('rejects <unusedN> garbage (known WebGPU quant/overflow issue)', async () => {
+    gemma4Ready({ decoded: '<unused57>'.repeat(100) })
+
+    await expect(translateText('a', 'ja', 'en', undefined, 'gemma4-webgpu'))
       .rejects.toThrow(/garbled/)
+  })
+
+  it('unloadProvider disposes the model and processor', async () => {
+    const { processor, model } = gemma4Ready({ decoded: 'x' })
+    await translateText('a', 'ja', 'en', undefined, 'gemma4-webgpu')
+
+    unloadProvider('gemma4-webgpu')
+    await flush()
+    expect(model.dispose).toHaveBeenCalledTimes(1)
+    expect(processor.dispose).toHaveBeenCalledTimes(1)
   })
 })
 
 describe('progress relay', () => {
   it('relays aggregate progress and readiness as { overall, file, ready }', async () => {
     let progressCb
-    const { gen } = captureGen(() => NLLB_OUT('x'))
+    const { gen } = captureGen(() => QWEN_OUT('x'))
     pipeline.mockImplementation(async (_t, _m, opts) => {
       progressCb = opts.progress_callback
       return gen
     })
     const onProgress = vi.fn()
-    await translateText('a', 'en', 'ja', onProgress)
+    await translateText('a', 'ja', 'en', onProgress)
 
     progressCb({ status: 'progress_total', name: 'm', progress: 42, loaded: 420, total: 1000 })
     expect(onProgress).toHaveBeenLastCalledWith({ overall: 42, file: null, ready: false })
 
-    progressCb({ status: 'ready', task: 'translation', model: 'm' })
+    progressCb({ status: 'ready', task: 'text-generation', model: 'm' })
     expect(onProgress).toHaveBeenLastCalledWith({ overall: 100, file: null, ready: true })
   })
 
   it('falls back to per-file progress when no aggregate event fires', async () => {
     let progressCb
-    const { gen } = captureGen(() => NLLB_OUT('x'))
+    const { gen } = captureGen(() => QWEN_OUT('x'))
     pipeline.mockImplementation(async (_t, _m, opts) => {
       progressCb = opts.progress_callback
       return gen
     })
     const onProgress = vi.fn()
-    await translateText('a', 'en', 'ja', onProgress)
+    await translateText('a', 'ja', 'en', onProgress)
 
     progressCb({ status: 'progress', name: 'm', file: 'model.onnx', loaded: 250, total: 1000 })
     expect(onProgress).toHaveBeenLastCalledWith({ overall: 25, file: 'model.onnx', ready: false })
@@ -174,43 +268,46 @@ describe('watchdog timeout', () => {
     pipeline.mockImplementation(async () => run)
     setInferenceTimeoutMs(20)
 
-    await expect(translateText('a', 'en', 'ja')).rejects.toThrow(/timed out/)
+    await expect(translateText('a', 'ja', 'en')).rejects.toThrow(/timed out/)
   })
 })
 
-describe('cached pipelines are independent per provider', () => {
+describe('cached generators are independent per provider', () => {
   it('loads each provider once and reuses it', async () => {
-    // Return an output that both providers can parse into a valid string.
-    const both = () => [{ translation_text: 'x', generated_text: [{ content: 'x' }] }]
-    pipeline.mockImplementation(async () => captureGen(both).gen)
-    await translateText('a', 'en', 'ja')
-    await translateText('b', 'en', 'ja', undefined, 'gemma-webgpu')
-    await translateText('c', 'en', 'ja')
-    await translateText('d', 'en', 'ja', undefined, 'gemma-webgpu')
-    // Two distinct providers -> two loads, both cached after the first.
-    expect(pipeline).toHaveBeenCalledTimes(2)
+    pipeline.mockImplementation(async () => captureGen(() => QWEN_OUT('x')).gen)
+    gemma4Ready({ decoded: 'x' })
+
+    await translateText('a', 'ja', 'en')
+    await translateText('b', 'ja', 'en', undefined, 'gemma4-webgpu')
+    await translateText('c', 'ja', 'en')
+    await translateText('d', 'ja', 'en', undefined, 'gemma4-webgpu')
+
+    // Qwen: one pipeline load. Gemma 4: one processor + one model load.
+    expect(pipeline).toHaveBeenCalledTimes(1)
+    expect(AutoProcessor.from_pretrained).toHaveBeenCalledTimes(1)
+    expect(Gemma4ForConditionalGeneration.from_pretrained).toHaveBeenCalledTimes(1)
   })
 })
 
 describe('idle model release (unload)', () => {
-  // Build a pipeline whose callable also carries a `dispose` spy, so we can
+  // Build a generator whose callable also carries a `dispose` spy, so we can
   // assert Transformers.js's dispose hook is invoked on release.
   const disposably = () => {
     const dispose = vi.fn()
-    const gen = async () => NLLB_OUT('x')
+    const gen = async () => QWEN_OUT('x')
     gen.dispose = dispose
     return { gen, dispose }
   }
 
   it('unloadProvider disposes the model and lets the next call reload it', async () => {
     pipeline.mockImplementation(async () => disposably().gen)
-    await translateText('a', 'en', 'ja')
+    await translateText('a', 'ja', 'en')
     expect(pipeline).toHaveBeenCalledTimes(1)
 
-    unloadProvider('nllb-wasm')
+    unloadProvider('qwen-cpu')
 
-    // Cached pipeline was dropped, so the next translation re-creates it.
-    await translateText('b', 'en', 'ja')
+    // Cached generator was dropped, so the next translation re-creates it.
+    await translateText('b', 'ja', 'en')
     expect(pipeline).toHaveBeenCalledTimes(2)
   })
 
@@ -218,7 +315,7 @@ describe('idle model release (unload)', () => {
     const { gen, dispose } = disposably()
     pipeline.mockImplementation(async () => gen)
     setUnloadTimeoutMs(30)
-    await translateText('a', 'en', 'ja')
+    await translateText('a', 'ja', 'en')
     expect(dispose).not.toHaveBeenCalled()
 
     await new Promise((r) => setTimeout(r, 120)) // well past 30 ms with no activity
@@ -229,10 +326,10 @@ describe('idle model release (unload)', () => {
     const { gen, dispose } = disposably()
     pipeline.mockImplementation(async () => gen)
     setUnloadTimeoutMs(80)
-    await translateText('a', 'en', 'ja') // release scheduled ~t=80
+    await translateText('a', 'ja', 'en') // release scheduled ~t=80
 
     await new Promise((r) => setTimeout(r, 30))
-    await translateText('b', 'en', 'ja') // reschedules release ~t=30+80=110
+    await translateText('b', 'ja', 'en') // reschedules release ~t=30+80=110
 
     // Still within the rescheduled window -> not released yet.
     await new Promise((r) => setTimeout(r, 60)) // ~t=90 (90 < 110)

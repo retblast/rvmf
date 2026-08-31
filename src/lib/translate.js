@@ -1,49 +1,47 @@
 // On-device post translation, run entirely in the browser via Transformers.js +
-// ONNX Runtime. Two selectable providers:
+// ONNX Runtime. Two selectable providers, both *instruction* models that
+// translate "into {target}" without needing the source language:
 //
-//   - "nllb-wasm" (default): Xenova/nllb-200-distilled-600M on the CPU (WASM).
-//     Quantized int8 weights plus `graphOptimizationLevel: 'basic'` — small
-//     enough for the WASM heap (fp32 OOMs) and immune to the onnxruntime-web
-//     QDQ fusion regression that aborts session creation. Numerically safe on
-//     integrated GPUs/CPUs — the recommended path.
-//   - "gemma-webgpu": onnx-community/translategemma-text-4b-it-ONNX on WebGPU.
-//     Higher quality but ~3 GB and GPU-dependent; its fp16 WebGPU path is
-//     prone to a known ONNX Runtime overflow that yields "<unusedN>" garbage,
-//     so output is guarded and this is opt-in only.
+//   - "qwen-cpu" (default): onnx-community/Qwen3-0.6B-ONNX on the CPU (WASM).
+//     ~600 MB int8 weights — small enough for the ~2 GB WASM heap, no special
+//     browser APIs needed. Slower than NLLB was, but the model reads the source
+//     from the text, so wrong/missing language tags can no longer corrupt output.
+//   - "gemma4-webgpu": onnx-community/gemma-4-E2B-it-ONNX on WebGPU. Best
+//     quality (Gemma 4 E2B, 140+ languages) but ~3.4 GB and GPU-dependent.
+//     Loaded class-level (AutoProcessor + Gemma4ForConditionalGeneration)
+//     because the export is multimodal and transformers.js's 'any-to-any'
+//     pipeline expects image/audio inputs.
 //
-// Nothing is imported or downloaded unless the user actually translates, and
-// post text never leaves the device.
+// Because neither model is a controlled-source translator, there is no source
+// language detection, no source picker, and no per-provider language codes —
+// a post's language tag is only ever used as a cosmetic "Translated from …"
+// label. Nothing is imported or downloaded unless the user actually translates,
+// and post text never leaves the device.
 //
-// Privacy + licensing note: both models are *faithful translation* models.
-// They render the author's words rather than generating new content, and
-// stay within their respective terms of use (TranslateGemma: Gemma license;
-// NLLB: CC-BY-NC-4.0). Neither has a refusal/alignment layer, so edgy-but-legal
-// text is translated as-is; generating harmful content is outside their purpose
-// and terms and is not supported here.
+// Privacy + licensing note: both models are instruction-tuned LLMs used here
+// as *faithful translation* engines. They render the author's words rather
+// than generating new content, and both are under permissive terms (Gemma 4:
+// Apache-2.0; Qwen3: Apache-2.0).
 
-import { resolveLanguageCode } from './languages.js'
+import { canonicalizeLanguage, canonicalLangName } from './languages.js'
 
-const PROVIDERS = {
-  'nllb-wasm': {
-    label: 'CPU (NLLB)',
-    task: 'translation',
-    modelId: 'Xenova/nllb-200-distilled-600M',
+export const PROVIDERS = {
+  'qwen-cpu': {
+    label: 'CPU (Qwen)',
+    uiLabel: 'CPU (Qwen) — no source language needed',
+    task: 'text-generation',
+    modelId: 'onnx-community/Qwen3-0.6B-ONNX',
     device: 'wasm',
-    // Quantized int8 weights: fp32 doesn't fit the browser WASM heap (~2 GB)
-    // and aborts session creation with std::bad_alloc (ERROR_CODE 6). The
-    // repo's quantized "merged" file DID hit a separate onnxruntime-web QDQ
-    // fusion bug ("Missing required scale: ...weight_merged_0_scale"), so —
-    // alongside using q8 — we drop the ORT graph optimizer to 'basic' to stop
-    // that buggy TransposeDQWeightsForMatMulNBits pass from running at all.
-    // Small + reliable on the CPU, which is the point of this provider.
+    // int8 weights (~600 MB): quantized fp32 doesn't fit the WASM heap and
+    // aborts session creation with std::bad_alloc (ERROR_CODE 6). Small +
+    // reliable on the CPU, which is the point of this provider.
     dtype: 'q8',
-    session_options: { graphOptimizationLevel: 'basic' },
     requiresWebGPU: false,
   },
-  'gemma-webgpu': {
-    label: 'GPU (TranslateGemma)',
-    task: 'text-generation',
-    modelId: 'onnx-community/translategemma-text-4b-it-ONNX',
+  'gemma4-webgpu': {
+    label: 'GPU (Gemma 4)',
+    uiLabel: 'GPU (Gemma 4) — best quality, needs WebGPU',
+    modelId: 'onnx-community/gemma-4-E2B-it-ONNX',
     device: 'webgpu',
     dtype: 'q4f16',
     requiresWebGPU: true,
@@ -51,7 +49,7 @@ const PROVIDERS = {
 }
 
 export const PROVIDER_IDS = Object.keys(PROVIDERS)
-export const DEFAULT_PROVIDER = 'nllb-wasm'
+export const DEFAULT_PROVIDER = 'qwen-cpu'
 
 // Cap inference so a slow/stalled GPU can't spin forever on "Translating…".
 // Overridable in tests.
@@ -59,15 +57,59 @@ export const INFERENCE_TIMEOUT_MS = 120_000
 export let inferenceTimeoutMs = INFERENCE_TIMEOUT_MS
 export function setInferenceTimeoutMs(ms) { inferenceTimeoutMs = ms }
 
+// ---- Heap-pressure notice -------------------------------------------------
+// The model pipelines pin hundreds of MB to GBs of WASM/GPU heap for the
+// whole time the page is open. After a successful translation we check what
+// Chromium's memory API reports and, when the page is genuinely heavy, tell
+// the user that only a reload returns that memory. Best-effort: every
+// failure mode degrades to a quieter one-time hint, never an error.
+
+export const TRANSLATION_HEAP_HINT_KEY = 'rvmf-translation-heap-hint'
+// measureUserAgentSpecificMemory() lives behind a permission gesture or
+// cross-origin isolation; anything over ~600 MB of page footprint is the
+// model doing the heavy lifting, not the app.
+export const TRANSLATION_HEAP_WARN_MB = 600
+
+export function canMeasurePageMemory() {
+  return typeof performance !== 'undefined' &&
+    typeof performance.measureUserAgentSpecificMemory === 'function'
+}
+
+// Returns a user-facing message, or null when there's nothing worth saying.
+// Chromium: report the measured footprint when it clears the warning bar.
+// Anywhere else (or when measurement is denied): show the stated estimate
+// exactly once per browser, guarded by localStorage, so a user who can't
+// measure isn't nagged on every translation.
+export async function translationPressureNotice() {
+  if (canMeasurePageMemory()) {
+    try {
+      const entry = await performance.measureUserAgentSpecificMemory()
+      const mb = Math.round(entry.bytes / (1024 * 1024))
+      if (mb > TRANSLATION_HEAP_WARN_MB) {
+        return `Translation is using ~${mb.toLocaleString()} MB of this page's memory — normal for the on-device model, but only a reload returns it fully.`
+      }
+      // Measured and fine: say nothing (and don't fall through to the
+      // one-time hint — this browser can measure, so it doesn't need it).
+      return null
+    } catch {
+      // Measurement denied: fall through to the one-time hint.
+    }
+  }
+  if (typeof localStorage === 'undefined') return null
+  if (localStorage.getItem(TRANSLATION_HEAP_HINT_KEY)) return null
+  localStorage.setItem(TRANSLATION_HEAP_HINT_KEY, '1')
+  return "On-device translation keeps the model's memory (~1.3 GB) busy while this page is open — reloading returns it fully. (One-time note.)"
+}
+
 // Release the model after this long without a translation, so its (large)
-// memory — q8 NLLB ~1.3 GB+ in the WASM heap, or Gemma ~3 GB of VRAM — isn't
-// pinned for the whole page session. Overridable in tests.
+// memory — Qwen q8 ~1.3 GB+ in the WASM heap, or Gemma 4 ~3.4 GB of VRAM —
+// isn't pinned for the whole page session. Overridable in tests.
 export const UNLOAD_TIMEOUT_MS = 10_000
 export let unloadTimeoutMs = UNLOAD_TIMEOUT_MS
 export function setUnloadTimeoutMs(ms) { unloadTimeoutMs = ms }
 
-// One shared pipeline per provider — creating a second instance would re-download
-// weights. Concurrent translate() calls for a provider await the same load.
+// One shared generator per provider — creating a second instance would
+// re-download weights. Concurrent translate() calls await the same load.
 const pipelinePromises = {}
 
 // Idle-unload bookkeeping.
@@ -89,9 +131,10 @@ function scheduleUnload(provider) {
 }
 
 /**
- * Release a provider's loaded model: dispose its ONNX session and forget the
- * cached pipeline so the memory is reclaimed and the next translation reloads
- * it. Best-effort and re-entrant (safe to call repeatedly / while loading).
+ * Release a provider's loaded model: dispose its ONNX session(s) and forget
+ * the cached generator so the memory is reclaimed and the next translation
+ * reloads it. Best-effort and re-entrant (safe to call repeatedly / while
+ * loading).
  */
 export function unloadProvider(provider) {
   cancelUnload()
@@ -109,48 +152,93 @@ export function unloadProvider(provider) {
 }
 
 // Transformers.js calls the progress_callback many times; keep the callback
-// that should receive normalized progress here so a cached pipeline still
-// reports to the *current* caller (the per-create closure would otherwise
-// leak the first caller's callback forever).
+// that should receive normalized progress here so a cached generator still
+// reports to the *current* caller (a closure would otherwise leak the first
+// caller's callback forever).
 let activeOnProgress = null
 
 function exposeProgress(overall, file, ready) {
   activeOnProgress?.({ overall, file, ready })
 }
 
-function getPipeline(provider, onProgress) {
+function makeProgressHandler() {
+  let overall = null
+  let file = null
+  let ready = false
+  let hasAggregate = false
+  return (e) => {
+    if (e.status === 'progress_total') {
+      hasAggregate = true
+      overall = typeof e.progress === 'number'
+        ? e.progress
+        : (e.total ? Math.min(100, (e.loaded / e.total) * 100) : null)
+    } else if (e.status === 'progress') {
+      file = e.file
+      if (!hasAggregate && e.total) {
+        overall = Math.min(100, (e.loaded / e.total) * 100)
+      }
+    } else if (e.status === 'ready') {
+      ready = true
+      overall = 100
+    } else {
+      return
+    }
+    exposeProgress(overall, file, ready)
+  }
+}
+
+/**
+ * Load (and cache) the generator for a provider:
+ *
+ *   - Qwen: a standard transformers.js pipeline whose call takes chat
+ *     messages and resolves to `[{ generated_text: [{ content }] }]`.
+ *   - Gemma 4: a runner wrapping the class-level API (there's no usable
+ *     pipeline for this multimodal export) that applies the chat template,
+ *     generates text-only, decodes, and resolves to the translated string.
+ *
+ * Both are callable as `gen(messages, options)` and both carry a `dispose`
+ * so idle release can reclaim their memory.
+ */
+function getGenerator(provider, onProgress) {
   activeOnProgress = onProgress
   if (!pipelinePromises[provider]) {
     pipelinePromises[provider] = (async () => {
-      const { pipeline, env } = await import('@huggingface/transformers')
+      const { env, pipeline, AutoProcessor, Gemma4ForConditionalGeneration } =
+        await import('@huggingface/transformers')
       env.allowLocalModels = false
       const cfg = PROVIDERS[provider]
-      let overall = null
-      let file = null
-      let ready = false
-      let hasAggregate = false
-      const options = {
-        device: cfg.device,
-        progress_callback: (e) => {
-          if (e.status === 'progress_total') {
-            hasAggregate = true
-            overall = typeof e.progress === 'number'
-              ? e.progress
-              : (e.total ? Math.min(100, (e.loaded / e.total) * 100) : null)
-          } else if (e.status === 'progress') {
-            file = e.file
-            if (!hasAggregate && e.total) {
-              overall = Math.min(100, (e.loaded / e.total) * 100)
-            }
-          } else if (e.status === 'ready') {
-            ready = true
-            overall = 100
-          } else {
-            return
-          }
-          exposeProgress(overall, file, ready)
-        },
+      const progress_callback = makeProgressHandler()
+
+      if (provider === 'gemma4-webgpu') {
+        const processor = await AutoProcessor.from_pretrained(cfg.modelId, { progress_callback })
+        const model = await Gemma4ForConditionalGeneration.from_pretrained(cfg.modelId, {
+          dtype: cfg.dtype,
+          device: cfg.device,
+          progress_callback,
+        })
+        const runner = async (messages, opts) => {
+          const prompt = processor.apply_chat_template(messages, {
+            enable_thinking: false, // no reasoning preamble in translations
+            add_generation_prompt: true,
+          })
+          // Text-only inputs; the vision/audio encoders download but stay idle
+          // (~270 MB of the ~3.4 GB — unavoidable in the ONNX export).
+          const inputs = await processor(prompt, null, null, { add_special_tokens: false })
+          const outputs = await model.generate({ ...inputs, ...opts })
+          const decoded = processor.batch_decode(
+            outputs.slice(null, [inputs.input_ids.dims.at(-1), null]),
+            { skip_special_tokens: true },
+          )
+          return decoded[0] ?? ''
+        }
+        runner.dispose = () => {
+          try { model.dispose() } catch { /* already freed */ }
+          try { processor.dispose?.() } catch { /* already freed */ }
+        }
+        return runner
       }
+
+      const options = { device: cfg.device, progress_callback }
       if (cfg.dtype) options.dtype = cfg.dtype
       if (cfg.session_options) options.session_options = cfg.session_options
       return pipeline(cfg.task, cfg.modelId, options)
@@ -159,7 +247,7 @@ function getPipeline(provider, onProgress) {
   return pipelinePromises[provider]
 }
 
-// Reset a provider's cached pipeline (used by tests, and after a fatal load
+// Reset a provider's cached generator (used by tests, and after a fatal load
 // error so a follow-up attempt can retry). With no argument, resets all.
 export function resetTranslator(provider) {
   if (provider && provider in pipelinePromises) {
@@ -193,26 +281,53 @@ function withTimeout(promise, ms) {
   ])
 }
 
+// The system prompt for both instruct translators: a strict, faithful-machine
+// posture so the model never adds commentary, quotes, or extra scaffolding.
+const TRANSLATE_SYSTEM_PROMPT =
+  'You are a machine translation engine. Preserve the meaning, tone, and formatting ' +
+  'of the source. Output ONLY the translation — no explanations, no quotes, no commentary.'
+
+// Qwen3 can self-select a "reasoning" channel (training-default behavior).
+// Best answer: disable it via the model's chat-template flag — the ONNX
+// community template turns thinking off when `enable_thinking` is explicitly
+// false — which the text-generation pipeline only forwards if it rides in
+// `tokenizer_encode_kwargs` (any other option key is swallowed by
+// `model.generate`). That template switch is a *prompt-level hint* rather than
+// a hard gate, so this strip is the safety net for any reasoning text that
+// still comes back: channel markers, the template's literal `thinking /
+// response` hint echo, and response-channel wrappers.
+function stripThinking(translated) {
+  if (!translated) return translated
+  let s = translated
+  s = s.replace(/<\|\s*start_of_reasoning\s*\|>[\s\S]*?<\|\s*end_of_reasoning\s*\|>/g, '')
+  s = s.replace(/^\s*thinking\s*\n+\s*response\s*\n+/i, '')
+  s = s.replace(/<\|\s*start_of_response\s*\|>/g, '')
+  s = s.replace(/<\|\s*end_of_response\s*\|>/g, '')
+  return s.trim()
+}
+
 /**
- * Translate `text` from `source` to `target` (both raw BCP-47/ISO tags or
- * canonical ids) using the given provider (default: the CPU NLLB model).
+ * Translate `text` into `target` (a raw BCP-47/ISO tag or canonical id) using
+ * the given provider (default: the CPU Qwen model). `source` is accepted for
+ * API continuity but never used — both providers are instruction models that
+ * read the source language from the text itself, which is what makes a
+ * missing or wrong status language tag harmless instead of corrupting output.
  * Resolves to the translated string.
  *
  * `onProgress`, if given, receives `{ overall, file, ready }` while the model
  * loads. Throws if the provider/model isn't available, the download fails,
- * inference times out, the output is garbled, or either language isn't
- * supported.
+ * inference times out, the output is garbled, or the target isn't supported.
  */
 export async function translateText(text, source, target, onProgress, provider = DEFAULT_PROVIDER) {
   const cfg = PROVIDERS[provider]
   if (!cfg) throw new Error(`Unknown translation provider: ${provider}`)
 
-  const sourceCode = resolveLanguageCode(source, provider)
-  const targetCode = resolveLanguageCode(target, provider)
-  if (!sourceCode) throw new Error(`Unsupported source language: ${source}`)
+  // The target must be one of the app's supported languages so the prompt is
+  // deterministic (canonical id -> English name, e.g. "ja" -> "Japanese").
+  const targetCode = canonicalizeLanguage(target)
   if (!targetCode) throw new Error(`Unsupported target language: ${target}`)
 
-  // The 4B Gemma model only runs at a usable speed through the GPU. Turning on
+  // The Gemma 4 model only runs at a usable speed through the GPU. Turning on
   // a clear gate here is more honest than silently falling back to the CPU.
   if (cfg.requiresWebGPU && typeof navigator !== 'undefined' && !navigator.gpu) {
     throw new Error(
@@ -220,41 +335,37 @@ export async function translateText(text, source, target, onProgress, provider =
     )
   }
 
-  const gen = await getPipeline(provider, onProgress)
-  let output
-  if (provider === 'nllb-wasm') {
-    output = await withTimeout(
-      gen(text, { src_lang: sourceCode, tgt_lang: targetCode, max_new_tokens: 384 }),
-      inferenceTimeoutMs,
-    )
-  } else {
-    // TranslateGemma chat template.
-    output = await withTimeout(
-      gen(
-        [{
-          role: 'user',
-          content: [{
-            type: 'text',
-            source_lang_code: sourceCode,
-            target_lang_code: targetCode,
-            text,
-          }],
-        }],
-        { max_new_tokens: 384 },
-      ),
-      inferenceTimeoutMs,
-    )
-  }
+  const gen = await getGenerator(provider, onProgress)
+  const messages = [
+    { role: 'system', content: TRANSLATE_SYSTEM_PROMPT },
+    {
+      role: 'user',
+      content: `Translate the following text into ${canonicalLangName(targetCode)}.\n\n${text}`,
+    },
+  ]
+  const options = { max_new_tokens: 384, do_sample: false }
 
-  const translated = provider === 'nllb-wasm'
-    ? output?.[0]?.translation_text
-    : output?.[0]?.generated_text?.at?.(-1)?.content
+  let translated
+  if (provider === 'gemma4-webgpu') {
+    // The Gemma 4 runner decodes to a plain string itself.
+    translated = await withTimeout(gen(messages, options), inferenceTimeoutMs)
+  } else {
+    // Qwen3 thinks by default; the chat-template off-switch only works if the
+    // flag is forwarded through the pipeline's tokenizer kwargs (plain option
+    // keys are silently routed to model.generate and ignored). The strip then
+    // cleans any reasoning text the hint didn't prevent.
+    const output = await withTimeout(
+      gen(messages, { ...options, tokenizer_encode_kwargs: { enable_thinking: false } }),
+      inferenceTimeoutMs
+    )
+    translated = stripThinking(output?.[0]?.generated_text?.at?.(-1)?.content)
+  }
 
   try {
     if (typeof translated !== 'string' || isGarbage(text, translated)) {
       throw new Error(
-        provider === 'gemma-webgpu'
-          ? 'The GPU model produced garbled output (a known WebGPU fp16 issue). Try the CPU model instead.'
+        provider === 'gemma4-webgpu'
+          ? 'The GPU model produced garbled output (a known WebGPU issue). Try the CPU model instead.'
           : 'The translation model returned an empty or unusable result.'
       )
     }

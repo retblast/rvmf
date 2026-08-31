@@ -22,10 +22,14 @@ export function showToast(message) {
 
 // Blob URLs fetched through the dev proxy are cached so scrolling back
 // doesn't refetch them. Object URLs are never GC'd while alive, so the
-// cache is bounded: oldest entries are evicted and their blob URLs
-// revoked once the cap is exceeded.
+// cache is bounded by BOTH an entry count and a byte budget: the oldest
+// entries are revoked once either cap is exceeded. Displaying rows hold
+// a lease (see useClientMedia) so eviction skips blob URLs still in use
+// and only falls back to revoking a live URL when every entry is leased.
 const CLIENT_MEDIA_CACHE_MAX = 150
-const clientMediaCache = new Map()
+const CLIENT_MEDIA_CACHE_MAX_BYTES = 256 * 1024 * 1024
+const clientMediaCache = new Map() // url -> { blobUrl, size }
+const clientMediaLeases = new Map() // blobUrl -> active-mount count
 
 // Failed URLs are remembered briefly so scrolling doesn't re-request
 // them every time a row remounts — this is what keeps the dev console
@@ -68,7 +72,7 @@ function requestMediaBlob(fetchBlobFn, url) {
           return null
         }
         const blobUrl = URL.createObjectURL(blob)
-        cacheClientMedia(url, blobUrl)
+        cacheClientMedia(url, blobUrl, blob.size)
         return blobUrl
       } catch {
         markUrlFailed(url)
@@ -84,19 +88,59 @@ function requestMediaBlob(fetchBlobFn, url) {
 
 function getCachedClientMedia(url) {
   if (!clientMediaCache.has(url)) return undefined
-  const blobUrl = clientMediaCache.get(url)
+  const entry = clientMediaCache.get(url)
   clientMediaCache.delete(url)
-  clientMediaCache.set(url, blobUrl) // refresh insertion order (recency)
-  return blobUrl
+  clientMediaCache.set(url, entry) // refresh insertion order (recency)
+  return entry.blobUrl
 }
 
-function cacheClientMedia(url, blobUrl) {
-  if (clientMediaCache.has(url)) clientMediaCache.delete(url)
-  clientMediaCache.set(url, blobUrl)
-  while (clientMediaCache.size > CLIENT_MEDIA_CACHE_MAX) {
-    const oldestKey = clientMediaCache.keys().next().value
-    URL.revokeObjectURL(clientMediaCache.get(oldestKey))
-    clientMediaCache.delete(oldestKey)
+// ---- Lease helpers -------------------------------------------------------
+// Active consumers (mounted MediaItem rows) hold a lease on the blob URL
+// they're displaying. Eviction skips leased entries so a URL is never
+// revoked out from under a live <img>/<video>; only when the entire cache
+// is leased does the byte cap win over a live URL.
+
+function leaseClientMedia(blobUrl) {
+  clientMediaLeases.set(blobUrl, (clientMediaLeases.get(blobUrl) || 0) + 1)
+}
+
+function unleaseClientMedia(blobUrl) {
+  const count = clientMediaLeases.get(blobUrl)
+  if (!count) return
+  if (count <= 1) clientMediaLeases.delete(blobUrl)
+  else clientMediaLeases.set(blobUrl, count - 1)
+}
+
+function revokeClientMedia(url, entry) {
+  clientMediaCache.delete(url)
+  clientMediaLeases.delete(entry.blobUrl)
+  URL.revokeObjectURL(entry.blobUrl)
+}
+
+function cacheClientMedia(url, blobUrl, size) {
+  if (clientMediaCache.has(url)) {
+    // Same URL re-cached (shouldn't normally happen — requestMediaBlob
+    // short-circuits on hits — but a replaced blob must not leak).
+    const prev = clientMediaCache.get(url)
+    if (prev.blobUrl !== blobUrl) URL.revokeObjectURL(prev.blobUrl)
+    clientMediaCache.delete(url)
+  }
+  const entry = { blobUrl, size: size || 0 }
+  clientMediaCache.set(url, entry)
+  let totalBytes = 0
+  for (const e of clientMediaCache.values()) totalBytes += e.size
+  while (clientMediaCache.size > CLIENT_MEDIA_CACHE_MAX || totalBytes > CLIENT_MEDIA_CACHE_MAX_BYTES) {
+    if (clientMediaCache.size === 0) break
+    // Oldest entry nobody is displaying; if every entry is leased, fall
+    // back to plain LRU so the caps still hold.
+    let victimKey = null
+    for (const [key, e] of clientMediaCache) {
+      if (!clientMediaLeases.has(e.blobUrl)) { victimKey = key; break }
+    }
+    if (victimKey == null) victimKey = clientMediaCache.keys().next().value
+    const victim = clientMediaCache.get(victimKey)
+    totalBytes -= victim.size
+    revokeClientMedia(victimKey, victim)
   }
 }
 
@@ -259,10 +303,27 @@ export function useClientMedia(...args) {
 
   useEffect(() => {
     if (!key) return
+    // Blob URLs this mount is displaying. Held as leases so cache eviction
+    // never revokes a URL out from under a live <img>/<video>; released on
+    // unmount.
+    const leased = new Set()
+    function acquire(blobUrl) {
+      if (!blobUrl || leased.has(blobUrl)) return
+      leaseClientMedia(blobUrl)
+      leased.add(blobUrl)
+    }
+    function releaseAll() {
+      for (const u of leased) unleaseClientMedia(u)
+    }
+
     for (const u of urls) {
       if (u) {
         const cached = getCachedClientMedia(u)
-        if (cached) { setState({ blobUrl: cached, loading: false, error: false }); return }
+        if (cached) {
+          acquire(cached)
+          setState({ blobUrl: cached, loading: false, error: false })
+          return releaseAll
+        }
       }
     }
 
@@ -272,7 +333,7 @@ export function useClientMedia(...args) {
         if (!u) continue
         const blobUrl = await requestMediaBlob(fetchMediaBlob, u)
         if (blobUrl) {
-          if (!cancelled) setState({ blobUrl, loading: false, error: false })
+          if (!cancelled) { acquire(blobUrl); setState({ blobUrl, loading: false, error: false }) }
           return
         }
       }
@@ -283,7 +344,7 @@ export function useClientMedia(...args) {
             if (!u) continue
             const blobUrl = await requestMediaBlob(fetchMediaBlob, u)
             if (blobUrl) {
-              if (!cancelled) setState({ blobUrl, loading: false, error: false })
+              if (!cancelled) { acquire(blobUrl); setState({ blobUrl, loading: false, error: false }) }
               return
             }
           }
@@ -292,7 +353,7 @@ export function useClientMedia(...args) {
       if (!cancelled) setState({ blobUrl: null, loading: false, error: true })
     }
     load()
-    return () => { cancelled = true }
+    return () => { cancelled = true; releaseAll() }
   }, [key])
 
   return state

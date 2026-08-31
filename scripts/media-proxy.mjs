@@ -1,5 +1,6 @@
 // Shared media proxy, used by BOTH the Vite dev server (vite.config.js) and
 // the standalone production server (server.mjs), so the two never drift.
+import { Readable } from 'node:stream'
 //
 // The browser can't fetch arbitrary remote media directly — CORS forbids it,
 // and some instances require the Authorization header. This endpoint accepts
@@ -82,9 +83,26 @@ export async function handleMediaProxy(req, res, { fetchImpl = fetch } = {}) {
     // Headers are out — past this point a failure can only end in tearing
     // the socket down, never in writing new headers.
     try {
-      const body = await proxyRes.arrayBuffer()
+      // Stream the upstream body through instead of buffering the whole
+      // file: a large video/audio attachment used to cost two full copies
+      // in server RAM (arrayBuffer() + Buffer.from()). Node's fetch exposes
+      // a web ReadableStream; a mocked fetch (tests) may only have the
+      // buffered path, so keep that as the fallback.
+      if (proxyRes.body && typeof proxyRes.body.getReader === 'function') {
+        const readable = Readable.fromWeb(proxyRes.body)
+        // Tearing the connection down is the only valid failure response
+        // once the headers are out; swallowing the error would leave the
+        // socket hanging.
+        readable.on('error', () => {
+          try { res.destroy() } catch { /* already dead */ }
+        })
+        res.on('close', () => readable.destroy())
+        readable.pipe(res)
+        return
+      }
+      const body = Buffer.from(await proxyRes.arrayBuffer())
       if (res.writableEnded || res.destroyed) return
-      res.end(Buffer.from(body))
+      res.end(body)
     } catch {
       try { res.destroy() } catch { /* already dead */ }
     }

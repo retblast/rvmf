@@ -551,6 +551,9 @@ button {
   left: 0;
   z-index: 91;
   min-width: 150px;
+  max-height: min(480px, calc(100vh - 24px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--view-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-window);
@@ -942,6 +945,9 @@ button {
   z-index: 91;
   min-width: 260px;
   max-width: 320px;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--view-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-popover);
@@ -1922,6 +1928,9 @@ span.img-placeholder.custom-emoji {
   right: 12px;
   z-index: 91;
   width: 320px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--view-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-popover);
@@ -2490,6 +2499,8 @@ button.mention-link {
   padding: 8px;
   z-index: 100;
   max-width: 280px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
 }
 
 .reaction-picker-section {
@@ -3593,4 +3604,5 @@ textarea.profile-edit-input {
   right: auto;
   bottom: auto;
   transform: translate(-50%, -50%);
+  max-height: calc(100vh - 48px);
 }

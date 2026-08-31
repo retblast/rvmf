@@ -7,13 +7,15 @@ import { useTranslation } from './Post.jsx'
 // The real translate module lazily pulls in Transformers.js (multi-GB model,
 // WebGPU) — mock it so the hook's orchestration can be tested without that.
 const translateText = vi.fn()
+const translationPressureNotice = vi.fn(async () => null)
 vi.mock('../lib/translate', () => ({
   translateText: (...args) => translateText(...args),
+  translationPressureNotice: (...args) => translationPressureNotice(...args),
 }))
 
-function Provider({ children }) {
+function Provider({ children, provider = 'qwen-cpu' }) {
   return (
-    <AppSettingsContext.Provider value={{ translationEnabled: true, translationProvider: 'nllb-wasm' }}>
+    <AppSettingsContext.Provider value={{ translationEnabled: true, translationProvider: provider }}>
       {children}
     </AppSettingsContext.Provider>
   )
@@ -26,7 +28,6 @@ function Harness({ status }) {
   return (
     <div>
       <button onClick={t.toggle}>toggle</button>
-      <button onClick={() => t.changeSource('fr')}>set-fr</button>
       <span data-testid="shown">{String(t.shown)}</span>
       <span data-testid="phase">{t.phase}</span>
       <span data-testid="source">{t.sourceCode || ''}</span>
@@ -44,15 +45,14 @@ const status = {
   emojis: [],
 }
 
-function setup(overrides = {}) {
-  return render(<Harness status={{ ...status, ...overrides }} />, { wrapper: Provider })
+function setup(overrides = {}, provider) {
+  return render(<Harness status={{ ...status, ...overrides }} />, { wrapper: ({ children }) => <Provider provider={provider}>{children}</Provider> })
 }
 
 beforeEach(() => {
   translateText.mockReset()
-  // The hook refuses to run without WebGPU; satisfy that gate in jsdom so the
-  // toggle reaches the translator.
-  Object.defineProperty(navigator, 'gpu', { configurable: true, value: {} })
+  translationPressureNotice.mockReset()
+  translationPressureNotice.mockResolvedValue(null)
 })
 
 describe('useTranslation', () => {
@@ -92,40 +92,30 @@ describe('useTranslation', () => {
     expect(translateText).toHaveBeenCalledTimes(1) // no second fetch
   })
 
-  it('asks for a source language when there is no tag and no script guess', async () => {
+  it('translates directly with no source language when the tag is missing', async () => {
+    // Neither on-device translator needs a source: instruction models read it
+    // from the text. No tag + Latin-only content used to force a picker.
+    translateText.mockResolvedValue('bonjour')
     const user = userEvent.setup()
-    setup({ language: null }) // Latin-only content -> no script guess
-
-    await user.click(screen.getByRole('button', { name: 'toggle' }))
-    expect(screen.getByTestId('phase').textContent).toBe('needs-source')
-    expect(translateText).not.toHaveBeenCalled()
-  })
-
-  it('falls back to a script guess when the tag is missing', async () => {
-    translateText.mockResolvedValue('ru: …')
-    const user = userEvent.setup()
-    // No language tag, but Cyrillic content -> should guess ru.
-    setup({ language: null, content: '<p>Привет, как дела?</p>' })
-
-    await user.click(screen.getByRole('button', { name: 'toggle' }))
-    await waitFor(() => expect(screen.getByTestId('phase').textContent).toBe('done'))
-    expect(screen.getByTestId('source').textContent).toBe('ru')
-    expect(translateText).toHaveBeenCalledTimes(1)
-  })
-
-  it('lets the user override the detected source language', async () => {
-    translateText.mockResolvedValue('fr: …')
-    const user = userEvent.setup()
-    setup({ language: 'es' }) // tag resolves es, but user forces French
+    setup({ language: null })
 
     await user.click(screen.getByRole('button', { name: 'toggle' }))
     await waitFor(() => expect(screen.getByTestId('phase').textContent).toBe('done'))
     expect(translateText).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('source').textContent).toBe('') // no source anywhere
+  })
 
-    // Switching the source while the translated view is up re-translates.
-    await user.click(screen.getByRole('button', { name: 'set-fr' }))
+  it('uses the post language tag only for the display label, not for inference', async () => {
+    translateText.mockResolvedValue('こんにちは')
+    const user = userEvent.setup()
+    setup({ language: 'ja' })
+
+    await user.click(screen.getByRole('button', { name: 'toggle' }))
     await waitFor(() => expect(screen.getByTestId('phase').textContent).toBe('done'))
-    expect(screen.getByTestId('source').textContent).toBe('fr')
-    expect(translateText).toHaveBeenCalledTimes(2)
+    expect(screen.getByTestId('source').textContent).toBe('ja')
+
+    // The hook still passes the tag along (cosmetic), but the translator no
+    // longer consumes it as a model code.
+    expect(translateText.mock.calls[0][1]).toBe('ja')
   })
 })

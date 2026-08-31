@@ -6,13 +6,14 @@
 import {
   GIF_LARGE_BYTES,
   GIF_MIN_BYTES,
+  GIF_MAX_INPUT_BYTES,
   detectGifBytes,
   isGifUrl,
   videoEncodingAvailable,
 } from './core.js'
 import { gifCachePut, gifCacheGet, gifCacheDelete } from './cache.js'
 
-export { GIF_LARGE_BYTES, GIF_MIN_BYTES }
+export { GIF_LARGE_BYTES, GIF_MIN_BYTES, GIF_MAX_INPUT_BYTES }
 
 // URLs that were checked and bounced (too small, not a GIF, fetch failed)
 // are remembered briefly so scrolling doesn't re-fetch and re-decode them
@@ -94,7 +95,7 @@ function spawnWorker() {
   return new Worker(new URL('./convert.worker.js', import.meta.url), { type: 'module' })
 }
 
-function runWorkerConversion(arrayBuffer) {
+function runWorkerConversion(arrayBuffer, cacheKey) {
   return new Promise((resolve, reject) => {
     const worker = spawnWorker()
     const id = Math.random().toString(36).slice(2)
@@ -114,7 +115,7 @@ function runWorkerConversion(arrayBuffer) {
       worker.terminate()
       reject(e.error || new Error('gif conversion worker crashed'))
     }
-    worker.postMessage({ id, arrayBuffer }, [arrayBuffer])
+    worker.postMessage({ id, arrayBuffer, cacheKey }, [arrayBuffer])
   })
 }
 
@@ -159,14 +160,24 @@ export async function ensureGifConverted(url, { instanceUrl, token, includeLarge
         const bytes = await impl.fetchBytes(url, instanceUrl, token)
         if (!bytes) { rememberSkip(url, 'fetch'); return null }
         if (bytes.byteLength < GIF_MIN_BYTES) { rememberSkip(url, 'tiny'); return null }
+        // Hard ceiling, applied even when includeLarge widened the "large"
+        // gate — bounds main-thread transient RAM and CPU time (see core.js).
+        if (bytes.byteLength > GIF_MAX_INPUT_BYTES) { rememberSkip(url, 'too-large'); return null }
         if (bytes.byteLength > GIF_LARGE_BYTES && !includeLarge) { rememberSkip(url, 'large'); return null }
         if (!detectGifBytes(bytes)) { rememberSkip(url, 'not-gif'); return null }
 
-        const result = await runExclusive(() => impl.worker(bytes))
-        if (!result?.blob) { rememberSkip(url, 'encode'); return null }
+        // The worker streams the result either to OPFS (cacheKey = url) or
+        // back as a blob; either way it reports the same metadata.
+        const result = await runExclusive(() => impl.worker(bytes, url))
+        if (!result?.codec) { rememberSkip(url, 'encode'); return null }
         await gifCachePut(url, result)
-        console.debug('[gif] converted', url, result.codec, result.blob.size, 'bytes')
-        return result
+        // Re-read through the cache so both storage paths return a
+        // blob-backed entry to the caller (OPFS entries resolve their
+        // on-disk file here; in-memory entries return their stored blob).
+        const stored = await gifCacheGet(url)
+        if (!stored) { rememberSkip(url, 'encode'); return null }
+        console.debug('[gif] converted', url, result.codec, stored.blob?.size ?? result.blobBytes, 'bytes')
+        return { ...stored, cached: false }
       } catch (err) {
         // Errors carry a machine-readable code from the worker pipeline
         // (unsupported, too-large...); anything else is a generic failure.

@@ -4,6 +4,7 @@ import {
   setGifCacheDriver,
   GIF_CACHE_FULL_TIMER_DAYS,
   GIF_CACHE_MAX_ENTRIES,
+  GIF_CACHE_MAX_TOTAL_BYTES,
   gifCacheGet,
   gifCachePut,
   gifCacheDelete,
@@ -49,6 +50,30 @@ describe('gif cache', () => {
 
   it('returns null for an unknown key', async () => {
     expect(await gifCacheGet('https://x.example/missing.gif')).toBeNull()
+  })
+
+  it('stores OPFS metadata entries without a blob and reports their on-disk bytes', async () => {
+    await gifCachePut('https://x.example/a.gif', payload({ storedIn: 'opfs', blob: undefined, blobBytes: 4096 }))
+    const stats = await gifCacheStats()
+    expect(stats).toEqual({ count: 1, totalBytes: 4096 })
+  })
+
+  it('treats an OPFS entry whose file is gone as a miss and cleans up metadata', async () => {
+    // No OPFS in jsdom/Node, so the on-disk file can never resolve. The
+    // entry must degrade to a miss (never a crash) and take its stale
+    // metadata with it instead of lingering forever.
+    await gifCachePut('https://x.example/a.gif', payload({ storedIn: 'opfs', blob: undefined, blobBytes: 4096 }))
+    expect(await gifCacheGet('https://x.example/a.gif')).toBeNull()
+    expect(await gifCacheStats()).toEqual({ count: 0, totalBytes: 0 })
+  })
+
+  it('evicts OPFS entries by on-disk byte count even with no blob in memory', async () => {
+    await gifCachePut('https://x.example/big.gif', payload({
+      storedIn: 'opfs',
+      blob: undefined,
+      blobBytes: GIF_CACHE_MAX_TOTAL_BYTES + 1,
+    }))
+    expect(await gifCacheStats()).toEqual({ count: 0, totalBytes: 0 })
   })
 
   it('a display hit restores the full timer', async () => {

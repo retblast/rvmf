@@ -6,6 +6,7 @@ import {
   GIF_KEYFRAME_INTERVAL,
   detectGifBytes,
   encodeFramesToWebm,
+  encodeFramesToWebmFile,
   gifBytesToFrameSource,
   gifBytesToWebm,
   isGifUrl,
@@ -80,6 +81,12 @@ class FakeWebmMuxer {
 class FakeArrayBufferTarget {
   constructor() {
     this.buffer = null
+  }
+}
+
+class FakeFileStreamTarget {
+  constructor(stream) {
+    this.stream = stream
   }
 }
 
@@ -328,5 +335,47 @@ describe('encoding', () => {
       fakeSource({ width: 1000, height: 1000, frameCount: 400, delayMs: Array.from({ length: 400 }, () => 50) }),
       fakeDeps()
     )).rejects.toMatchObject({ code: 'too-large' })
+  })
+
+  it('rejects output beyond the estimated byte budget before encoding starts', async () => {
+    // Long duration at the floor bitrate: ~100 kbps * 8250 s / 8 far
+    // exceeds the 96 MB estimate cap, while 4 px * 165k frames stays far
+    // under the pixel-work cap — so this must trip the *output* gate.
+    const frameCount = 165_000
+    await expect(encodeFramesToWebm(
+      fakeSource({ frameCount, delayMs: Array.from({ length: frameCount }, () => 50) }),
+      fakeDeps()
+    )).rejects.toMatchObject({ code: 'too-large' })
+    // No codec probe, no encoder: the gate fires before ANY encode work.
+    expect(FakeVideoEncoder.encoders.length).toBe(0)
+  })
+
+  it('streams the encode into a file writable instead of a blob', async () => {
+    const source = fakeSource({ frameCount: 2, delayMs: [100, 100] })
+    const fsWritable = { write: vi.fn(), close: vi.fn() }
+    const result = await encodeFramesToWebmFile(
+      source,
+      fakeDeps({ fsWritable, FileSystemWritableFileStreamTarget: FakeFileStreamTarget })
+    )
+    // The muxer was wired to the file target, not an ArrayBuffer.
+    expect(muxers[0].target.stream).toBe(fsWritable)
+    expect(muxers[0].chunks).toHaveLength(2)
+    expect(FakeVideoEncoder.encoders[0].config.bitrate).toBe(100_000) // floored minimum
+    expect(result).toMatchObject({
+      codec: GIF_CODEC_AV1_LEVEL4,
+      width: 2,
+      height: 2,
+      frameCount: 2,
+      durationMs: 200,
+    })
+    expect(result.blob).toBeUndefined()
+  })
+
+  it('fails cleanly when no file-write target is available', async () => {
+    // fakeDeps() supplies no fsWritable/FileSystemWritableFileStreamTarget,
+    // mirroring a browser without the OPFS write API.
+    await expect(encodeFramesToWebmFile(fakeSource({ frameCount: 1, delayMs: [100] }), fakeDeps()))
+      .rejects.toMatchObject({ code: 'opfs-unavailable' })
+    expect(FakeVideoEncoder.encoders.length).toBe(0)
   })
 })

@@ -74,17 +74,18 @@ A key theme is that I don't have money for a subscription to any service, so all
 
 - **Enabled from settings** — a "Translate Foreign Posts" toggle in the settings menu (default **off**). Turning it on the first time shows a confirmation explaining that a model will be downloaded, so the heavy download is never a surprise.
 - With it on, every post (timeline rows and thread replies) gains a small **translate toggle** among its action buttons (next to like/favourite etc.). Tapping it swaps the post to an on-device translation; tapping again (or the "show original" ✕) swaps back. Because Fediverse language tags are often missing or wrong, the button is **always available** rather than gated on a language-mismatch heuristic — you decide what to translate. The target language comes from your browser's `navigator.language`.
-- The source language is resolved by falling back in order: an explicit pick from the UI, then the post's language tag, then a conservative **script-based guess** (kana → Japanese, Hangul → Korean, Han → Chinese, Cyrillic → Russian, Devanagari → Hindi, Arabic, Hebrew, Thai, Tamil, Greek, …). When nothing resolves, a **source-language picker** appears instead of an error. Because a wrong source yields a bad translation, any detected source is surfaced as a small correctable dropdown in the translated header — it's never trusted silently.
-- Translation runs **entirely in your browser** over Transformers.js + ONNX Runtime Web; no part of the post ever reaches a translation server. Two providers are selectable via radio buttons in settings, so you pick the right engineering trade-off for your hardware:
-  - **NLLB (default, CPU)** — Meta's `nllb-200-distilled-600M` on **WebAssembly** with **int8 (`q8`) weights** that fit the WASM heap (fp32 runs out of memory), plus the ORT graph optimizer set to `basic` to avoid a buggy onnxruntime-web QDQ fusion pass that can abort session creation with "Missing required scale … weight_merged_0_scale". No GPU required, works in every browser. (Licensed **CC-BY-NC-4.0** — fine for personal use, not for commercial redistribution.)
-  - **TranslateGemma (optional, GPU)** — Google's `Translategemma 4B` quantized (`q4f16`) on **WebGPU**. Higher quality but needs a WebGPU-capable browser and ~3 GB of VRAM; on some Intel iGPUs it can hit a known fp16 overflow that yields `<unusedN>` garbage, which the app detects and rejects with a clear error instead of showing broken text.
-- Everything is **opt-in and lazy**: a model is only downloaded on the first actual translation (served from the same origin as the app), so it takes a while that once; later translations reuse the cached model. A determinate progress bar shows the download, switching to an indeterminate "Translating…" bar during inference. Inference is guarded by a ~2-minute watchdog that reports a stall rather than spinning forever. Because a translation model is large (~1.3 GB NLLB in WASM, or ~3 GB gemma in VRAM), the app **releases it after 10 s without a new translation** — disposing the ONNX session and forgetting the cached pipeline so the memory returns to the browser/GPU instead of staying pinned for the whole session. Turning translation off (or switching providers) releases it immediately. The next translate re-downloads/re-creates it on demand.
-- Translated text renders through the same safe, link/mention-aware rich-text pipeline as normal posts, with a "show original" close affordance. The TranslateGemma option requires a **WebGPU-capable browser** (Chrome/Edge, or Firefox with WebGPU enabled); unsupported browsers get a clear error instead of a broken spinner. The default NLLB option needs no special browser support at all.
+- Because both translators are instruction models that read the source from the text itself, there is **no source-language detection, no source picker, and no per-provider language codes** — the UI never guesses the source language, so a wrong guess can't corrupt output. The post's language tag is only used as a cosmetic "Translated from …" label; the target language comes from your browser's `navigator.language`.
+- Translation runs **entirely in your browser** over Transformers.js + ONNX Runtime Web; no part of the post ever reaches a translation server. Two providers are selectable via radio buttons in settings, so you pick the right engineering trade-off for your hardware. Both are **instruction models** that take the text and translate "into {target}" — they read the source language from the text itself, which is why a post's language tag never feeds the translator:
+  - **CPU (Qwen)** *(default)* — `onnx-community/Qwen3-0.6B-ONNX` on **WebAssembly** with **int8 (`q8`) weights** (~600 MB of weights, ~1.3 GB in the WASM heap). No GPU and no special browser support needed. (Apache-2.0.)
+  - **GPU (Gemma 4)** — `onnx-community/gemma-4-E2B-it-ONNX` on **WebGPU** with `q4f16` weights. Best quality (140+ languages) but needs a WebGPU-capable browser (Chrome/Edge, or Firefox with WebGPU enabled) and ~3.4 GB of VRAM. Loaded class-level (AutoProcessor + `Gemma4ForConditionalGeneration`) because the export is multimodal. (Apache-2.0.)
+- Everything is **opt-in and lazy**: a model is only downloaded on the first actual translation (served from the same origin as the app), so it takes a while that once; later translations reuse the cached model. A determinate progress bar shows the download, switching to an indeterminate "Translating…" bar during inference. Inference is guarded by a ~2-minute watchdog that reports a stall rather than spinning forever. Because a translation model is large (~1.3 GB Qwen in the WASM heap, or ~3.4 GB Gemma in VRAM), the app **releases it after 10 s without a new translation** — disposing the ONNX session and forgetting the cached pipeline so the memory returns to the browser/GPU instead of staying pinned for the whole session. Turning translation off (or switching providers) releases it immediately. The next translate re-downloads/re-creates it on demand.
+- Translated text renders through the same safe, link/mention-aware rich-text pipeline as normal posts, with a "show original" close affordance. After a successful translation the app checks Chromium's memory API and, when the page is genuinely heavy, shows a toast explaining that only a reload returns the model's memory fully; browsers that can't measure get that note once, guarded by a localStorage flag.
 
 ### GIF power saver
 
 - **Enabled from settings** — a "Convert GIFs to AV1" toggle in the settings menu (default **off**). When on, animated GIFs in posts and media are decoded once on-device and re-encoded to AV1 video (VP9 on machines/browsers without AV1 encoding), so the browser no longer has to chew through thousands of frames of GIF for every autoplay or loop.
-- The converted video is stored in an IndexedDB cache with a decay timer (30 days of non-use, one day shaved per day idle; next display restores the full timer). A "Convert Large GIFs Too" sub-toggle extends conversion to files over 5 MB (default **off**, because they encode slowly). Toggling the master setting off clears the cache immediately.
+- The converted video is stored in a two-layer cache with a decay timer (30 days of non-use, one day shaved per day idle; next display restores the full timer). The **bytes live in OPFS** (an `rvmf-gifs` directory of WebM files, written incrementally so no output buffer ever exists), and **IndexedDB holds tiny metadata entries** that point at those files — playback reads a disk-backed `File` instead of holding the whole video in RAM. Browsers without OPFS write support (Safari < 26) fall back to storing the in-memory result whole in IDB. The cache is bounded by entry count (300) and total on-disk bytes (512 MB), evicting least-recently-displayed first. A "Convert Large GIFs Too" sub-toggle extends conversion to files over 5 MB (default **off**, because they encode slowly). Toggling the master setting off clears the cache immediately.
+- Converting is gated by four resource caps (see "Memory" below): a 25 MB absolute input ceiling, a 120 MB decoded-patch budget (the worker's real RAM limiter), a 300M-pixel CPU-work cap, and a ~96 MB estimated-output budget that rejects multi-minute "GIFs" before any frame encodes.
 - Emojis and avatars are **hover-to-animate**: with the master toggle on they convert like everything else, and when "Animate on Hover" is also on they stay paused until the pointer is over the post/row (they autoplay instead when hover is off).
 - Everything is **local and opt-in**: no part of a GIF ever leaves the browser except the original fetch through the instance's media proxy. Conversions run in a Web Worker, one at a time, so a busy timeline can't spin up a codec per row.
 - **Limitations:** transparent GIF pixels are flattened onto a white background when converted (VP9/AV1 in WebM carry no alpha channel), so transparency-dependent fringes can look off on dark themes. Browsers without WebCodecs encode support (`VideoEncoder` with AV1/VP9) keep plain GIFs — the hover/AV1 path simply never engages there, with no error surface.
@@ -132,9 +133,42 @@ Reached from the settings menu:
 - **Animated thread loading** — Framer Motion staggers ancestors converging down toward the focal post, replies converging up.
 - Keyboard-accessible throughout (`focus-visible` outlines), Adwaita-style overlay scrollbars.
 
+## Memory
+
+A browser tab shares RAM with everything else on the machine, and the two heaviest features here — on-device translation and GIF conversion — are exactly the kind of unbounded work that quietly eats a session. Every cap below is a hard ceiling with a stated reason, not a tuning knob, so behavior stays predictable.
+
+### Translation heap
+
+- The model pipelines pin **~1.3 GB (CPU/Qwen WASM)** or **~3.4 GB (GPU/Gemma VRAM)** for the page's lifetime. The session is disposed after **10 s without a translation**, and the whole pipeline is only ever loaded on first use.
+- After a successful translation the app checks Chromium's `performance.measureUserAgentSpecificMemory()` and, when the page footprint exceeds **~600 MB**, shows a toast explaining that only a reload returns the memory fully. Browsers that can't measure (or users who deny measurement) get the same note **once**, guarded by the `rvmf-translation-heap-hint` localStorage flag.
+
+### GIF conversion
+
+Converted GIFs used to be assembled **twice** in memory (decode + encode buffers) and cached whole in IndexedDB. Now the encode streams straight into an OPFS file, so the output never exists in JS memory at all; the cache's IDB side holds only metadata. Four gates keep the worker's transient memory and the disk cache bounded:
+
+| Cap | Value | Why |
+|---|---|---|
+| `GIF_MAX_INPUT_BYTES` | 25 MB | Ceiling on the main-thread fetch buffer (transferred to the worker afterward). Applied even when "Convert Large GIFs Too" widens the 5 MB large-gate — that setting changes policy, not physics. |
+| `GIF_MAX_PATCH_BYTES` | 120 MB | Sum of frame rect area × 4 across all frames — the worker's **real** RAM limiter. A 60 MB GIF with full-frame patches would otherwise decode into ~1 GB of RGBA planes. Computed before decompression, so the worker bails before allocating. |
+| `GIF_MAX_PIXEL_WORK` | 300 M pixels | CPU-time bound on decode+compose+encode (width × height × frames). Kept from the original design; the patch gate above can't see CPU cost. |
+| `GIF_MAX_OUTPUT_ESTIMATE_BYTES` | 96 MB | `bitrate × duration / 8` at the encoder's 8 Mbps ceiling. Rejects "GIFs" that are really multi-minute videos **before** the first frame encodes, protecting both the disk cache and the no-OPFS fallback buffer. |
+| Cache | 300 entries / 512 MB | Total on-disk budget; least-recently-displayed entries are evicted first. |
+
+### Media blobs
+
+- The dev/media-proxy path now **streams** the upstream body to the browser instead of buffering it in the Node process.
+- Session blob-URL cache for images/video: **150 entries or 256 MB**, whichever comes first, evicting least-recently-used. Rows currently displaying a blob hold a **lease**, so eviction skips live URLs and only falls back to revoking one when every entry is leased.
+
+### Feed & render state
+
+- The home timeline caps at **400 rows** (newest kept). The pagination cursor is tracked separately from the array, so infinite scroll keeps fetching older pages past the cap without re-requesting the same page.
+- Loaded thread trees are cleared when the thread panel closes (they always force-refetch on open).
+- `processStatusContent` — HTML-to-text + linkify + media enrichment, the most expensive pure per-row work — is **memoized per status object** in a WeakMap (entries die with the objects, and the cache key includes the instance URL so logins stay correct).
+- The 5-second notification poll no longer re-fetches the full pending-follow-request set every tick; that set refreshes only when a request is actually handled, and on the initial load.
+
 ## Testing
 
-- **`npm test`** — Vitest unit/component tests: the pure libraries (rich-text rendering, quarantined-image recovery, reply trees, storage migration, blurhash, emoji filtering, canonical language mapping + translation orchestration for both the NLLB and TranslateGemma providers, including the garbage-guard, watchdog, and idle-release paths) and key component behaviors (composer validation, visibility handling, cross-copy status merging, the reusable confirm dialog).
+- **`npm test`** — Vitest unit/component tests: the pure libraries (rich-text rendering, quarantined-image recovery, reply trees, storage migration, blurhash, emoji filtering, canonical language mapping + translation orchestration for both the CPU/Qwen and GPU/Gemma-4 providers, including the watchdog and idle-release paths) and key component behaviors (composer validation, visibility handling, cross-copy status merging, the reusable confirm dialog).
 - **`nix run .#e2e`** — full E2E suite against a real backend, fully hermetic:
   1. throwaway PostgreSQL in a temp dir
   2. a pinned real Mitra server (upstream release deb extracted by the flake — `packages.mitra`)
@@ -289,9 +323,10 @@ src/
 
   hooks.js             Cross-cutting React hooks and contexts: app settings
                        context, single-reaction-picker context, blob-caching
-                       media fetcher (LRU cache, negative cache for dead
-                       URLs, inflight dedupe), layout tier detection,
-                       pull-to-refresh, close-on-Escape.
+                       media fetcher (LRU by entry count + byte budget with
+                       display leases, negative cache for dead URLs, inflight
+                       dedupe), layout tier detection, pull-to-refresh,
+                       close-on-Escape.
 
   useMitraSession.js   Auth state hook. Handles OAuth redirect detection
                        (?code= param), session persistence, instance config
@@ -380,30 +415,29 @@ src/
                      rvmf- key prefix, with a one-time migration from
                      the old mitra-* keys.
 
-    render.jsx         HTML-to-plaintext conversion preserving links as
-                     markdown tokens, safe rich-text rendering (mentions,
-                     hashtags, URLs, custom emoji — no dangerouslySetInnerHTML),
-                     reply tree helpers, Mitra signed-proxy URL decoding,
-                     quarantined-image recovery.
+render.jsx         HTML-to-plaintext conversion preserving links as
+                       markdown tokens, safe rich-text rendering (mentions,
+                       hashtags, URLs, custom emoji — no dangerouslySetInnerHTML),
+                       reply tree helpers, Mitra signed-proxy URL decoding,
+                       quarantined-image recovery. processStatusContent is
+                       memoized per status object (WeakMap, instance-aware).
 
     translate.js       On-device translation wrapper — lazily loaded,
-                     provider-selectable singleton pipelines (NLLB on WASM by
-                     default, optional TranslateGemma on WebGPU q4f16) that
-                     take a plain-text post and return its translated text.
-                     NLLB uses int8 (q8) weights with the ORT graph optimizer
-                     set to basic (dodging an onnxruntime-web QDQ fusion
-                     crash, and fp32's OOM). Includes a WebGPU <unusedN>
-                     garbage guard, a watchdog timeout, and idle-release that
-                     disposes the model after 10 s without a translation so a
-                     ~1.3 GB / ~3 GB model isn't pinned for the session.
-                     Never imported or run until a user requests a
-                     translation.
+                       provider-selectable singleton pipelines (Qwen3-0.6B on
+                       WASM by default, optional Gemma 4 E2B on WebGPU q4f16).
+                       Instruction models translate "into {target}" with no
+                       source-language guessing. Includes a watchdog timeout,
+                       idle-release that disposes the model after 10 s without
+                       a translation, and a heap-pressure notice after each
+                       translation so a ~1.3 GB / ~3.4 GB model isn't silently
+                       pinned for the session. Never imported or run until a
+                       user requests a translation.
 
-    languages.js       Provider vocabularies (NLLB FLORES-200 + TranslateGemma
-                     locales), a canonical ISO-639-1 layer, and resolvers that
-                     map BCP-47/status/navigator.language tags onto each
-                     model's exact codes, plus the source-language script
-                     detection used when translating a post.
+    languages.js       Canonical ISO-639-1 vocabulary: resolves BCP-47 /
+                       status / navigator.language tags onto the target
+                       languages translation offers, plus the display names.
+                       No source-language codes — both translators read the
+                       source from the text.
 
     blurhash.js        Minimal pure-JS blurhash decoder for placeholders.
 

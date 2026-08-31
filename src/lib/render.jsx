@@ -150,6 +150,9 @@ export function updateTreeNode(nodes, updated) {
 export function mergeStatusIntoRow(row, updated) {
   if (!row.reblog) return row.id === updated.id ? updated : row
   if (row.reblog.id === updated.id) return { ...row, reblog: updated }
+  // Handle wrapper-shaped updated objects: when boosting, the API returns
+  // { ...post, reblog: innerPost } and we need to match the inner post id.
+  if (updated.reblog?.id && row.reblog?.id === updated.reblog.id) return { ...row, reblog: updated }
   return row
 }
 
@@ -406,10 +409,27 @@ function extractQuarantinedImages(text, instanceUrl, posterAcct) {
   return { cleanedText, quarantinedUrls, posterRecoveryUrls }
 }
 
-// Combines mention-linking and quarantined-image extraction into what a
-// post/reply actually needs to render: text nodes plus a merged attachment
-// list (real attachments + any quarantined images recovered from the text).
+// Memoized per status object: the same status renders over and over
+// (timeline rows, thread-panel tree, compose-previews, notifications), and
+// this pass — HTML→plain text, linkify, media enrich — is the most
+// expensive pure work per row. WeakMap (not Map) keeps the memo from pinning
+// status objects: entries die with the objects themselves. instanceUrl is
+// part of the key because it changes the proxy-decode output; the cache
+// stays correct across logins by comparing it.
+const contentProcessCache = new WeakMap()
+
 export function processStatusContent(status, instanceUrl) {
+  const cached = contentProcessCache.get(status)
+  if (cached && cached.instanceUrl === instanceUrl) return cached.result
+  const result = processStatusContentUncached(status, instanceUrl)
+  contentProcessCache.set(status, { instanceUrl, result })
+  return result
+}
+
+function processStatusContentUncached(status, instanceUrl) {
+  // Combines mention-linking and quarantined-image extraction into what a
+  // post/reply actually needs to render: text nodes plus a merged attachment
+  // list (real attachments + any quarantined images recovered from the text).
   const { cleanedText, quarantinedUrls, posterRecoveryUrls } = extractQuarantinedImages(
     htmlToPlainText(status.content),
     instanceUrl,

@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { ensureGifConverted, setGifConversionDeps, resetGifConversionMemo, forgetGifConversion, GIF_LARGE_BYTES, GIF_MIN_BYTES } from './convert.js'
+import {
+  ensureGifConverted,
+  setGifConversionDeps,
+  resetGifConversionMemo,
+  forgetGifConversion,
+  GIF_LARGE_BYTES,
+  GIF_MIN_BYTES,
+  GIF_MAX_INPUT_BYTES,
+} from './convert.js'
 import { createMemoryDriver, setGifCacheDriver } from './cache.js'
 import { makeTinyGif, makeLargeGifBytes } from './testHelpers.js'
 
@@ -99,6 +107,21 @@ describe('ensureGifConverted', () => {
     const result = await ensureGifConverted(GIF_URL, { includeLarge: true })
     expect(result).not.toBeNull()
     expect(fakes.worker).toHaveBeenCalledTimes(1)
+  })
+
+  it('hard-skips a GIF above the absolute input cap even with includeLarge on', async () => {
+    const over = new Uint8Array(GIF_MAX_INPUT_BYTES + 1)
+    over.set(makeTinyGif([{ delay: 10, indexes: [0, 1, 2, 3] }]), 0)
+    const fakes = installFakes({ fetchBytes: vi.fn(async () => over.buffer) })
+    expect(await ensureGifConverted(GIF_URL, { includeLarge: true })).toBeNull()
+    expect(fakes.worker).not.toHaveBeenCalled()
+  })
+
+  it('passes the URL through as the worker cache key', async () => {
+    const fakes = installFakes()
+    await ensureGifConverted(GIF_URL, {})
+    expect(fakes.worker.mock.calls[0][0]).toBeInstanceOf(ArrayBuffer)
+    expect(fakes.worker.mock.calls[0][1]).toBe(GIF_URL)
   })
 
   it('returns null when the browser cannot encode', async () => {
