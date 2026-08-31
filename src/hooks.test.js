@@ -71,6 +71,32 @@ describe('filenameForAttachment', () => {
   it('falls back to a neutral base when no id is present', () => {
     expect(filenameForAttachment({}, 'image/webp')).toBe('media.webp')
   })
+
+  it('uses the original filename extracted from the Mastodon url path', () => {
+    const att = {
+      id: '111',
+      url: 'https://files.example.org/media_attachments/files/111/123/original/57859aede991da25.jpeg',
+    }
+    expect(filenameForAttachment(att, 'image/jpeg')).toBe('57859aede991da25.jpeg')
+  })
+
+  it('uses the real name from server-extended meta.original.file_name', () => {
+    const att = {
+      id: '111',
+      url: 'https://files.example.org/media_attachments/files/111/123/original/abc.jpeg',
+      meta: { original: { file_name: 'vacation photo.png' } },
+    }
+    expect(filenameForAttachment(att, 'image/png')).toBe('vacation photo.png')
+  })
+
+  it('prefers server-extended name over the url path filename', () => {
+    const att = {
+      id: '111',
+      url: 'https://files.example.org/media_attachments/files/111/123/original/abc.jpeg',
+      file_name: 'sunset.png',
+    }
+    expect(filenameForAttachment(att, 'image/png')).toBe('sunset.png')
+  })
 })
 
 describe('downloadAttachment', () => {

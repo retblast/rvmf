@@ -187,6 +187,36 @@ export function attachmentDownloadUrls(att) {
   return [...new Set(urls)]
 }
 
+// Extract a plausible original filename from an attachment URL path.
+// Mastodon stores uploads as /original/{safe-original-name}.{ext} and may also
+// surface the real name through server-extended fields (Pleroma/Mitra's
+// meta.original.file_name, glitch-soc's name, etc.).  Fall back to the
+// attachment id when nothing usable is found.
+function filenameBaseFromAttachment(att) {
+  const candidates = [
+    // 1. Server-extended field: Pleroma / Mitra meta.original.file_name
+    att.meta?.original?.file_name,
+    // 2. Server-extended field: Pleroma / Mitra top-level file_name
+    att.file_name,
+    // 3. Server-extended field: glitch-soc / Mastodon-fork name
+    att.name,
+    // 4. Extract from the Mastodon /media_attachments/files/.../original/ path
+    //    that preserves the real upload filename.
+    (() => {
+      const url = att.url || '';
+      const m = url.match(/\/original\/([^/]+\.[a-zA-Z0-9]+)/);
+      return m ? m[1] : null;
+    })(),
+  ];
+  for (const name of candidates) {
+    if (name && typeof name === 'string' && name.trim().length > 0) {
+      // Strip path components and null-bytes that could break the save dialog.
+      return name.split('/').pop().replace(/\x00/g, '');
+    }
+  }
+  return null;
+}
+
 // A safe, descriptive file name derived from the attachment id/type and the
 // content type, so saves are recognizable instead of ambiguous "download".
 export function filenameForAttachment(att, contentType) {
@@ -198,8 +228,21 @@ export function filenameForAttachment(att, contentType) {
   }
   const mime = (contentType || '').split(';')[0].trim().toLowerCase()
   const ext = extMap[mime] || (att.type === 'image' ? 'jpg' : 'bin')
-  const base = (att.id && String(att.id).replace(/[^a-zA-Z0-9_-]/g, '_')) || 'media'
-  return `${base}.${ext}`
+  // The server-extended name (when present) is authoritative: keep its own
+  // extension so "vacation.png" doesn't get rewritten to "vacation.png.png".
+  const base = filenameBaseFromAttachment(att)
+  if (base) {
+    const ownExt = base.match(/\.([a-zA-Z0-9]+)$/)?.[1]?.toLowerCase()
+    // Accept the base's own extension if it's a known one. Normalize
+    // jpeg/jpg equivalence: the URL may have ".jpeg" but the mime map
+    // stores "jpg" for image/jpeg.
+    const known = ownExt === 'jpeg' ? 'jpg' : ownExt
+    if (known && Object.values(extMap).includes(known)) return base
+    if (ownExt && ownExt === 'bin' && ext === 'bin') return base
+    return `${base}.${ext}`
+  }
+  const fallback = att.id ? String(att.id).replace(/[^a-zA-Z0-9_-]/g, '_') : 'media'
+  return `${fallback}.${ext}`
 }
 
 // Save a single attachment to disk. Returns true on success, false if every
