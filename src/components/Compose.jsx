@@ -624,6 +624,14 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
     if (poll.enabled && mediaIds.length > 0) removeUpload(mediaIds[0])
   }, [uploads.length, poll.enabled])
 
+  // When replying, pre-fill with the @mention so the server populates
+  // the mentions array and "In reply to" context works for everyone.
+  useEffect(() => {
+    if (replyToStatus?.account) {
+      setText(`@${replyToStatus.account.acct || replyToStatus.account.username} `)
+    }
+  }, [replyToStatus?.id])
+
   async function submit() {
     if (!text.trim() && mediaIds.length === 0 && !quoteStatus && !poll.enabled) {
       setError('Write something or attach a file first.')

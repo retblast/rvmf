@@ -71,6 +71,14 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
     mitra.fetchCustomEmojis(instanceUrl).then((emojis) => setCustomEmojis(emojis || [])).catch(() => {})
   }, [instanceUrl])
 
+  // Always include the @mention in the reply body so the server populates
+  // the mentions array and the "In reply to" context works for everyone.
+  useEffect(() => {
+    if (status?.account) {
+      setText(`@${status.account.acct || status.account.username} `)
+    }
+  }, [status?.id])
+
   // Polls and media attachments are mutually exclusive
   useEffect(() => {
     if (uploads.length > 0 && poll.enabled) poll.setEnabled(false)

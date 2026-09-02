@@ -447,7 +447,8 @@ export function ThreadReply({
   // to the mention matching in_reply_to_account_id. Notification previews
   // have no statusById, so this is usually the only source there.
   const replyToAccount = !parentStatus && status.in_reply_to_account_id
-    ? (status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
+    ? ((status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
+       || { id: status.in_reply_to_account_id })
     : null
 
   function handlePollUpdated(poll) {
@@ -502,7 +503,9 @@ export function ThreadReply({
                 className="post-reply-link clickable"
                 onClick={(e) => { e.stopPropagation(); onOpenProfile?.(replyToAccount) }}
               >
-                @{replyToAccount.acct || replyToAccount.username}
+                {replyToAccount.acct || replyToAccount.username
+                  ? `@${replyToAccount.acct || replyToAccount.username}`
+                  : 'someone'}
               </span>
             </div>
           )}
@@ -1126,7 +1129,8 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   const translation = useTranslation(status)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
   const replyToAccount = !parentStatus && status.in_reply_to_account_id
-    ? (status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
+    ? ((status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
+       || { id: status.in_reply_to_account_id })
     : null
 
   function handlePollUpdated(poll) {
@@ -1186,7 +1190,9 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
             <div className="post-reply-context">
               In reply to{' '}
               <span className="post-reply-link" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(replyToAccount) }}>
-                @{replyToAccount.acct || replyToAccount.username}
+                {replyToAccount.acct || replyToAccount.username
+                  ? `@${replyToAccount.acct || replyToAccount.username}`
+                  : 'someone'}
               </span>
             </div>
           )}
