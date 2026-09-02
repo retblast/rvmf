@@ -220,62 +220,11 @@ function TranslatedBody({ status, t }) {
   )
 }
 
-// One reply, at any depth, with the exact same action row and interactivity
-// as a normal post row (reply/boost/favourite/monero/more, all functional)
-// — not a stripped-down version. Its own already-loaded children render
-// directly beneath it — no per-node fetch or click-to-expand, since the
-// whole subtree came from one /context call at the moment the thread was
-// opened. Clicking a reply's body re-opens the panel focused on it
-// specifically (fresh ancestors, in case there's more context above what's
-// already showing), same handler as everywhere else in the app.
-export function ThreadReply({
-  node,
-  depth = 0,
-  instanceUrl,
-  token,
-  onUpdate,
-  onOpenThread,
-  onComposeReply,
-  onOpenLightbox,
-  onOpenProfile,
-  statusById,
-  onQuote,
-  compact = false,
-  highlightedId,
-  focusedReplyId,
-  onHighlightParent,
-  currentAccountId,
-  onDelete,
-  onEdit,
-  onMute,
-  onBlock,
-  composerFor,
-  composerProps,
-}) {
+// Shared hook for post interaction state and toggle functions.
+// `wrapUpdate` lets callers adjust the payload before it reaches onUpdate —
+// PostRow uses it to handle boost wrappers; ThreadReply passes through.
+function usePostActions({ status, instanceUrl, token, onUpdate }) {
   const [busy, setBusy] = useState(false)
-  const [mediaHidden, setMediaHidden] = useState(false)
-  // null | { kind: 'favourited_by' | 'reblogged_by' } — who-did-this popover
-  const [accountsView, setAccountsView] = useState(null)
-  const { openPickerId, setOpenPickerId } = useContext(PickerContext)
-  const showPicker = openPickerId === node.status.id
-  const setShowPicker = (open) => setOpenPickerId(open ? node.status.id : null)
-  const status = node.status
-  const account = status.account || {}
-  const rawName = account.display_name || account.username || 'Unknown'
-  const name = renderEmojiText(rawName, account.emojis)
-  const content = processStatusContent(status, instanceUrl)
-  const translation = useTranslation(status)
-  const parentStatus = statusById?.get(status.in_reply_to_id) || null
-  // Same context line as PostRow: when the parent isn't loaded, fall back
-  // to the mention matching in_reply_to_account_id. Notification previews
-  // have no statusById, so this is usually the only source there.
-  const replyToAccount = !parentStatus && status.in_reply_to_account_id
-    ? (status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
-    : null
-
-  function handlePollUpdated(poll) {
-    onUpdate({ ...status, poll })
-  }
 
   async function toggleBookmark() {
     if (busy) return
@@ -332,6 +281,181 @@ export function ThreadReply({
       setBusy(false)
     }
   }
+
+  return { busy, toggleBookmark, toggleReaction, toggleFavourite, toggleReblog }
+}
+
+// Shared action-row component used by both ThreadReply and PostRow.
+// Renders reply, boost, favourite, bookmark, react, media-toggle, translate,
+// and options-menu buttons.
+export function PostActions({
+  status, instanceUrl, token, compact, content, currentAccountId,
+  busy, toggleBookmark, toggleReaction, toggleFavourite, toggleReblog,
+  onComposeReply, onQuote, onOpenProfile, onDelete, onMute, onBlock, onEdit, onUpdate,
+  mediaHidden, setMediaHidden, translation, showPicker, setShowPicker,
+  accountsView, setAccountsView,
+}) {
+  return (
+    <div className="post-actions" onClick={(e) => e.stopPropagation()}>
+      <button className="action-btn" aria-label="Reply" onClick={() => onComposeReply(status)}>
+        <MessageCircle size={15} />
+        {!compact && status.replies_count > 0 && <span>{status.replies_count}</span>}
+      </button>
+      {canBoostStatus(status) && (
+        <BoostDropdown
+          reblogged={status.reblogged}
+          reblogsCount={compact ? 0 : status.reblogs_count}
+          busy={busy}
+          onBoost={toggleReblog}
+          onQuote={() => onQuote(status)}
+          onShowReblogs={compact ? undefined : () => setAccountsView({ kind: 'reblogged_by' })}
+        />
+      )}
+      {/* Buttons can't nest — the "who favourited" count is a sibling */}
+      <div className="action-btn-group">
+        <button
+          className={`action-btn${status.favourited ? ' favorited' : ''}`}
+          data-favourited={status.favourited ? 'true' : 'false'}
+          aria-label="Favorite"
+          onClick={toggleFavourite}
+          disabled={busy}
+        >
+          <Star size={15} fill={status.favourited ? 'currentColor' : 'none'} />
+        </button>
+        {!compact && (
+          <CountButton
+            count={status.favourites_count}
+            title="Who favourited"
+            onClick={() => setAccountsView({ kind: 'favourited_by' })}
+          />
+        )}
+      </div>
+      <button
+        className={`action-btn${status.bookmarked ? ' bookmarked' : ''}`}
+        aria-label="Bookmark"
+        onClick={toggleBookmark}
+        disabled={busy}
+      >
+        <Bookmark size={15} fill={status.bookmarked ? 'currentColor' : 'none'} />
+      </button>
+      <button
+        className="action-btn"
+        aria-label="React"
+        onClick={() => setShowPicker(!showPicker)}
+      >
+        <Smile size={15} />
+      </button>
+      {showPicker && (
+        <ReactionPicker
+          status={status}
+          instanceUrl={instanceUrl}
+          token={token}
+          onReact={toggleReaction}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
+      {content.attachments.length > 0 && (
+        <button
+          className="action-btn"
+          aria-label={mediaHidden ? 'Show media' : 'Hide media'}
+          onClick={() => setMediaHidden((v) => !v)}
+        >
+          {mediaHidden ? <EyeOff size={15} /> : <Eye size={15} />}
+        </button>
+      )}
+      {translation.translationEnabled && (
+        <TranslateToggleButton
+          active={translation.shown}
+          disabled={translation.phase === 'loading'}
+          onClick={translation.toggle}
+        />
+      )}
+      <PostOptionsMenu
+        status={status}
+        instanceUrl={instanceUrl}
+        token={token}
+        mediaAttachments={content.attachments}
+        isOwn={status.account?.id === currentAccountId}
+        onDelete={onDelete}
+        onMute={onMute}
+        onBlock={onBlock}
+        onEdit={onEdit}
+        onUpdate={onUpdate}
+      />
+      {accountsView && (
+        <>
+          <div className="boost-dropdown-backdrop" onClick={(e) => { e.stopPropagation(); setAccountsView(null) }} />
+          <AccountsPopover
+            kind={accountsView.kind}
+            statusId={status.id}
+            instanceUrl={instanceUrl}
+            token={token}
+            onClose={() => setAccountsView(null)}
+            onOpenProfile={onOpenProfile}
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
+// One reply, at any depth, with the exact same action row and interactivity
+// as a normal post row (reply/boost/favourite/monero/more, all functional)
+// — not a stripped-down version. Its own already-loaded children render
+// directly beneath it — no per-node fetch or click-to-expand, since the
+// whole subtree came from one /context call at the moment the thread was
+// opened. Clicking a reply's body re-opens the panel focused on it
+// specifically (fresh ancestors, in case there's more context above what's
+// already showing), same handler as everywhere else in the app.
+export function ThreadReply({
+  node,
+  depth = 0,
+  instanceUrl,
+  token,
+  onUpdate,
+  onOpenThread,
+  onComposeReply,
+  onOpenLightbox,
+  onOpenProfile,
+  statusById,
+  onQuote,
+  compact = false,
+  highlightedId,
+  focusedReplyId,
+  onHighlightParent,
+  currentAccountId,
+  onDelete,
+  onEdit,
+  onMute,
+  onBlock,
+  composerFor,
+  composerProps,
+}) {
+  const [mediaHidden, setMediaHidden] = useState(false)
+  const [accountsView, setAccountsView] = useState(null)
+  const { openPickerId, setOpenPickerId } = useContext(PickerContext)
+  const showPicker = openPickerId === node.status.id
+  const setShowPicker = (open) => setOpenPickerId(open ? node.status.id : null)
+  const status = node.status
+  const account = status.account || {}
+  const rawName = account.display_name || account.username || 'Unknown'
+  const name = renderEmojiText(rawName, account.emojis)
+  const content = processStatusContent(status, instanceUrl)
+  const translation = useTranslation(status)
+  const parentStatus = statusById?.get(status.in_reply_to_id) || null
+  // Same context line as PostRow: when the parent isn't loaded, fall back
+  // to the mention matching in_reply_to_account_id. Notification previews
+  // have no statusById, so this is usually the only source there.
+  const replyToAccount = !parentStatus && status.in_reply_to_account_id
+    ? (status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
+    : null
+
+  function handlePollUpdated(poll) {
+    onUpdate({ ...status, poll })
+  }
+
+  const { busy, toggleBookmark, toggleReaction, toggleFavourite, toggleReblog } =
+    usePostActions({ status, instanceUrl, token, onUpdate })
 
   return (
     <>
@@ -408,106 +532,34 @@ export function ThreadReply({
             token={token}
             onReact={toggleReaction}
           />
-          <div className="post-actions" onClick={(e) => e.stopPropagation()}>
-            <button className="action-btn" aria-label="Reply" onClick={() => onComposeReply(status)}>
-              <MessageCircle size={15} />
-              {!compact && status.replies_count > 0 && <span>{status.replies_count}</span>}
-            </button>
-            {canBoostStatus(status) && (
-              <BoostDropdown
-                reblogged={status.reblogged}
-                reblogsCount={compact ? 0 : status.reblogs_count}
-                busy={busy}
-                onBoost={toggleReblog}
-                onQuote={() => onQuote(status)}
-                onShowReblogs={compact ? undefined : () => setAccountsView({ kind: 'reblogged_by' })}
-              />
-            )}
-            {/* Buttons can't nest — the "who favourited" count is a sibling */}
-            <div className="action-btn-group">
-              <button
-                className={`action-btn${status.favourited ? ' favorited' : ''}`}
-                data-favourited={status.favourited ? 'true' : 'false'}
-                aria-label="Favorite"
-                onClick={toggleFavourite}
-                disabled={busy}
-              >
-                <Star size={15} fill={status.favourited ? 'currentColor' : 'none'} />
-              </button>
-              {!compact && (
-                <CountButton
-                  count={status.favourites_count}
-                  title="Who favourited"
-                  onClick={() => setAccountsView({ kind: 'favourited_by' })}
-                />
-              )}
-            </div>
-            <button
-              className={`action-btn${status.bookmarked ? ' bookmarked' : ''}`}
-              aria-label="Bookmark"
-              onClick={toggleBookmark}
-              disabled={busy}
-            >
-              <Bookmark size={15} fill={status.bookmarked ? 'currentColor' : 'none'} />
-            </button>
-            <button
-              className="action-btn"
-              aria-label="React"
-              onClick={() => setShowPicker(!showPicker)}
-            >
-              <Smile size={15} />
-            </button>
-            {showPicker && (
-              <ReactionPicker
-                status={status}
-                instanceUrl={instanceUrl}
-                token={token}
-                onReact={toggleReaction}
-                onClose={() => setShowPicker(false)}
-              />
-            )}
-            {content.attachments.length > 0 && (
-              <button
-                className="action-btn"
-                aria-label={mediaHidden ? 'Show media' : 'Hide media'}
-                onClick={() => setMediaHidden((v) => !v)}
-              >
-                {mediaHidden ? <EyeOff size={15} /> : <Eye size={15} />}
-              </button>
-            )}
-            {translation.translationEnabled && (
-              <TranslateToggleButton
-                active={translation.shown}
-                disabled={translation.phase === 'loading'}
-                onClick={translation.toggle}
-              />
-            )}
-            <PostOptionsMenu
-              status={status}
-              instanceUrl={instanceUrl}
-              token={token}
-              mediaAttachments={content.attachments}
-              isOwn={status.account?.id === currentAccountId}
-              onDelete={onDelete}
-              onMute={onMute}
-              onBlock={onBlock}
-              onEdit={onEdit}
-              onUpdate={onUpdate}
-            />
-            {accountsView && (
-              <>
-                <div className="boost-dropdown-backdrop" onClick={(e) => { e.stopPropagation(); setAccountsView(null) }} />
-                <AccountsPopover
-                  kind={accountsView.kind}
-                  statusId={status.id}
-                  instanceUrl={instanceUrl}
-                  token={token}
-                  onClose={() => setAccountsView(null)}
-                  onOpenProfile={onOpenProfile}
-                />
-              </>
-            )}
-          </div>
+          <PostActions
+            status={status}
+            instanceUrl={instanceUrl}
+            token={token}
+            compact={compact}
+            content={content}
+            currentAccountId={currentAccountId}
+            busy={busy}
+            toggleBookmark={toggleBookmark}
+            toggleReaction={toggleReaction}
+            toggleFavourite={toggleFavourite}
+            toggleReblog={toggleReblog}
+            onComposeReply={onComposeReply}
+            onQuote={onQuote}
+            onOpenProfile={onOpenProfile}
+            onDelete={onDelete}
+            onMute={onMute}
+            onBlock={onBlock}
+            onEdit={onEdit}
+            onUpdate={onUpdate}
+            mediaHidden={mediaHidden}
+            setMediaHidden={setMediaHidden}
+            translation={translation}
+            showPicker={showPicker}
+            setShowPicker={setShowPicker}
+            accountsView={accountsView}
+            setAccountsView={setAccountsView}
+          />
         </div>
       </div>
       {composerFor === status.id && composerProps && (
@@ -1058,7 +1110,6 @@ function PostOptionsMenu({ status, instanceUrl, token, mediaAttachments, isOwn, 
 }
 
 export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onQuote, statusById, depth, highlightedId, onHighlightParent, currentAccountId, onDelete, onMute, onBlock, onEdit, composerFor, composerProps }) {
-  const [busy, setBusy] = useState(false)
   const [mediaHidden, setMediaHidden] = useState(false)
   // null | { kind: 'favourited_by' | 'reblogged_by' } — who-did-this popover
   const [accountsView, setAccountsView] = useState(null)
@@ -1083,61 +1134,13 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
     onUpdate(isBoost ? { ...post, reblog: newStatus } : newStatus)
   }
 
-  async function toggleBookmark() {
-    if (busy) return
-    setBusy(true)
-    try {
-      const updated = await mitra.setBookmarked(instanceUrl, token, status.id, status.bookmarked)
-      onUpdate(isBoost ? { ...post, reblog: updated } : updated)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setBusy(false)
-    }
-  }
+  // Wrap onUpdate to handle boost wrappers — the hook doesn't need to know.
+  const wrapUpdate = useCallback((updated) => {
+    onUpdate(isBoost ? { ...post, reblog: updated } : updated)
+  }, [onUpdate, isBoost, post])
 
-  async function toggleReaction(statusId, emoji, alreadyReacted) {
-    try {
-      const updated = alreadyReacted
-        ? await mitra.removeReaction(instanceUrl, token, statusId, emoji)
-        : await mitra.addReaction(instanceUrl, token, statusId, emoji)
-      onUpdate(isBoost ? { ...post, reblog: updated } : updated)
-    } catch (err) {
-      console.error(err)
-    }
-  }
-
-  async function toggleFavourite() {
-    if (busy) return
-    setBusy(true)
-    try {
-      const updated = await mitra.setFavourited(instanceUrl, token, status.id, status.favourited)
-      onUpdate(isBoost ? { ...post, reblog: updated } : updated)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function toggleReblog() {
-    if (busy) return
-    setBusy(true)
-    try {
-      const updated = await mitra.setReblogged(instanceUrl, token, status.id, status.reblogged)
-      // Mitra serializes the freshly-created repost wrapper on reblog,
-      // whose own `reblogged` is always false — the real flag lives on
-      // the wrapped original. Unreblog returns the original directly.
-      const inner = updated.reblog
-        ? { ...updated.reblog, reblogged: Boolean(updated.reblog.reblogged) }
-        : { ...updated, reblogged: Boolean(updated.reblogged) }
-      onUpdate(isBoost ? { ...post, reblog: inner } : inner)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setBusy(false)
-    }
-  }
+  const { busy, toggleBookmark, toggleReaction, toggleFavourite, toggleReblog } =
+    usePostActions({ status, instanceUrl, token, onUpdate: wrapUpdate })
 
   return (
     <div className={`post-row${highlightedId === status.id ? ' highlighted' : ''}`} style={depth != null ? { '--reply-depth': depth } : undefined}>
@@ -1213,104 +1216,34 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
             token={token}
             onReact={toggleReaction}
           />
-          <div className="post-actions" onClick={(e) => e.stopPropagation()}>
-            <button className="action-btn" aria-label="Reply" onClick={() => onComposeReply(status)}>
-              <MessageCircle size={15} />
-              {status.replies_count > 0 && <span>{status.replies_count}</span>}
-            </button>
-            {canBoostStatus(status) && (
-              <BoostDropdown
-                reblogged={status.reblogged}
-                reblogsCount={status.reblogs_count}
-                busy={busy}
-                onBoost={toggleReblog}
-                onQuote={() => onQuote(status)}
-                onShowReblogs={() => setAccountsView({ kind: 'reblogged_by' })}
-              />
-            )}
-            {/* Buttons can't nest — the "who favourited" count is a sibling */}
-            <div className="action-btn-group">
-              <button
-                className={`action-btn${status.favourited ? ' favorited' : ''}`}
-                data-favourited={status.favourited ? 'true' : 'false'}
-                aria-label="Favorite"
-                onClick={toggleFavourite}
-                disabled={busy}
-              >
-                <Star size={15} fill={status.favourited ? 'currentColor' : 'none'} />
-              </button>
-              <CountButton
-                count={status.favourites_count}
-                title="Who favourited"
-                onClick={() => setAccountsView({ kind: 'favourited_by' })}
-              />
-            </div>
-            <button
-              className={`action-btn${status.bookmarked ? ' bookmarked' : ''}`}
-              aria-label="Bookmark"
-              onClick={toggleBookmark}
-              disabled={busy}
-            >
-              <Bookmark size={15} fill={status.bookmarked ? 'currentColor' : 'none'} />
-            </button>
-            <button
-              className="action-btn"
-              aria-label="React"
-              onClick={() => setShowPicker(!showPicker)}
-            >
-              <Smile size={15} />
-            </button>
-            {showPicker && (
-              <ReactionPicker
-                status={status}
-                instanceUrl={instanceUrl}
-                token={token}
-                onReact={toggleReaction}
-                onClose={() => setShowPicker(false)}
-              />
-            )}
-            {content.attachments.length > 0 && (
-              <button
-                className="action-btn"
-                aria-label={mediaHidden ? 'Show media' : 'Hide media'}
-                onClick={() => setMediaHidden((v) => !v)}
-              >
-                {mediaHidden ? <EyeOff size={15} /> : <Eye size={15} />}
-              </button>
-            )}
-            {translation.translationEnabled && (
-              <TranslateToggleButton
-                active={translation.shown}
-                disabled={translation.phase === 'loading'}
-                onClick={translation.toggle}
-              />
-            )}
-            <PostOptionsMenu
-              status={status}
-              instanceUrl={instanceUrl}
-              token={token}
-              mediaAttachments={content.attachments}
-              isOwn={status.account?.id === currentAccountId}
-              onDelete={onDelete}
-              onMute={onMute}
-              onBlock={onBlock}
-              onEdit={onEdit}
-              onUpdate={onUpdate}
-            />
-            {accountsView && (
-              <>
-                <div className="boost-dropdown-backdrop" onClick={(e) => { e.stopPropagation(); setAccountsView(null) }} />
-                <AccountsPopover
-                  kind={accountsView.kind}
-                  statusId={status.id}
-                  instanceUrl={instanceUrl}
-                  token={token}
-                  onClose={() => setAccountsView(null)}
-                  onOpenProfile={onOpenProfile}
-                />
-              </>
-            )}
-          </div>
+          <PostActions
+            status={status}
+            instanceUrl={instanceUrl}
+            token={token}
+            compact={false}
+            content={content}
+            currentAccountId={currentAccountId}
+            busy={busy}
+            toggleBookmark={toggleBookmark}
+            toggleReaction={toggleReaction}
+            toggleFavourite={toggleFavourite}
+            toggleReblog={toggleReblog}
+            onComposeReply={onComposeReply}
+            onQuote={onQuote}
+            onOpenProfile={onOpenProfile}
+            onDelete={onDelete}
+            onMute={onMute}
+            onBlock={onBlock}
+            onEdit={onEdit}
+            onUpdate={onUpdate}
+            mediaHidden={mediaHidden}
+            setMediaHidden={setMediaHidden}
+            translation={translation}
+            showPicker={showPicker}
+            setShowPicker={setShowPicker}
+            accountsView={accountsView}
+            setAccountsView={setAccountsView}
+          />
         </div>
       </div>
       {composerFor === status.id && composerProps && (
