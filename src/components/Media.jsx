@@ -19,7 +19,6 @@ import {
   isUrlKnownFailed,
   markUrlFailed,
   downloadAttachment,
-  filenameForAttachment,
 } from '../hooks'
 import { lookupEmojiUrl } from '../lib/emojiRegistry.js'
 import { isGifUrl } from '../lib/gif/core.js'
@@ -335,7 +334,6 @@ function ImageMedia({ attachment, description, showImg, imgSrc, imgLoading, imgE
       {showImg && (
         <img
           src={imgSrc}
-          download={filenameForAttachment(attachment, attachment.meta?.mime_type || null)}
           alt={description || ''}
           onLoad={() => setImgReady(true)}
         />
@@ -432,8 +430,13 @@ function MediaItem({ attachment, onOpenLightbox }) {
   )
 
   if (type === 'image') {
-    const showImg = fetchClientMedia ? (imgBlob || imgError) : true
-    const imgSrc = imgBlob || safeProxyUrl(previewUrl || url)
+    // Same-instance media: proxy URL directly (proxy forwards cookies + serves
+    // Content-Disposition for the save dialog).  Remote media: respect the
+    // fetchClientMedia toggle (client-side fetch → blob URL for CORS).
+    const isSameInstance = Boolean(instanceUrl && (previewUrl || url).startsWith(instanceUrl))
+    const shouldFetchClient = fetchClientMedia && !isSameInstance
+    const showImg = shouldFetchClient ? (imgBlob || imgError) : true
+    const imgSrc = shouldFetchClient ? imgBlob : safeProxyUrl(previewUrl || url)
     if (isGifUrl(url)) {
       return (
         <ImageGifMedia
@@ -442,7 +445,7 @@ function MediaItem({ attachment, onOpenLightbox }) {
           showImg={showImg}
           imgLoading={imgLoading}
           imgError={imgError}
-          clientMode={Boolean(fetchClientMedia)}
+          clientMode={Boolean(shouldFetchClient)}
           onOpenLightbox={onOpenLightbox}
         />
       )
@@ -455,7 +458,7 @@ function MediaItem({ attachment, onOpenLightbox }) {
         imgSrc={imgSrc}
         imgLoading={imgLoading}
         imgError={imgError}
-        clientMode={Boolean(fetchClientMedia)}
+        clientMode={Boolean(shouldFetchClient)}
         onOpenLightbox={onOpenLightbox}
       />
     )
@@ -678,7 +681,6 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
           <img
             className="lightbox-image"
             src={displaySrc}
-            download={filenameForAttachment(attachment, attachment.meta?.mime_type || null)}
             alt={attachment.description || ''}
             onClick={(e) => e.stopPropagation()}
           />

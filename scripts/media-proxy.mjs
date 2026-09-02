@@ -33,6 +33,8 @@ function upstreamHeaders(req) {
   const headers = {}
   const auth = req.headers.authorization
   if (auth) headers['Authorization'] = auth
+  const cookie = req.headers.cookie
+  if (cookie) headers['Cookie'] = cookie
   return headers
 }
 
@@ -71,10 +73,19 @@ export async function handleMediaProxy(req, res, { fetchImpl = fetch } = {}) {
     if (res.headersSent || res.destroyed || res.writableEnded) return
     const ct = proxyRes.headers.get('content-type') || 'application/octet-stream'
     try {
+      // Extract filename from upstream URL for Content-Disposition
+      // Pattern: /media_attachments/files/.../original/filename.ext
+      let cd = ''
+      const m = target.pathname.match(/\/original\/([^/?#]+)/)
+      if (m) {
+        const filename = m[1]
+        cd = `inline; filename="${filename.replace(/"/g, '')}"`
+      }
       res.writeHead(proxyRes.status, {
         'Content-Type': ct,
         'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'public, max-age=86400',
+        ...(cd ? { 'Content-Disposition': cd } : {}),
       })
     } catch {
       try { res.destroy() } catch { /* already dead */ }

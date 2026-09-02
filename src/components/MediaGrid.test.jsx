@@ -28,7 +28,16 @@ const IMAGE = {
   meta: { mime_type: 'image/jpeg' },
 }
 
-function renderGrid(overrides = {}) {
+const SAME_INSTANCE_IMAGE = {
+  id: 'att-si',
+  type: 'image',
+  url: 'https://x.example/original/photo.jpg',
+  preview_url: 'https://x.example/preview/photo.jpg',
+  description: 'Same-instance photo',
+  meta: { mime_type: 'image/jpeg' },
+}
+
+function renderGrid(overrides = {}, attachments = [IMAGE]) {
   const context = {
     fetchClientMedia: false,
     instanceUrl: 'https://x.example',
@@ -42,7 +51,7 @@ function renderGrid(overrides = {}) {
   }
   return render(
     <AppSettingsContext.Provider value={context}>
-      <MediaGrid attachments={[IMAGE]} onOpenLightbox={vi.fn()} />
+      <MediaGrid attachments={attachments} onOpenLightbox={vi.fn()} />
     </AppSettingsContext.Provider>
   )
 }
@@ -85,21 +94,22 @@ describe('MediaGrid right-click', () => {
   })
 })
 
-describe('MediaGrid download attribute', () => {
-  it('sets the download attr to the real filename on HTTP images', () => {
-    mocks.useClientMedia.mockReturnValue({ blobUrl: null, loading: false, error: false })
-    const { container } = renderGrid()
+describe('MediaGrid same-instance proxy', () => {
+  it('uses proxy URL for same-instance images (bypasses fetchClientMedia)', () => {
+    mocks.useClientMedia.mockReturnValue({ blobUrl: 'blob:media-1', loading: false, error: false })
+    const { container } = renderGrid({ fetchClientMedia: true }, [SAME_INSTANCE_IMAGE])
     const img = container.querySelector('img')
     expect(img).not.toBeNull()
-    // filenameForAttachment extracts "photo.jpg" from the URL path
-    expect(img.getAttribute('download')).toBe('photo.jpg')
+    // Same-instance media should use proxy URL, not the blob URL
+    expect(img.src).toContain('/media-proxy?url=')
+    expect(img.src).not.toContain('blob:')
   })
 
-  it('sets the download attr to the real filename on blob images', () => {
+  it('uses blob URL for remote images when fetchClientMedia is on', () => {
     mocks.useClientMedia.mockReturnValue({ blobUrl: 'blob:media-1', loading: false, error: false })
     const { container } = renderGrid({ fetchClientMedia: true })
     const img = container.querySelector('img')
     expect(img).not.toBeNull()
-    expect(img.getAttribute('download')).toBe('photo.jpg')
+    expect(img.src).toContain('blob:')
   })
 })
