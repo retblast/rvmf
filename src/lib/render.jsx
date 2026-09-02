@@ -426,7 +426,19 @@ export function processStatusContent(status, instanceUrl) {
   return result
 }
 
-function processStatusContentUncached(status, instanceUrl) {
+// Like processStatusContent but strips @mentions from the rendered text so
+// they only appear in the "In reply to" context line. Uses a separate cache
+// entry so it doesn't interfere with the normal cached result.
+const displayContentCache = new WeakMap()
+export function processStatusContentForDisplay(status, instanceUrl) {
+  const cached = displayContentCache.get(status)
+  if (cached && cached.instanceUrl === instanceUrl) return cached.result
+  const result = processStatusContentUncached(status, instanceUrl, true)
+  displayContentCache.set(status, { instanceUrl, result })
+  return result
+}
+
+function processStatusContentUncached(status, instanceUrl, stripMentions = false) {
   // Combines mention-linking and quarantined-image extraction into what a
   // post/reply actually needs to render: text nodes plus a merged attachment
   // list (real attachments + any quarantined images recovered from the text).
@@ -435,7 +447,12 @@ function processStatusContentUncached(status, instanceUrl) {
     instanceUrl,
     status.account?.acct
   )
-  const textNodes = renderRichText(cleanedText, status.mentions, status.emojis)
+  // When stripping, drop both the @-tokens from text and the mention list
+  // passed to renderRichText, so nothing about the @mentions survives in
+  // the rendered post body. They live solely in the "In reply to" line.
+  const textNodes = stripMentions
+    ? renderRichText(cleanedText.replace(/@\w[\w.]*\b/g, ''), [], status.emojis)
+    : renderRichText(cleanedText, status.mentions, status.emojis)
 
   // Both local-instance and poster-domain recovered images are shown behind
   // the CW blur — the admin disabled inline embedding for a reason, and

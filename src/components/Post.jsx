@@ -22,7 +22,7 @@ import {
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { PickerContext, AppSettingsContext, useEscapeKey, showToast, downloadAllMedia } from '../hooks'
-import { formatRelativeTime, htmlToPlainText, processStatusContent, renderEmojiText, renderPlainText } from '../lib/render.jsx'
+import { formatRelativeTime, htmlToPlainText, processStatusContent, processStatusContentForDisplay, renderEmojiText, renderPlainText } from '../lib/render.jsx'
 import { translateText, translationPressureNotice } from '../lib/translate'
 import { canonicalizeLanguage, canonicalLangName } from '../lib/languages'
 import { Avatar, MediaGrid, ProxiedImg } from './Media.jsx'
@@ -518,7 +518,7 @@ export function ThreadReply({
   const account = status.account || {}
   const rawName = account.display_name || account.username || 'Unknown'
   const name = renderEmojiText(rawName, account.emojis)
-  const content = processStatusContent(status, instanceUrl)
+  const content = processStatusContentForDisplay(status, instanceUrl)
   const translation = useTranslation(status)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
   // Build the sorted mention list: reply target first, then other body mentions.
@@ -1187,7 +1187,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   const displayNameRaw = account.display_name || account.username || 'Unknown'
   const displayName = renderEmojiText(displayNameRaw, account.emojis)
   const booster = isBoost ? post.account : null
-  const content = processStatusContent(status, instanceUrl)
+  const content = processStatusContentForDisplay(status, instanceUrl)
   const translation = useTranslation(status)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
   // Build the sorted mention list: reply target first, then other body mentions.
