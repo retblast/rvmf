@@ -19,7 +19,6 @@ import {
   isUrlKnownFailed,
   markUrlFailed,
   downloadAttachment,
-  filenameForAttachment,
 } from '../hooks'
 import { lookupEmojiUrl } from '../lib/emojiRegistry.js'
 import { isGifUrl } from '../lib/gif/core.js'
@@ -315,7 +314,7 @@ function attachmentAspect(attachment) {
 // until the browser has actually painted the image — in direct mode
 // the <img> starts loading immediately, so the hook's loading flag
 // alone can't drive this.
-function ImageMedia({ attachment, instanceUrl, token, description, showImg, imgSrc, imgLoading, imgError, clientMode, onOpenLightbox }) {
+function ImageMedia({ attachment, description, showImg, imgSrc, imgLoading, imgError, clientMode, onOpenLightbox }) {
   const [imgReady, setImgReady] = useState(false)
   const aspectRatio = attachmentAspect(attachment)
   const showPlaceholder = Boolean(attachment.blurhash) && !(clientMode ? !imgLoading : imgReady)
@@ -335,24 +334,8 @@ function ImageMedia({ attachment, instanceUrl, token, description, showImg, imgS
       {showImg && (
         <img
           src={imgSrc}
-          // Suggested filename for the right-click "Save Image As" dialog
-          // and any other browser-native save path on the thumbnail.
-          download={filenameForAttachment(attachment, attachment.meta?.mime_type || null)}
           alt={description || ''}
           onLoad={() => setImgReady(true)}
-          onContextMenu={(e) => {
-            // Only intercept when this image displays from a blob: URL
-            // (client media-fetching on) — browsers ignore the download
-            // attribute for blob: sources, so save programmatically with
-            // the real filename. For normal HTTP sources the download
-            // attribute already drives a correct native "Save Image As…";
-            // bailing out here keeps the standard context menu coming up
-            // instead of hijacking it and auto-starting a download on
-            // every right-click.
-            if (!imgSrc.startsWith('blob:')) return
-            e.preventDefault()
-            downloadAttachment(attachment, { instanceUrl, token }, imgSrc).catch(() => {})
-          }}
         />
       )}
       {!attachment.blurhash && imgLoading && <div className="media-loading-overlay"><div className="media-spinner" /></div>}
@@ -472,8 +455,6 @@ function MediaItem({ attachment, onOpenLightbox }) {
         imgError={imgError}
         clientMode={Boolean(fetchClientMedia)}
         onOpenLightbox={onOpenLightbox}
-        instanceUrl={instanceUrl}
-        token={token}
       />
     )
   }
@@ -695,23 +676,8 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
           <img
             className="lightbox-image"
             src={displaySrc}
-            // Suggested filename for the right-click "Save Image As" dialog
-            // and any other browser-native save path.  Without this the
-            // browser falls back to the URL basename — which for proxied
-            // URLs is "media-proxy" and for blob: URLs is "Untitled" — so
-            // the user always gets a meaningless default.
-            download={filenameForAttachment(attachment, attachment.meta?.mime_type || null)}
             alt={attachment.description || ''}
             onClick={(e) => e.stopPropagation()}
-            onContextMenu={(e) => {
-              // Same as the thumbnail: only intercept for blob: sources
-              // (client media-fetching on), where the download attribute is
-              // ignored. HTTP sources should keep the native context menu
-              // and its "Save Image As…" — never hijack or auto-download.
-              if (!displaySrc.startsWith('blob:')) return
-              e.preventDefault()
-              downloadAttachment(attachment, { instanceUrl, token }, displaySrc).catch(() => {})
-            }}
           />
           {attachment.description && (
             <div className="lightbox-caption" onClick={(e) => e.stopPropagation()}>
