@@ -443,10 +443,11 @@ export function ThreadReply({
   const content = processStatusContent(status, instanceUrl)
   const translation = useTranslation(status)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
-  // Same context line as PostRow: when the parent isn't loaded, fall back
-  // to the mention matching in_reply_to_account_id. Notification previews
-  // have no statusById, so this is usually the only source there.
-  const replyToAccount = !parentStatus && status.in_reply_to_account_id
+  // Show "In reply to" whenever the server has the reply target,
+  // regardless of whether the parent status is loaded in statusById.
+  // ThreadReply also shows a "parent" button when parentStatus is set,
+  // but the context line should always be available.
+  const replyToAccount = status.in_reply_to_account_id
     ? ((status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
        || { id: status.in_reply_to_account_id })
     : null
@@ -1129,7 +1130,11 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   const content = processStatusContent(status, instanceUrl)
   const translation = useTranslation(status)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
-  const replyToAccount = !parentStatus && status.in_reply_to_account_id
+  // Show "In reply to" whenever the server has the reply target, regardless
+  // of whether the parent status is loaded in statusById. PostRow is used in
+  // the timeline (and the thread panel's focal post) where there is no
+  // "parent" button, so the context line is the only reply indicator.
+  const replyToAccount = status.in_reply_to_account_id
     ? ((status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
        || { id: status.in_reply_to_account_id })
     : null
@@ -1167,19 +1172,6 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
           <div className="post-meta">
             <span className="post-name" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(account) }}>{displayName}</span>
             <span className="post-handle" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(account) }}>@{account.acct || account.username}</span>
-            {parentStatus && (
-              <button
-                className="post-parent-link"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onOpenThread(parentStatus)
-                }}
-                onMouseEnter={() => onHighlightParent?.(parentStatus.id)}
-                onMouseLeave={() => onHighlightParent?.(null)}
-              >
-                parent
-              </button>
-            )}
             <span className="post-time">{formatRelativeTime(status.created_at)}</span>
             {status.edited_at && (
               <span className="post-edited" title={`Edited ${formatRelativeTime(status.edited_at)}`}>
