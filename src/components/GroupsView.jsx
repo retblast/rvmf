@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Plus, Settings2, Trash2, Users } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { htmlToPlainText } from '../lib/render.jsx'
@@ -11,6 +11,11 @@ function GroupFeed({ group, instanceUrl, token, onClose, onPostToGroup, onManage
   const [error, setError] = useState('')
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
+  const statusById = useMemo(() => {
+    const m = new Map()
+    for (const p of posts) { m.set(p.id, p); if (p.reblog) m.set(p.reblog.id, p.reblog) }
+    return m
+  }, [posts])
 
   useEffect(() => {
     setPosts([])
@@ -86,6 +91,7 @@ function GroupFeed({ group, instanceUrl, token, onClose, onPostToGroup, onManage
               instanceUrl={instanceUrl}
               token={token}
               onUpdate={(updated) => setPosts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))}
+              statusById={statusById}
               {...rowHandlers}
             />
           ))}

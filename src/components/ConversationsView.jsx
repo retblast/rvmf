@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MessageCircle } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { formatRelativeTime, htmlToPlainText } from '../lib/render.jsx'
@@ -79,6 +79,11 @@ export function ConversationsView({
   const [dmHasMore, setDmHasMore] = useState(true)
   const [dmLoadingMore, setDmLoadingMore] = useState(false)
   const dmSentinelRef = useRef(null)
+  const dmStatusById = useMemo(() => {
+    const m = new Map()
+    for (const p of dmPosts) { m.set(p.id, p); if (p.reblog) m.set(p.reblog.id, p.reblog) }
+    return m
+  }, [dmPosts])
 
   const loadDms = useCallback(() => {
     setDmLoading(true)
@@ -222,6 +227,7 @@ export function ConversationsView({
                   onOpenLightbox={onOpenLightbox}
                   onOpenProfile={onOpenProfile}
                   onQuote={onQuote}
+                  statusById={dmStatusById}
                   currentAccountId={currentAccountId}
                   onDelete={onDelete}
                   onEdit={onEdit}

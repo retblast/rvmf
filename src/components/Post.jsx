@@ -450,25 +450,21 @@ export function ThreadReply({
             >
               <Bookmark size={15} fill={status.bookmarked ? 'currentColor' : 'none'} />
             </button>
-            {!compact && (
-              <>
-                <button
-                  className="action-btn"
-                  aria-label="React"
-                  onClick={() => setShowPicker(!showPicker)}
-                >
-                  <Smile size={15} />
-                </button>
-                {showPicker && (
-                  <ReactionPicker
-                    status={status}
-                    instanceUrl={instanceUrl}
-                    token={token}
-                    onReact={toggleReaction}
-                    onClose={() => setShowPicker(false)}
-                  />
-                )}
-              </>
+            <button
+              className="action-btn"
+              aria-label="React"
+              onClick={() => setShowPicker(!showPicker)}
+            >
+              <Smile size={15} />
+            </button>
+            {showPicker && (
+              <ReactionPicker
+                status={status}
+                instanceUrl={instanceUrl}
+                token={token}
+                onReact={toggleReaction}
+                onClose={() => setShowPicker(false)}
+              />
             )}
             {content.attachments.length > 0 && (
               <button
@@ -746,6 +742,10 @@ function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote, onShow
 
 export function QuoteCard({ status, instanceUrl, onOpenThread }) {
   if (!status) return null
+  const { alwaysSensitive } = useContext(AppSettingsContext)
+  const effectiveSensitive = Boolean(status.sensitive) || Boolean(alwaysSensitive)
+  const [revealed, setRevealed] = useState(!effectiveSensitive)
+  useEffect(() => { setRevealed(!effectiveSensitive) }, [effectiveSensitive])
   const account = status.account || {}
   const rawName = account.display_name || account.username || 'Unknown'
   const name = renderEmojiText(rawName, account.emojis)
@@ -759,7 +759,18 @@ export function QuoteCard({ status, instanceUrl, onOpenThread }) {
       </div>
       <p className="quote-card-text">{content.textNodes}</p>
       {content.attachments.length > 0 && content.attachments[0].type === 'image' && (
-        <ProxiedImg className="quote-card-image" src={content.attachments[0].preview_url || content.attachments[0].url} alt="" />
+        effectiveSensitive && !revealed ? (
+          <button
+            type="button"
+            className="media-cw-overlay quote-card-image"
+            onClick={(e) => { e.stopPropagation(); setRevealed(true) }}
+          >
+            <Eye size={16} />
+            <span>Sensitive content — click to view</span>
+          </button>
+        ) : (
+          <ProxiedImg className="quote-card-image" src={content.attachments[0].preview_url || content.attachments[0].url} alt="" />
+        )
       )}
     </div>
   )

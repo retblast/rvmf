@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Home,
   Bell,
@@ -180,6 +180,38 @@ export default function App() {
   const [serverInfoOpen, setServerInfoOpen] = useState(false)
   // Where the settings panel was opened from (null = centered)
   const [settingsAnchor, setSettingsAnchor] = useState(null)
+
+  // Build id→status maps so PostRow can look up parent statuses for
+  // "in reply to" links.  Each feed gets its own map so updates stay
+  // scoped — a boost in the timeline shouldn't leak into bookmarks.
+  const timelineStatusById = useMemo(() => {
+    const m = new Map()
+    for (const p of timeline) {
+      m.set(p.id, p)
+      if (p.reblog) m.set(p.reblog.id, p.reblog)
+    }
+    return m
+  }, [timeline])
+  const exploreStatusById = useMemo(() => {
+    const m = new Map()
+    for (const feed of Object.values(exploreTimelines)) {
+      if (!feed) continue
+      for (const p of feed) { m.set(p.id, p); if (p.reblog) m.set(p.reblog.id, p.reblog) }
+    }
+    return m
+  }, [exploreTimelines])
+  const bookmarksStatusById = useMemo(() => {
+    const m = new Map()
+    for (const p of bookmarks) { m.set(p.id, p); if (p.reblog) m.set(p.reblog.id, p.reblog) }
+    return m
+  }, [bookmarks])
+  const notifStatusById = useMemo(() => {
+    const m = new Map()
+    for (const n of notifications) {
+      if (n.status) { m.set(n.status.id, n.status); if (n.status.reblog) m.set(n.status.reblog.id, n.status.reblog) }
+    }
+    return m
+  }, [notifications])
 
   function openSettingsFrom(e) {
     const rect = e?.currentTarget?.getBoundingClientRect()
@@ -919,10 +951,13 @@ export default function App() {
   }, [view, exploreFeed, loadMoreExplore, loadMoreDirectory, exploreTimelines[exploreFeed]?.length])
 
   function updateExplorePost(updated) {
-    setExploreTimelines((prev) => ({
-      ...prev,
-      [exploreFeed]: prev[exploreFeed]?.map((p) => mergeStatusIntoRow(p, updated)) ?? null,
-    }))
+    setExploreTimelines((prev) => {
+      const next = { ...prev }
+      for (const key of Object.keys(next)) {
+        if (next[key]) next[key] = next[key].map((p) => mergeStatusIntoRow(p, updated))
+      }
+      return next
+    })
   }
 
   async function respondFollowRequest(accountId, action) {
@@ -1433,6 +1468,8 @@ export default function App() {
                 onOpenProfile={handleOpenProfile}
                 onRespondFollowRequest={respondFollowRequest}
                 pendingFollowIds={pendingFollowIds}
+                statusById={notifStatusById}
+                onQuote={handleQuote}
                 currentAccountId={session.account?.id}
                 onDelete={handleDeleteStatus}
                 onEdit={handleEditStatus}
@@ -1519,6 +1556,7 @@ export default function App() {
                   onOpenLightbox={setLightboxAttachment}
                   onOpenProfile={handleOpenProfile}
                   onQuote={handleQuote}
+                  statusById={timelineStatusById}
                   currentAccountId={session.account?.id}
                   onDelete={handleDeleteStatus}
                   onEdit={handleEditStatus}
@@ -1624,6 +1662,7 @@ export default function App() {
                       onOpenLightbox={setLightboxAttachment}
                       onOpenProfile={handleOpenProfile}
                       onQuote={handleQuote}
+                      statusById={exploreStatusById}
                       currentAccountId={session.account?.id}
                       onDelete={handleDeleteStatus}
                       onEdit={handleEditStatus}
@@ -1779,6 +1818,7 @@ export default function App() {
                   onOpenLightbox={setLightboxAttachment}
                   onOpenProfile={handleOpenProfile}
                   onQuote={handleQuote}
+                  statusById={bookmarksStatusById}
                   currentAccountId={session.account?.id}
                   onDelete={handleDeleteStatus}
                   onEdit={handleEditStatus}
