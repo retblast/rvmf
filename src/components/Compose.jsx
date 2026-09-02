@@ -624,13 +624,26 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
     if (poll.enabled && mediaIds.length > 0) removeUpload(mediaIds[0])
   }, [uploads.length, poll.enabled])
 
-  // When replying, pre-fill with the @mention so the server populates
-  // the mentions array and "In reply to" context works for everyone.
+  // When replying, pre-fill with all @mentions from the parent post so the
+  // server populates the mentions array and "In reply to" context works
+  // for everyone. Skip our own handle to avoid self-mentioning.
   useEffect(() => {
     if (replyToStatus?.account) {
-      setText(`@${replyToStatus.account.acct || replyToStatus.account.username} `)
+      const handles = []
+      const seen = new Set()
+      if (currentAccountId !== replyToStatus.account.id) {
+        handles.push(`@${replyToStatus.account.acct || replyToStatus.account.username}`)
+        seen.add(replyToStatus.account.id)
+      }
+      for (const m of (replyToStatus.mentions || [])) {
+        if (!seen.has(m.id) && m.id !== currentAccountId) {
+          handles.push(`@${m.acct || m.username}`)
+          seen.add(m.id)
+        }
+      }
+      if (handles.length > 0) setText(handles.join(' ') + ' ')
     }
-  }, [replyToStatus?.id])
+  }, [replyToStatus?.id, currentAccountId])
 
   async function submit() {
     if (!text.trim() && mediaIds.length === 0 && !quoteStatus && !poll.enabled) {

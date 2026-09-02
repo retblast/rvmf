@@ -71,13 +71,26 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
     mitra.fetchCustomEmojis(instanceUrl).then((emojis) => setCustomEmojis(emojis || [])).catch(() => {})
   }, [instanceUrl])
 
-  // Always include the @mention in the reply body so the server populates
-  // the mentions array and the "In reply to" context works for everyone.
+  // Always include the @mentions from the parent post in the reply body
+  // so the server populates the mentions array and "In reply to" context
+  // works for everyone. Skip our own handle to avoid self-mentioning.
   useEffect(() => {
     if (status?.account) {
-      setText(`@${status.account.acct || status.account.username} `)
+      const handles = []
+      const seen = new Set()
+      if (currentAccountId !== status.account.id) {
+        handles.push(`@${status.account.acct || status.account.username}`)
+        seen.add(status.account.id)
+      }
+      for (const m of (status.mentions || [])) {
+        if (!seen.has(m.id) && m.id !== currentAccountId) {
+          handles.push(`@${m.acct || m.username}`)
+          seen.add(m.id)
+        }
+      }
+      if (handles.length > 0) setText(handles.join(' ') + ' ')
     }
-  }, [status?.id])
+  }, [status?.id, currentAccountId])
 
   // Polls and media attachments are mutually exclusive
   useEffect(() => {
