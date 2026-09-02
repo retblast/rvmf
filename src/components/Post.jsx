@@ -38,6 +38,84 @@ function unwrapStatus(post) {
   return post.reblog || post
 }
 
+// Builds the sorted list of accounts to show in the "In reply to" line:
+// the direct reply target (in_reply_to_account_id) first, then any other
+// mentions from the post body. Deduplicates by id. The list is truncated
+// to a small number of handles for display; the full list is visible on
+// hover.
+function buildReplyMentions(status) {
+  if (!status?.in_reply_to_account_id && !(status.mentions?.length > 0)) return []
+  const seen = new Set()
+  const result = []
+  // Reply target first
+  if (status.in_reply_to_account_id) {
+    const target = (status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
+    if (target) {
+      result.push(target)
+      seen.add(target.id)
+    } else {
+      // No matching mention — add a minimal placeholder
+      result.push({ id: status.in_reply_to_account_id })
+      seen.add(status.in_reply_to_account_id)
+    }
+  }
+  // Then other mentions from the body
+  for (const m of (status.mentions || [])) {
+    if (!seen.has(m.id)) {
+      result.push(m)
+      seen.add(m.id)
+    }
+  }
+  return result
+}
+
+// Formats a single mention as "@handle"
+function mentionLabel(m) {
+  return `@${m.acct || m.username || 'someone'}`
+}
+
+// Renders the "In reply to" context line with all mentioned accounts,
+// truncated to a few handles with hover-to-expand for long lists.
+function ReplyContextLine({ mentions, onOpenProfile }) {
+  if (!mentions || mentions.length === 0) return null
+  const MAX_VISIBLE = 2
+  const visible = mentions.slice(0, MAX_VISIBLE)
+  const extra = mentions.length - MAX_VISIBLE
+
+  function renderHandles(all) {
+    return all.map((m, i) => (
+      <span
+        key={m.id}
+        className="post-reply-link clickable"
+        onClick={(e) => { e.stopPropagation(); onOpenProfile?.(m) }}
+      >
+        {mentionLabel(m)}
+        {i < all.length - 1 ? ', ' : ''}
+      </span>
+    ))
+  }
+
+  return (
+    <div className="post-reply-context">
+      In reply to{' '}
+      {extra > 0 ? (
+        <span className="post-reply-expanded">
+          {renderHandles(visible)}
+          <span className="post-reply-truncated">
+            {', '}
+            <span className="post-reply-more" title={`Also mentions ${extra} other${extra !== 1 ? 's' : ''}`}>
+              +{extra} more
+            </span>
+            <span className="post-reply-full">{renderHandles(mentions.slice(MAX_VISIBLE))}</span>
+          </span>
+        </span>
+      ) : (
+        renderHandles(mentions)
+      )}
+    </div>
+  )
+}
+
 // Only public and unlisted posts can be reposted — servers reject boosts
 // of followers-only/direct/subscribers content, so don't offer the button.
 export function canBoostStatus(status) {
@@ -443,14 +521,8 @@ export function ThreadReply({
   const content = processStatusContent(status, instanceUrl)
   const translation = useTranslation(status)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
-  // Show "In reply to" whenever the server has the reply target,
-  // regardless of whether the parent status is loaded in statusById.
-  // ThreadReply also shows a "parent" button when parentStatus is set,
-  // but the context line should always be available.
-  const replyToAccount = status.in_reply_to_account_id
-    ? ((status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
-       || { id: status.in_reply_to_account_id })
-    : null
+  // Build the sorted mention list: reply target first, then other body mentions.
+  const replyMentions = buildReplyMentions(status)
 
   function handlePollUpdated(poll) {
     onUpdate({ ...status, poll })
@@ -497,19 +569,7 @@ export function ThreadReply({
               </span>
             )}
           </div>
-          {replyToAccount && (
-            <div className="post-reply-context">
-              In reply to{' '}
-              <span
-                className="post-reply-link clickable"
-                onClick={(e) => { e.stopPropagation(); onOpenProfile?.(replyToAccount) }}
-              >
-                {replyToAccount.acct || replyToAccount.username
-                  ? `@${replyToAccount.acct || replyToAccount.username}`
-                  : 'someone'}
-              </span>
-            </div>
-          )}
+          <ReplyContextLine mentions={replyMentions} onOpenProfile={onOpenProfile} />
           {translation.shown
             ? <TranslatedBody status={status} t={translation} />
             : <p className="post-text">{content.textNodes}</p>}
@@ -1130,14 +1190,8 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   const content = processStatusContent(status, instanceUrl)
   const translation = useTranslation(status)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
-  // Show "In reply to" whenever the server has the reply target, regardless
-  // of whether the parent status is loaded in statusById. PostRow is used in
-  // the timeline (and the thread panel's focal post) where there is no
-  // "parent" button, so the context line is the only reply indicator.
-  const replyToAccount = status.in_reply_to_account_id
-    ? ((status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
-       || { id: status.in_reply_to_account_id })
-    : null
+  // Build the sorted mention list: reply target first, then other body mentions.
+  const replyMentions = buildReplyMentions(status)
 
   function handlePollUpdated(poll) {
     const newStatus = { ...status, poll }
@@ -1179,16 +1233,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
               </span>
             )}
           </div>
-          {replyToAccount && (
-            <div className="post-reply-context">
-              In reply to{' '}
-              <span className="post-reply-link" onClick={(e) => { e.stopPropagation(); onOpenProfile?.(replyToAccount) }}>
-                {replyToAccount.acct || replyToAccount.username
-                  ? `@${replyToAccount.acct || replyToAccount.username}`
-                  : 'someone'}
-              </span>
-            </div>
-          )}
+          <ReplyContextLine mentions={replyMentions} onOpenProfile={onOpenProfile} />
           {translation.shown
             ? <TranslatedBody status={status} t={translation} />
             : <p className="post-text">{content.textNodes}</p>}

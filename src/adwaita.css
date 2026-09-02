@@ -385,6 +385,38 @@ button {
   text-decoration: underline;
 }
 
+/* Hover-expand for "In reply to" line when many accounts are mentioned.
+   The truncated "+N more" indicator is shown by default; the full list
+   (hanging off the same line) reveals on hover of the container. */
+.post-reply-expanded {
+  position: relative;
+}
+
+.post-reply-truncated {
+  /* No-op wrapper — exists only for the title attribute on the "+N more". */
+}
+
+.post-reply-more {
+  color: var(--text-secondary);
+  font-weight: 500;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.post-reply-full {
+  display: none;
+}
+
+.post-reply-expanded:hover .post-reply-full,
+.post-reply-expanded:focus-within .post-reply-full {
+  display: inline;
+}
+
+.post-reply-expanded:hover .post-reply-more,
+.post-reply-expanded:focus-within .post-reply-more {
+  display: none;
+}
+
 .post-text {
   margin: 4px 0 8px;
   /* Post bodies are the primary reading surface — full root size, not
