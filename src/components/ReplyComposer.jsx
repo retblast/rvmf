@@ -71,26 +71,25 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
     mitra.fetchCustomEmojis(instanceUrl).then((emojis) => setCustomEmojis(emojis || [])).catch(() => {})
   }, [instanceUrl])
 
-  // Always include the @mentions from the parent post in the reply body
-  // so the server populates the mentions array and "In reply to" context
-  // works for everyone. Skip our own handle to avoid self-mentioning.
-  useEffect(() => {
-    if (status?.account) {
-      const handles = []
-      const seen = new Set()
-      if (currentAccountId !== status.account.id) {
-        handles.push(`@${status.account.acct || status.account.username}`)
-        seen.add(status.account.id)
-      }
-      for (const m of (status.mentions || [])) {
-        if (!seen.has(m.id) && m.id !== currentAccountId) {
-          handles.push(`@${m.acct || m.username}`)
-          seen.add(m.id)
-        }
-      }
-      if (handles.length > 0) setText(handles.join(' ') + ' ')
+  // Builds the @mention prefix for the reply body sent to the server.
+  // Includes the reply target and all other mentions from the parent post,
+  // skipping the current user. Returns an empty string if there are no mentions.
+  function mentionPrefix() {
+    if (!status?.account) return ''
+    const handles = []
+    const seen = new Set()
+    if (currentAccountId !== status.account.id) {
+      handles.push(`@${status.account.acct || status.account.username}`)
+      seen.add(status.account.id)
     }
-  }, [status?.id, currentAccountId])
+    for (const m of (status.mentions || [])) {
+      if (!seen.has(m.id) && m.id !== currentAccountId) {
+        handles.push(`@${m.acct || m.username}`)
+        seen.add(m.id)
+      }
+    }
+    return handles.length > 0 ? handles.join(' ') + ' ' : ''
+  }
 
   // Polls and media attachments are mutually exclusive
   useEffect(() => {
@@ -118,7 +117,12 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
     setBusy(true)
     setError('')
     try {
-      const reply = await mitra.postStatus(instanceUrl, token, text.trim(), {
+      // Prepend the @mention prefix to the body sent to the server so the
+      // server populates the mentions array correctly. The textarea itself
+      // stays clean — the prefix is added at submit time, transparently.
+      const prefix = mentionPrefix()
+      const body = (prefix + text.trim()).trim()
+      const reply = await mitra.postStatus(instanceUrl, token, body, {
         inReplyToId: status.id,
         visibility,
         mediaIds,
