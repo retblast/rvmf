@@ -2395,6 +2395,7 @@ button.mention-link {
 /* ---- quote card (inner-post box) ---- */
 
 .quote-card {
+  position: relative;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   padding: 10px 12px;
