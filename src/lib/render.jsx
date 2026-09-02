@@ -450,8 +450,10 @@ function processStatusContentUncached(status, instanceUrl, stripMentions = false
   // When stripping, drop both the @-tokens from text and the mention list
   // passed to renderRichText, so nothing about the @mentions survives in
   // the rendered post body. They live solely in the "In reply to" line.
+  // \s* after the handle pattern consumes the trailing space(s) so there
+  // are no orphaned gaps left in the text.
   const textNodes = stripMentions
-    ? renderRichText(cleanedText.replace(/@\w[\w.]*\b/g, ''), [], status.emojis)
+    ? renderRichText(cleanedText.replace(/@\w[\w.]*\b\s*/g, '').trim(), [], status.emojis)
     : renderRichText(cleanedText, status.mentions, status.emojis)
 
   // Both local-instance and poster-domain recovered images are shown behind
