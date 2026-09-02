@@ -85,6 +85,16 @@ describe('mergeStatusIntoRow', () => {
     expect(mergeStatusIntoRow(wrapper, { id: 'other' })).toBe(wrapper)
   })
 
+  it('unwraps wrapper-shaped updated objects into the inner post', () => {
+    // PostRow sends { ...post, reblog: updated } when updating a boost row.
+    // mergeStatusIntoRow must extract updated.reblog — not nest the whole thing.
+    const wrapperUpdated = { id: 'w1', reblog: { id: 'p1', favourited: true } }
+    const result = mergeStatusIntoRow(wrapper, wrapperUpdated)
+    expect(result).toEqual({ id: 'w1', reblog: { id: 'p1', favourited: true } })
+    // Crucially: no double-nesting
+    expect(result.reblog.reblog).toBeUndefined()
+  })
+
   it('merges every copy when applied over a list', () => {
     const list = [{ id: 'p1' }, wrapper, { id: 'zzz' }]
     const updated = { id: 'p1', reblogged: true }

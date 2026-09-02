@@ -152,7 +152,7 @@ export function mergeStatusIntoRow(row, updated) {
   if (row.reblog.id === updated.id) return { ...row, reblog: updated }
   // Handle wrapper-shaped updated objects: when boosting, the API returns
   // { ...post, reblog: innerPost } and we need to match the inner post id.
-  if (updated.reblog?.id && row.reblog?.id === updated.reblog.id) return { ...row, reblog: updated }
+  if (updated.reblog?.id && row.reblog?.id === updated.reblog.id) return { ...row, reblog: updated.reblog }
   return row
 }
 
