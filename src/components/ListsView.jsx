@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Check, Pencil, Trash2, X } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { PostRow } from './Post.jsx'
@@ -11,6 +11,11 @@ function ListFeed({ list, instanceUrl, token, onClose, ...rowHandlers }) {
   const [error, setError] = useState('')
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
+  const statusById = useMemo(() => {
+    const m = new Map()
+    for (const p of posts) { m.set(p.id, p); if (p.reblog) m.set(p.reblog.id, p.reblog) }
+    return m
+  }, [posts])
 
   useEffect(() => {
     setPosts([])
@@ -75,6 +80,7 @@ function ListFeed({ list, instanceUrl, token, onClose, ...rowHandlers }) {
               instanceUrl={instanceUrl}
               token={token}
               onUpdate={(updated) => setPosts((prev) => prev.map((p) => (p.id === updated.id ? updated : p)))}
+              statusById={statusById}
               {...rowHandlers}
             />
           ))}

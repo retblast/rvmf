@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ListPlus, LoaderCircle, RefreshCw, Settings2 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { formatRelativeTime, processStatusContent } from '../lib/render.jsx'
@@ -308,6 +308,11 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
   const [avatarRetryNonce, setAvatarRetryNonce] = useState(0)
   const [avatarRetrying, setAvatarRetrying] = useState(false)
   const { gifConversionEnabled } = useContext(AppSettingsContext)
+  const statusById = useMemo(() => {
+    const m = new Map()
+    for (const p of statuses) { m.set(p.id, p); if (p.reblog) m.set(p.reblog.id, p.reblog) }
+    return m
+  }, [statuses])
 
   function tabParams(t) {
     switch (t) {
@@ -615,6 +620,7 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
                     onOpenLightbox={onOpenLightbox}
                     onOpenProfile={onOpenProfile}
                     onQuote={onQuote}
+                    statusById={statusById}
                     currentAccountId={currentAccountId}
                     onDelete={onDelete}
                     onMute={onMute}

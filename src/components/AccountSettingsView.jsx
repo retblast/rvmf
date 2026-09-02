@@ -9,7 +9,10 @@ function downloadCsv(filename, csv) {
   link.href = URL.createObjectURL(blob)
   link.download = filename
   link.click()
-  URL.revokeObjectURL(link.href)
+  // Defer revocation a tick: revoking synchronously right after click()
+  // can race the browser's download navigation and silently drop the save.
+  // Same pattern as saveBlob in hooks.js.
+  setTimeout(() => URL.revokeObjectURL(link.href), 0)
 }
 
 // Follows/followers export & import, aliases, account migration.

@@ -19,7 +19,6 @@ import {
   isUrlKnownFailed,
   markUrlFailed,
   downloadAttachment,
-  filenameForAttachment,
 } from '../hooks'
 import { lookupEmojiUrl } from '../lib/emojiRegistry.js'
 import { isGifUrl } from '../lib/gif/core.js'
@@ -315,7 +314,7 @@ function attachmentAspect(attachment) {
 // until the browser has actually painted the image — in direct mode
 // the <img> starts loading immediately, so the hook's loading flag
 // alone can't drive this.
-function ImageMedia({ attachment, instanceUrl, token, description, showImg, imgSrc, imgLoading, imgError, clientMode, onOpenLightbox }) {
+function ImageMedia({ attachment, description, showImg, imgSrc, imgLoading, imgError, clientMode, onOpenLightbox }) {
   const [imgReady, setImgReady] = useState(false)
   const aspectRatio = attachmentAspect(attachment)
   const showPlaceholder = Boolean(attachment.blurhash) && !(clientMode ? !imgLoading : imgReady)
@@ -335,19 +334,8 @@ function ImageMedia({ attachment, instanceUrl, token, description, showImg, imgS
       {showImg && (
         <img
           src={imgSrc}
-          // Suggested filename for the right-click "Save Image As" dialog
-          // and any other browser-native save path on the thumbnail.
-          download={filenameForAttachment(attachment, attachment.meta?.mime_type || null)}
           alt={description || ''}
           onLoad={() => setImgReady(true)}
-          onContextMenu={(e) => {
-            // The thumbnail may display from a blob: URL when client media
-            // fetching is on — browsers ignore the download attribute for
-            // blob: sources, so intercept and save with the real name.
-            e.preventDefault()
-            const blobUrl = imgSrc.startsWith('blob:') ? imgSrc : null
-            downloadAttachment(attachment, { instanceUrl, token }, blobUrl).catch(() => {})
-          }}
         />
       )}
       {!attachment.blurhash && imgLoading && <div className="media-loading-overlay"><div className="media-spinner" /></div>}
@@ -442,8 +430,13 @@ function MediaItem({ attachment, onOpenLightbox }) {
   )
 
   if (type === 'image') {
-    const showImg = fetchClientMedia ? (imgBlob || imgError) : true
-    const imgSrc = imgBlob || safeProxyUrl(previewUrl || url)
+    // Same-instance media: proxy URL directly (proxy forwards cookies + serves
+    // Content-Disposition for the save dialog).  Remote media: respect the
+    // fetchClientMedia toggle (client-side fetch → blob URL for CORS).
+    const isSameInstance = Boolean(instanceUrl && (previewUrl || url).startsWith(instanceUrl))
+    const shouldFetchClient = fetchClientMedia && !isSameInstance
+    const showImg = shouldFetchClient ? (imgBlob || imgError) : true
+    const imgSrc = shouldFetchClient ? imgBlob : safeProxyUrl(previewUrl || url)
     if (isGifUrl(url)) {
       return (
         <ImageGifMedia
@@ -452,7 +445,7 @@ function MediaItem({ attachment, onOpenLightbox }) {
           showImg={showImg}
           imgLoading={imgLoading}
           imgError={imgError}
-          clientMode={Boolean(fetchClientMedia)}
+          clientMode={Boolean(shouldFetchClient)}
           onOpenLightbox={onOpenLightbox}
         />
       )
@@ -465,10 +458,8 @@ function MediaItem({ attachment, onOpenLightbox }) {
         imgSrc={imgSrc}
         imgLoading={imgLoading}
         imgError={imgError}
-        clientMode={Boolean(fetchClientMedia)}
+        clientMode={Boolean(shouldFetchClient)}
         onOpenLightbox={onOpenLightbox}
-        instanceUrl={instanceUrl}
-        token={token}
       />
     )
   }
@@ -690,23 +681,8 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
           <img
             className="lightbox-image"
             src={displaySrc}
-            // Suggested filename for the right-click "Save Image As" dialog
-            // and any other browser-native save path.  Without this the
-            // browser falls back to the URL basename — which for proxied
-            // URLs is "media-proxy" and for blob: URLs is "Untitled" — so
-            // the user always gets a meaningless default.
-            download={filenameForAttachment(attachment, attachment.meta?.mime_type || null)}
             alt={attachment.description || ''}
             onClick={(e) => e.stopPropagation()}
-            onContextMenu={(e) => {
-              // The displayed <img> may load from a blob: URL when client
-              // media-fetching is on.  Browsers ignore the download
-              // attribute for blob: sources, so intercept the context menu
-              // and save programmatically with the real filename.
-              e.preventDefault()
-              const blobUrl = displaySrc.startsWith('blob:') ? displaySrc : null
-              downloadAttachment(attachment, { instanceUrl, token }, blobUrl).catch(() => {})
-            }}
           />
           {attachment.description && (
             <div className="lightbox-caption" onClick={(e) => e.stopPropagation()}>

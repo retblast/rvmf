@@ -14,9 +14,15 @@ import { createReadStream } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { handleMediaProxy } from './scripts/media-proxy.mjs'
+import { MAX_PORT, nextPort, portClimbedNotice } from './src/lib/port-utils.js'
 
 const HOST = process.env.HOST || '0.0.0.0'
 const PORT = Number(process.env.PORT || 4173)
+
+// Auto-port: when the configured port is already taken (a dev reload of the
+// running instance, another process, etc.) we climb to the next free port and
+// print a visible notice instead of crashing on EADDRINUSE.
+let currentPort = PORT
 const DIST_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   process.env.RVMF_DIST || 'dist'
@@ -111,7 +117,30 @@ const server = createServer((req, res) => {
   serveStatic(res, urlPath)
 })
 
-server.listen(PORT, HOST, () => {
-  console.log(`rvmf server listening on http://${HOST}:${PORT}`)
+// Log the real bound port. Reading it from server.address() (rather than a
+// closure over the requested port) keeps this honest: with auto-climb the
+// requested port and the bound port can differ, and reusing one server object
+// for the retry means a stale listen callback can fire with the old port.
+server.on('listening', () => {
+  const addr = server.address()
+  const port = addr && typeof addr === 'object' ? addr.port : currentPort
+  console.log(`rvmf server listening on http://${HOST}:${port}`)
   console.log(`serving ${DIST_DIR}`)
 })
+
+// Climb on EADDRINUSE. Rely on listen() errors (rather than a pre-flight
+// socket probe) so bind and check are one atomic step — no TOCTOU gap where
+// two processes race to claim the same port and both "win" the probe.
+server.on('error', (err) => {
+  if (err.code !== 'EADDRINUSE') throw err
+  const next = nextPort(currentPort)
+  if (next === null || next > MAX_PORT) {
+    console.error(`Port ${currentPort} is in use and no free port is available in the valid range.`)
+    process.exit(1)
+  }
+  console.log(portClimbedNotice(currentPort, next))
+  currentPort = next
+  server.listen(currentPort, HOST)
+})
+
+server.listen(PORT, HOST)

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search as SearchIcon } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { htmlToPlainText } from '../lib/render.jsx'
@@ -32,6 +32,11 @@ export function SearchView({
   const [results, setResults] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const searchStatusById = useMemo(() => {
+    const m = new Map()
+    for (const p of results?.statuses || []) { m.set(p.id, p); if (p.reblog) m.set(p.reblog.id, p.reblog) }
+    return m
+  }, [results])
   const debounceRef = useRef(null)
   const requestSeq = useRef(0)
 
@@ -189,6 +194,7 @@ export function SearchView({
                     onOpenLightbox={onOpenLightbox}
                     onOpenProfile={onOpenProfile}
                     onQuote={onQuote}
+                    statusById={searchStatusById}
                     currentAccountId={currentAccountId}
                     onDelete={onDelete}
                     onMute={onMute}

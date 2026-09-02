@@ -33,6 +33,8 @@ function upstreamHeaders(req) {
   const headers = {}
   const auth = req.headers.authorization
   if (auth) headers['Authorization'] = auth
+  const cookie = req.headers.cookie
+  if (cookie) headers['Cookie'] = cookie
   return headers
 }
 
@@ -71,10 +73,47 @@ export async function handleMediaProxy(req, res, { fetchImpl = fetch } = {}) {
     if (res.headersSent || res.destroyed || res.writableEnded) return
     const ct = proxyRes.headers.get('content-type') || 'application/octet-stream'
     try {
+      // Derive a Content-Disposition filename so the browser's "Save Image
+      // as…" dialog shows a meaningful name instead of "media-proxy.ext".
+      // Chrome only respects `attachment` (not `inline`) for the save-dialog
+      // filename, and <img> still renders regardless of the disposition type.
+      // Cross-browser: emit both filename (ASCII) and filename* (RFC 5987)
+      // for maximum compatibility (Safari, Firefox, Chrome all support it).
+      //
+      // 1. Mastodon format:  /original/filename.ext
+      // 2. Last path segment for direct file URLs (Pleroma, etc.)
+      // 3. Upstream Content-Disposition as fallback (Mitra proxy URLs)
+      let filename = null
+      const mOriginal = target.pathname.match(/\/original\/([^/?#]+)/)
+      if (mOriginal) {
+        filename = mOriginal[1]
+      } else {
+        const mLast = target.pathname.match(/\/([^/?#]+)$/)
+        if (mLast && /\.\w{2,5}$/.test(mLast[1])) filename = mLast[1]
+      }
+      if (!filename) {
+        const upstreamCD = proxyRes.headers.get('content-disposition')
+        if (upstreamCD) {
+          // Prefer filename* (RFC 5987) for proper UTF-8 support
+          const mStar = upstreamCD.match(/filename\*\s*=\s*(?:UTF-8''|[^']*'[^']*')([^;\n]+)/i)
+          if (mStar) {
+            try { filename = decodeURIComponent(mStar[1].trim()) } catch { /* ignore */ }
+          }
+          if (!filename) {
+            const mPlain = upstreamCD.match(/filename="?([^";\n]+)"?/i)
+            if (mPlain) filename = mPlain[1].trim()
+          }
+        }
+      }
+      const safeName = filename ? filename.replace(/"/g, '') : ''
+      const cd = safeName
+        ? `attachment; filename="${safeName.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(safeName)}`
+        : ''
       res.writeHead(proxyRes.status, {
         'Content-Type': ct,
         'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'public, max-age=86400',
+        ...(cd ? { 'Content-Disposition': cd } : {}),
       })
     } catch {
       try { res.destroy() } catch { /* already dead */ }

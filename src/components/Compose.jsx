@@ -31,10 +31,17 @@ export function useMediaUploads(instanceUrl, token) {
   // Mirror of the latest typed alt text per upload key, readable from
   // async callbacks without state-peeking races.
   const descriptionsRef = useRef({})
+  // Live mirror of `uploads` for the unmount cleanup below. The effect has
+  // an empty deps array, so it captures `uploads` exactly once — the initial
+  // [] — which would make the cleanup a no-op and leak one object URL per
+  // attached file every time the dialog closes. Reading through the ref
+  // guarantees the cleanup revokes whatever is actually attached.
+  const uploadsRef = useRef(uploads)
+  uploadsRef.current = uploads
 
   useEffect(() => {
     return () => {
-      uploads.forEach((u) => URL.revokeObjectURL(u.previewUrl))
+      uploadsRef.current.forEach((u) => URL.revokeObjectURL(u.previewUrl))
     }
   }, [])
 
@@ -729,11 +736,6 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
         </div>
         {showPreview && (
           <StatusPreviewPane nodes={preview.nodes} error={preview.error} />
-        )}
-        {replyOptions && (
-          <div className="poll-meta">
-            Replying can't make a post more visible than the one you're replying to, so only certain visibilities are offered.
-          </div>
         )}
         {replyToStatus && (
           <div className="thread-panel-preview compose-reply-preview">
