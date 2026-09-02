@@ -814,18 +814,19 @@ export function QuoteCard({ status, instanceUrl, onOpenThread }) {
       </div>
       <p className="quote-card-text">{content.textNodes}</p>
       {content.attachments.length > 0 && content.attachments[0].type === 'image' && (
-        effectiveSensitive && !revealed ? (
-          <button
-            type="button"
-            className="media-cw-overlay quote-card-image"
-            onClick={(e) => { e.stopPropagation(); setRevealed(true) }}
-          >
-            <Eye size={16} />
-            <span>Sensitive content — click to view</span>
-          </button>
-        ) : (
+        <div className="quote-card-image-wrap">
           <ProxiedImg className="quote-card-image" src={content.attachments[0].preview_url || content.attachments[0].url} alt="" />
-        )
+          {effectiveSensitive && !revealed && (
+            <button
+              type="button"
+              className="media-cw-overlay"
+              onClick={(e) => { e.stopPropagation(); setRevealed(true) }}
+            >
+              <Eye size={16} />
+              <span>Sensitive content — click to view</span>
+            </button>
+          )}
+        </div>
       )}
     </div>
   )
