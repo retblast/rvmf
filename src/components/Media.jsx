@@ -19,6 +19,7 @@ import {
   isUrlKnownFailed,
   markUrlFailed,
   downloadAttachment,
+  filenameForAttachment,
 } from '../hooks'
 import { lookupEmojiUrl } from '../lib/emojiRegistry.js'
 import { isGifUrl } from '../lib/gif/core.js'
@@ -334,6 +335,7 @@ function ImageMedia({ attachment, description, showImg, imgSrc, imgLoading, imgE
       {showImg && (
         <img
           src={imgSrc}
+          download={filenameForAttachment(attachment, attachment.meta?.mime_type || null)}
           alt={description || ''}
           onLoad={() => setImgReady(true)}
         />
@@ -676,6 +678,7 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
           <img
             className="lightbox-image"
             src={displaySrc}
+            download={filenameForAttachment(attachment, attachment.meta?.mime_type || null)}
             alt={attachment.description || ''}
             onClick={(e) => e.stopPropagation()}
           />

@@ -84,3 +84,22 @@ describe('MediaGrid right-click', () => {
     expect(mocks.downloadAttachment).not.toHaveBeenCalled()
   })
 })
+
+describe('MediaGrid download attribute', () => {
+  it('sets the download attr to the real filename on HTTP images', () => {
+    mocks.useClientMedia.mockReturnValue({ blobUrl: null, loading: false, error: false })
+    const { container } = renderGrid()
+    const img = container.querySelector('img')
+    expect(img).not.toBeNull()
+    // filenameForAttachment extracts "photo.jpg" from the URL path
+    expect(img.getAttribute('download')).toBe('photo.jpg')
+  })
+
+  it('sets the download attr to the real filename on blob images', () => {
+    mocks.useClientMedia.mockReturnValue({ blobUrl: 'blob:media-1', loading: false, error: false })
+    const { container } = renderGrid({ fetchClientMedia: true })
+    const img = container.querySelector('img')
+    expect(img).not.toBeNull()
+    expect(img.getAttribute('download')).toBe('photo.jpg')
+  })
+})
