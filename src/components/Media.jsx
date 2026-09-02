@@ -341,12 +341,17 @@ function ImageMedia({ attachment, instanceUrl, token, description, showImg, imgS
           alt={description || ''}
           onLoad={() => setImgReady(true)}
           onContextMenu={(e) => {
-            // The thumbnail may display from a blob: URL when client media
-            // fetching is on — browsers ignore the download attribute for
-            // blob: sources, so intercept and save with the real name.
+            // Only intercept when this image displays from a blob: URL
+            // (client media-fetching on) — browsers ignore the download
+            // attribute for blob: sources, so save programmatically with
+            // the real filename. For normal HTTP sources the download
+            // attribute already drives a correct native "Save Image As…";
+            // bailing out here keeps the standard context menu coming up
+            // instead of hijacking it and auto-starting a download on
+            // every right-click.
+            if (!imgSrc.startsWith('blob:')) return
             e.preventDefault()
-            const blobUrl = imgSrc.startsWith('blob:') ? imgSrc : null
-            downloadAttachment(attachment, { instanceUrl, token }, blobUrl).catch(() => {})
+            downloadAttachment(attachment, { instanceUrl, token }, imgSrc).catch(() => {})
           }}
         />
       )}
@@ -699,13 +704,13 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
             alt={attachment.description || ''}
             onClick={(e) => e.stopPropagation()}
             onContextMenu={(e) => {
-              // The displayed <img> may load from a blob: URL when client
-              // media-fetching is on.  Browsers ignore the download
-              // attribute for blob: sources, so intercept the context menu
-              // and save programmatically with the real filename.
+              // Same as the thumbnail: only intercept for blob: sources
+              // (client media-fetching on), where the download attribute is
+              // ignored. HTTP sources should keep the native context menu
+              // and its "Save Image As…" — never hijack or auto-download.
+              if (!displaySrc.startsWith('blob:')) return
               e.preventDefault()
-              const blobUrl = displaySrc.startsWith('blob:') ? displaySrc : null
-              downloadAttachment(attachment, { instanceUrl, token }, blobUrl).catch(() => {})
+              downloadAttachment(attachment, { instanceUrl, token }, displaySrc).catch(() => {})
             }}
           />
           {attachment.description && (

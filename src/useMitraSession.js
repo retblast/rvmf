@@ -6,7 +6,17 @@ const SESSION_KEY = 'session'
 
 function loadSession() {
   const raw = storageGet(SESSION_KEY)
-  return raw ? JSON.parse(raw) : null
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    // A corrupt session (truncated write, tampering, crashed tab mid-save)
+    // would otherwise throw from the useState initializer and white-screen
+    // the whole app on boot. Degrade to logged-out and drop the bad value
+    // so it doesn't keep failing on every reload.
+    storageRemove(SESSION_KEY)
+    return null
+  }
 }
 
 function saveSession(session) {
