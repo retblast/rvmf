@@ -22,7 +22,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
-import { PickerContext, AppSettingsContext, useEscapeKey, showToast, downloadAllMedia } from '../hooks'
+import { PickerContext, AppSettingsContext, GhostContext, useEscapeKey, showToast, downloadAllMedia } from '../hooks'
 import { formatRelativeTime, htmlToPlainText, processStatusContent, processStatusContentForDisplay, renderEmojiText, renderPlainText } from '../lib/render.jsx'
 import { translateText, translationPressureNotice } from '../lib/translate'
 import { canonicalizeLanguage, canonicalLangName } from '../lib/languages'
@@ -1222,16 +1222,18 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
     onUpdate(isBoost ? { ...post, reblog: newStatus } : newStatus)
   }
 
-  // Wrap onUpdate to handle boost wrappers — the hook doesn't need to know.
+  const { busy, toggleBookmark, toggleReaction, toggleFavourite, toggleReblog } =
+    usePostActions({ status, instanceUrl, token, onUpdate: wrapUpdate })
+
+  // Ghost context for thread panel ghost placeholders
+  const ghostStatusId = useContext(GhostContext)
+
   const wrapUpdate = useCallback((updated) => {
     onUpdate(isBoost ? { ...post, reblog: updated } : updated)
   }, [onUpdate, isBoost, post])
 
-  const { busy, toggleBookmark, toggleReaction, toggleFavourite, toggleReblog } =
-    usePostActions({ status, instanceUrl, token, onUpdate: wrapUpdate })
-
   return (
-    <div className={`post-row${highlightedId === status.id ? ' highlighted' : ''}`} style={depth != null ? { '--reply-depth': depth } : undefined}>
+    <div className={`post-row${highlightedId === status.id ? ' highlighted' : ''}${ghostStatusId === status.id ? ' ghost' : ''}`} style={depth != null ? { '--reply-depth': depth } : undefined} data-status-id={status.id}>
       {booster && (
         <div className="repost-indicator">
           <Repeat2 size={13} />

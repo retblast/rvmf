@@ -18,7 +18,7 @@ import {
 import { useMitraSession } from './useMitraSession'
 import * as mitra from './lib/mitra'
 import { buildReplyTree, findNode, insertIntoTree, updateTreeNode, mergeStatusIntoRow, htmlToPlainText as noteToPlainText } from './lib/render.jsx'
-import { AppSettingsContext, PickerContext, useLayoutTier, usePullToRefresh } from './hooks'
+import { AppSettingsContext, PickerContext, GhostContext, useLayoutTier, usePullToRefresh } from './hooks'
 import { ChevronRight } from 'lucide-react'
 
 // Collapsible blocked-domain list (the one server list that grows
@@ -132,6 +132,7 @@ export default function App() {
   const [sidePanel, setSidePanel] = useState(null)
   const sidePanelRef = useRef(sidePanel)
   sidePanelRef.current = sidePanel
+  const ghostStatusId = sidePanel?.mode === 'thread' ? sidePanel.status.id : null
   const [profileAccountId, setProfileAccountId] = useState(null)
   const [hashtagTag, setHashtagTag] = useState(null)
   const [focusedReplyId, setFocusedReplyId] = useState(null)
@@ -1892,6 +1893,7 @@ export default function App() {
 
   return (
     <UIContext.Provider value={SKINS[skinId]?.components || {}}>
+    <GhostContext.Provider value={ghostStatusId}>
     <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, translationEnabled, translationProvider, defaultVisibility, gifConversionEnabled, gifIncludeLarge, gifHoverAnimate, instanceUrl: session.instanceUrl, token: session.token }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
       {!online && (
@@ -2368,6 +2370,7 @@ export default function App() {
       )}
     </PickerContext.Provider>
     </AppSettingsContext.Provider>
+    </GhostContext.Provider>
     </UIContext.Provider>
   )
 }

@@ -313,6 +313,37 @@ button {
   background-color: rgba(0, 0, 0, min(calc(var(--reply-depth, 0) * 0.025), 0.15));
 }
 
+.post-row.ghost {
+  height: 48px;
+  overflow: hidden;
+  background-color: var(--accent-bg-subtle);
+  transition: height 0.2s ease;
+}
+
+.post-row.ghost .post-body {
+  display: none;
+}
+
+.post-row.ghost .post-actions,
+.post-row.ghost .reaction-chips,
+.post-row.ghost .repost-indicator {
+  display: none;
+}
+
+.post-row.ghost .avatar {
+  opacity: 0.25;
+}
+
+.post-row.ghost .inline-reply-composer {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .post-row.ghost {
+    transition: none;
+  }
+}
+
 .post-row:last-child {
   border-bottom: none;
 }
