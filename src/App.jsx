@@ -1893,7 +1893,7 @@ export default function App() {
 
   return (
     <UIContext.Provider value={SKINS[skinId]?.components || {}}>
-    <GhostContext.Provider value={ghostStatusId}>
+    <GhostContext.Provider value={{ ghostStatusId, inPanel: false }}>
     <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, translationEnabled, translationProvider, defaultVisibility, gifConversionEnabled, gifIncludeLarge, gifHoverAnimate, instanceUrl: session.instanceUrl, token: session.token }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
       {!online && (

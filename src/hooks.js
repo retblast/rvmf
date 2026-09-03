@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 
-export const GhostContext = createContext(null)
+export const GhostContext = createContext({ ghostStatusId: null, inPanel: false })
 import { ensureGifConverted } from './lib/gif/convert.js'
 
 // A handful of cross-cutting display preferences that MediaItem needs deep

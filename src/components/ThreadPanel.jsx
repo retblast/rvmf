@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, LoaderCircle, X } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { PostRow, ThreadReply } from './Post.jsx'
+import { GhostContext } from '../hooks'
 import { ReplyComposerFields } from './ReplyComposer.jsx'
 
 const EASE = [0.32, 0.72, 0, 1]
@@ -140,6 +141,7 @@ export function ThreadPanelContent({
   }
 
   return (
+    <GhostContext.Provider value={{ ghostStatusId: null, inPanel: true }}>
     <motion.div key={status?.id || 'empty'} data-testid="thread-root">
       <div className="thread-panel-header">
         <span className="dialog-title">
@@ -289,6 +291,7 @@ export function ThreadPanelContent({
         ))}
       </motion.div>
     </motion.div>
+    </GhostContext.Provider>
   )
 }
 

@@ -1224,20 +1224,17 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   }
 
   // Ghost context for thread panel ghost placeholders
-  const ghostStatusId = useContext(GhostContext)
+  const { ghostStatusId, inPanel } = useContext(GhostContext)
 
   // Track if this post has completed its slide into ghost state (Phase 3)
-  const [slid, setSlid] = useState(false)
-
-  // Reset slid state when ghostStatusId changes (new thread opened)
+  // Reset slid state whenever ghostStatusId changes (thread opened, closed, or changed)
   useEffect(() => {
-    if (ghostStatusId === status.id) {
-      setSlid(false)
-    }
-  }, [ghostStatusId, status.id])
+    setSlid(false)
+  }, [ghostStatusId])
 
   // Check if this post should show the ghost class
-  const isGhost = ghostStatusId === status.id && slid
+  // Don't ghost if we're inside the thread panel (inPanel=true) or if slide hasn't completed
+  const isGhost = ghostStatusId === status.id && slid && !inPanel
 
   const wrapUpdate = useCallback((updated) => {
     onUpdate(isBoost ? { ...post, reblog: updated } : updated)
