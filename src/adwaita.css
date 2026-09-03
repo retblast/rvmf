@@ -2039,6 +2039,8 @@ span.img-placeholder.custom-emoji {
 .media-wrap {
   position: relative;
   margin: 4px 0 8px;
+  overflow: hidden;
+  border-radius: var(--radius-popover);
 }
 
 .media-grid {
@@ -2471,11 +2473,20 @@ button.mention-link {
   margin-top: 6px;
 }
 
+.quote-card-image-wrap.blurred {
+  min-height: 60px;
+}
+
 .quote-card-image {
   max-width: 100%;
   max-height: 180px;
   border-radius: var(--radius-control);
   object-fit: cover;
+}
+
+.quote-card-image-wrap.blurred .quote-card-image {
+  filter: blur(28px);
+  transform: scale(1.03);
 }
 
 /* ---- reactions ---- */

@@ -877,7 +877,7 @@ export function QuoteCard({ status, instanceUrl, onOpenThread }) {
       </div>
       <p className="quote-card-text">{content.textNodes}</p>
       {content.attachments.length > 0 && content.attachments[0].type === 'image' && (
-        <div className="quote-card-image-wrap">
+        <div className={`quote-card-image-wrap${effectiveSensitive && !revealed ? ' blurred' : ''}`}>
           <ProxiedImg className="quote-card-image" src={content.attachments[0].preview_url || content.attachments[0].url} alt="" />
           {effectiveSensitive && !revealed && (
             <button
