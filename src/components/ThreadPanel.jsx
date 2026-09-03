@@ -61,6 +61,16 @@ export function ThreadPanelContent({
   const state = status ? replyStates[status.id] : null
   const composingStatusId = panel?.composingStatusId || null
   const [backfilling, setBackfilling] = useState(false)
+  const [collapsedReplies, setCollapsedReplies] = useState(new Set())
+
+  function toggleCollapse(id) {
+    setCollapsedReplies((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   // Remote posts only show the replies this instance has seen; this asks
   // it to pull the conversation from the origin server, then refreshes.
@@ -187,6 +197,8 @@ export function ThreadPanelContent({
                 onEdit={onEdit}
                 onMute={onMute}
                 onBlock={onBlock}
+                collapsedReplies={collapsedReplies}
+                onToggleCollapse={toggleCollapse}
               />
             </motion.div>
           ))}
@@ -266,6 +278,8 @@ export function ThreadPanelContent({
               onEdit={onEdit}
               onMute={onMute}
               onBlock={onBlock}
+              collapsedReplies={collapsedReplies}
+              onToggleCollapse={toggleCollapse}
             />
           </motion.div>
         ))}

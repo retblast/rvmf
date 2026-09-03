@@ -19,6 +19,7 @@ import {
   Box,
   Download,
   Languages,
+  ChevronRight,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { PickerContext, AppSettingsContext, useEscapeKey, showToast, downloadAllMedia } from '../hooks'
@@ -508,6 +509,8 @@ export function ThreadReply({
   onBlock,
   composerFor,
   composerProps,
+  collapsedReplies,
+  onToggleCollapse,
 }) {
   const [mediaHidden, setMediaHidden] = useState(false)
   const [accountsView, setAccountsView] = useState(null)
@@ -567,6 +570,19 @@ export function ThreadReply({
               <span className="post-edited" title={`Edited ${formatRelativeTime(status.edited_at)}`}>
                 (edited)
               </span>
+            )}
+            {node.children.length > 0 && collapsedReplies && (
+              <button
+                className={`reply-collapse-btn${collapsedReplies.has(node.status.id) ? '' : ' open'}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleCollapse?.(node.status.id)
+                }}
+                aria-label={collapsedReplies.has(node.status.id) ? 'Expand replies' : 'Collapse replies'}
+              >
+                <ChevronRight size={13} className="accordion-chevron" />
+                <span className="reply-collapse-count">{node.children.length}</span>
+              </button>
             )}
           </div>
           <ReplyContextLine mentions={replyMentions} onOpenProfile={onOpenProfile} />
@@ -632,34 +648,40 @@ export function ThreadReply({
         </div>
       )}
       {node.children.length > 0 && (
-        <div className="inline-replies-wrap">
-          <div className="inline-replies-track" onClick={(e) => e.stopPropagation()}>
-            {node.children.map((child) => (
-              <ThreadReply
-                key={child.status.id}
-                node={child}
-                depth={depth + 1}
-                instanceUrl={instanceUrl}
-                token={token}
-                onUpdate={onUpdate}
-                onOpenThread={onOpenThread}
-                onComposeReply={onComposeReply}
-                onOpenLightbox={onOpenLightbox}
-                onOpenProfile={onOpenProfile}
-                statusById={statusById}
-                onQuote={onQuote}
-                highlightedId={highlightedId}
-                focusedReplyId={focusedReplyId}
-                onHighlightParent={onHighlightParent}
-                currentAccountId={currentAccountId}
-                onDelete={onDelete}
-                onMute={onMute}
-                onBlock={onBlock}
-                onEdit={onEdit}
-                composerFor={composerFor}
-                composerProps={composerProps}
-              />
-            ))}
+        <div className={`reply-accordion${collapsedReplies?.has(node.status.id) ? '' : ' open'}`}>
+          <div className="reply-accordion-inner">
+            <div className="inline-replies-wrap">
+              <div className="inline-replies-track" onClick={(e) => e.stopPropagation()}>
+                {node.children.map((child) => (
+                  <ThreadReply
+                    key={child.status.id}
+                    node={child}
+                    depth={depth + 1}
+                    instanceUrl={instanceUrl}
+                    token={token}
+                    onUpdate={onUpdate}
+                    onOpenThread={onOpenThread}
+                    onComposeReply={onComposeReply}
+                    onOpenLightbox={onOpenLightbox}
+                    onOpenProfile={onOpenProfile}
+                    statusById={statusById}
+                    onQuote={onQuote}
+                    highlightedId={highlightedId}
+                    focusedReplyId={focusedReplyId}
+                    onHighlightParent={onHighlightParent}
+                    currentAccountId={currentAccountId}
+                    onDelete={onDelete}
+                    onMute={onMute}
+                    onBlock={onBlock}
+                    onEdit={onEdit}
+                    composerFor={composerFor}
+                    composerProps={composerProps}
+                    collapsedReplies={collapsedReplies}
+                    onToggleCollapse={onToggleCollapse}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
