@@ -1227,6 +1227,8 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   const { ghostStatusId, inPanel } = useContext(GhostContext)
 
   // Track if this post has completed its slide into ghost state (Phase 3)
+  const [slid, setSlid] = useState(false)
+
   // Reset slid state whenever ghostStatusId changes (thread opened, closed, or changed)
   useEffect(() => {
     setSlid(false)
