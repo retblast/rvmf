@@ -681,7 +681,7 @@ function ReactionChips({ reactions, statusId, instanceUrl, token, onReact }) {
           }}
         >
           {r.url ? (
-            <GifVideo direct className="reaction-emoji-img" src={r.url} alt={r.name} />
+            <GifVideo direct className="reaction-emoji-img" src={r.url} alt={r.name} fallbackText={r.name.replaceAll(':', '')} />
           ) : String(r.name).startsWith(':') ? (
             <ProxiedImg direct className="reaction-emoji-img" alt={r.name} fallbackText={r.name.replaceAll(':', '')} />
           ) : (
@@ -1325,7 +1325,7 @@ function notificationVerb(type, notification) {
       const emojiUrl = notification?.emoji_url
       const emojiName = notification?.emoji || notification?.reaction?.content || '🧩'
       const emoji = emojiUrl
-        ? <GifVideo direct src={emojiUrl} alt={emojiName} className="inline-custom-emoji" />
+        ? <GifVideo direct src={emojiUrl} alt={emojiName} className="inline-custom-emoji" fallbackText={String(emojiName).replaceAll(':', '')} />
         : String(emojiName).startsWith(':')
           ? <ProxiedImg direct alt={emojiName} className="inline-custom-emoji" fallbackText={String(emojiName).replaceAll(':', '')} />
           : emojiName
