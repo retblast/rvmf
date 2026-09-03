@@ -2516,6 +2516,15 @@ button.mention-link {
   width: 16px;
 }
 
+.reaction-emoji-img.img-placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-size: 0.5rem;
+  line-height: 1;
+}
+
 .reaction-emoji-text {
   font-size: 0.875rem;
 }
