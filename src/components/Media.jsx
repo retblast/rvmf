@@ -114,13 +114,15 @@ function useDirectEmojiSrc(src, fallbackText) {
   const { instanceUrl } = useContext(AppSettingsContext)
   // step: 0 origin | 1 proxy | 2 resolving registry | 3 override origin |
   //       4 override proxy | 5 dead
-  const [step, setStep] = useState(0)
+  // When src is null but fallbackText is provided (pure shortcode lookup),
+  // skip straight to step 2 (registry lookup). Otherwise start at 0 (origin).
+  const [step, setStep] = useState((src || !fallbackText) ? 0 : 2)
   const [overrideSrc, setOverrideSrc] = useState(null)
 
   useEffect(() => {
-    setStep(0)
+    setStep((src || !fallbackText) ? 0 : 2)
     setOverrideSrc(null)
-  }, [src])
+  }, [src, fallbackText])
 
   useEffect(() => {
     if (step !== 2) return undefined
@@ -174,6 +176,7 @@ function useDirectEmojiSrc(src, fallbackText) {
   switch (step) {
     case 0: url = src; break
     case 1: url = safeProxyUrl(src); break
+    case 2: break /* resolving registry — url stays null, not dead */
     case 3: url = overrideSrc; break
     case 4: url = safeProxyUrl(overrideSrc); break
     default: dead = true
@@ -216,8 +219,12 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
     onError?.(e)
   }
 
+  // When direct+fallbackText with no src, the emoji hook resolves via
+  // the instance registry. Only show the text placeholder when the
+  // lookup has definitively failed (emoji.dead) — not while it's
+  // resolving or when it succeeded.
   const showPlaceholder = Boolean(fallbackText) && (
-    !src ||
+    (!src && !direct) ||
     (direct ? emoji.dead : (fetchClientMedia ? (error || (!blobUrl && loading)) : directFailed))
   )
   if (showPlaceholder) {
@@ -225,7 +232,9 @@ export function ProxiedImg({ src, fallbackSrc, alt, className, style, onError, o
   }
   // Without fallbackText the old behavior stands: render nothing while
   // pending/failed (callers like Avatar layer their own placeholders).
-  if (!src) return null
+  // When direct+fallbackText, src may be null but the emoji hook can
+  // still resolve a URL from the registry, so skip past this guard.
+  if (!src && !(direct && fallbackText)) return null
   if (direct && fallbackText) {
     if (emoji.dead || !emoji.url) return null
     return (
