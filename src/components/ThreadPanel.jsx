@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, LoaderCircle, X } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { PostRow, ThreadReply } from './Post.jsx'
@@ -211,7 +211,9 @@ export function ThreadPanelContent({
           initial="hidden"
           animate="visible"
         >
-          <PostRow
+          <AnimatePresence>
+            <motion.div key={status.id} layoutId={`post-${status.id}`}>
+              <PostRow
             post={status}
             composerFor={composingStatusId}
             composerProps={{ ...composerProps, status }}
@@ -233,6 +235,8 @@ export function ThreadPanelContent({
             onMute={onMute}
             onBlock={onBlock}
           />
+            </motion.div>
+          </AnimatePresence>
         </motion.div>
       )}
       <motion.div

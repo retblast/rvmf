@@ -1,4 +1,5 @@
 import { memo, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
 import {
   MessageCircle,
   Repeat2,
@@ -1222,18 +1223,34 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
     onUpdate(isBoost ? { ...post, reblog: newStatus } : newStatus)
   }
 
-  const { busy, toggleBookmark, toggleReaction, toggleFavourite, toggleReblog } =
-    usePostActions({ status, instanceUrl, token, onUpdate: wrapUpdate })
-
   // Ghost context for thread panel ghost placeholders
   const ghostStatusId = useContext(GhostContext)
+
+  // Track if this post has completed its slide into ghost state (Phase 3)
+  const [slid, setSlid] = useState(false)
+
+  // Reset slid state when ghostStatusId changes (new thread opened)
+  useEffect(() => {
+    if (ghostStatusId === status.id) {
+      setSlid(false)
+    }
+  }, [ghostStatusId, status.id])
+
+  // Check if this post should show the ghost class
+  const isGhost = ghostStatusId === status.id && slid
 
   const wrapUpdate = useCallback((updated) => {
     onUpdate(isBoost ? { ...post, reblog: updated } : updated)
   }, [onUpdate, isBoost, post])
 
-  return (
-    <div className={`post-row${highlightedId === status.id ? ' highlighted' : ''}${ghostStatusId === status.id ? ' ghost' : ''}`} style={depth != null ? { '--reply-depth': depth } : undefined} data-status-id={status.id}>
+  const { busy, toggleBookmark, toggleReaction, toggleFavourite, toggleReblog } =
+    usePostActions({ status, instanceUrl, token, onUpdate: wrapUpdate })
+
+  // Determine if we should show the layoutId animation (pre-slide state)
+  const isSliding = ghostStatusId === status.id && !slid
+
+  const postContent = (
+    <>
       {booster && (
         <div className="repost-indicator">
           <Repeat2 size={13} />
@@ -1320,6 +1337,26 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
         <div className="inline-reply-composer">
           <ReplyComposerFields status={status} {...composerProps} />
         </div>
+      )}
+    </>
+  )
+
+  return (
+    <div
+      className={`post-row${highlightedId === status.id ? ' highlighted' : ''}${isGhost ? ' ghost' : ''}`}
+      style={depth != null ? { '--reply-depth': depth } : undefined}
+      data-status-id={status.id}
+    >
+      {isSliding ? (
+        <motion.div
+          layoutId={`post-${status.id}`}
+          onAnimationComplete={() => setSlid(true)}
+          transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+        >
+          {postContent}
+        </motion.div>
+      ) : (
+        postContent
       )}
     </div>
   )
