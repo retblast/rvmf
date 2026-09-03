@@ -682,6 +682,8 @@ function ReactionChips({ reactions, statusId, instanceUrl, token, onReact }) {
         >
           {r.url ? (
             <GifVideo direct className="reaction-emoji-img" src={r.url} alt={r.name} />
+          ) : String(r.name).startsWith(':') ? (
+            <ProxiedImg direct className="reaction-emoji-img" alt={r.name} fallbackText={r.name.replaceAll(':', '')} />
           ) : (
             <span className="reaction-emoji-text">{r.name}</span>
           )}
@@ -1325,7 +1327,7 @@ function notificationVerb(type, notification) {
       const emoji = emojiUrl
         ? <GifVideo direct src={emojiUrl} alt={emojiName} className="inline-custom-emoji" />
         : String(emojiName).startsWith(':')
-          ? <ProxiedImg alt={emojiName} className="inline-custom-emoji" fallbackText={String(emojiName).replaceAll(':', '')} />
+          ? <ProxiedImg direct alt={emojiName} className="inline-custom-emoji" fallbackText={String(emojiName).replaceAll(':', '')} />
           : emojiName
       return <>reacted with {emoji} to your post</>
     }
