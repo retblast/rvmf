@@ -2528,12 +2528,12 @@ button.mention-link {
 }
 
 .reaction-emoji-img.img-placeholder {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  font-size: 0.5rem;
+  display: inline;
+  overflow: visible;
+  font-size: 0.875rem;
   line-height: 1;
+  width: auto;
+  height: auto;
 }
 
 .reaction-emoji-text {
