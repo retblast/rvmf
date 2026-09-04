@@ -971,8 +971,8 @@ export default function App() {
   async function respondFollowRequest(accountId, action) {
     await mitra.respondFollowRequest(session.instanceUrl, session.token, accountId, action)
     // A handled request must stop offering Accept/Reject immediately — the
-    // next 5s notification poll would catch it, but the action should take
-    // effect now. (This is why the poll no longer runs this fetch itself.)
+    // next 5s notification poll would also refresh this, but the action
+    // should take effect now rather than waiting for the next tick.
     mitra
       .fetchAllPendingFollowAccountIds(session.instanceUrl, session.token)
       .then((pending) => setPendingFollowIds(pending))
@@ -1348,15 +1348,23 @@ export default function App() {
     return () => clearInterval(interval)
   }, [sidePanel, session, refreshContext])
 
-  // Auto-refresh notifications every 5 seconds (silent)
+  // Auto-refresh notifications every 5 seconds (silent). Also refreshes
+  // pendingFollowIds so that newly-arriving follow_request notifications
+  // immediately show Accept/Reject instead of flashing "already handled".
   useEffect(() => {
     if (view !== 'notifications' && tier !== 'wide') return
     if (!session) return
     const interval = setInterval(() => {
       if (!navigator.onLine) return // paused while offline; reconnect refreshes
-      mitra
-        .fetchNotifications(session.instanceUrl, session.token)
-        .then((items) => setNotifications(items))
+      Promise.all([
+        mitra.fetchNotifications(session.instanceUrl, session.token),
+        mitra.fetchAllPendingFollowAccountIds(session.instanceUrl, session.token)
+          .catch(() => null),
+      ])
+        .then(([items, pending]) => {
+          setNotifications(items)
+          if (pending) setPendingFollowIds(pending)
+        })
         .catch(() => {})
     }, 5000)
     return () => clearInterval(interval)
