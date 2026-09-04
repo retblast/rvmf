@@ -314,28 +314,52 @@ button {
 }
 
 .post-row.ghost {
+  position: relative;
   height: 48px;
   overflow: hidden;
   background-color: var(--accent-bg-subtle);
   transition: height 0.2s ease;
 }
 
-.post-row.ghost .post-body {
-  display: none;
+/* Shimmer overlay */
+.post-row.ghost::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 40%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.06) 60%,
+    transparent 100%
+  );
+  animation: ghost-shimmer 1.8s ease-in-out infinite;
 }
 
+@keyframes ghost-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.post-row.ghost .post-body,
 .post-row.ghost .post-actions,
 .post-row.ghost .reaction-chips,
-.post-row.ghost .repost-indicator {
-  display: none;
-}
-
-.post-row.ghost .avatar {
-  opacity: 0.25;
-}
-
+.post-row.ghost .repost-indicator,
 .post-row.ghost .inline-reply-composer {
   display: none;
+}
+
+.ghost-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  white-space: nowrap;
+  margin-left: auto;
+  padding-right: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

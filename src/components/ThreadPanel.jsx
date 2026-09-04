@@ -207,14 +207,15 @@ export function ThreadPanelContent({
         </motion.div>
       )}
       {status && (
-        <motion.div
-          className="thread-panel-focal"
-          variants={focalVariants}
-          initial="hidden"
-          animate="visible"
-        >
+        <div className="thread-panel-focal">
           <AnimatePresence>
-            <motion.div key={status.id} layoutId={`post-${status.id}`}>
+            <motion.div
+              key={status.id}
+              layoutId={`post-${status.id}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3, ease: EASE }}
+            >
               <PostRow
             post={status}
             composerFor={composingStatusId}
@@ -239,7 +240,7 @@ export function ThreadPanelContent({
           />
             </motion.div>
           </AnimatePresence>
-        </motion.div>
+        </div>
       )}
       <motion.div
         className="thread-panel-replies"

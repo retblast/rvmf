@@ -1234,6 +1234,18 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
     setSlid(false)
   }, [ghostStatusId])
 
+  // Determine if we should show the layoutId animation (pre-slide state)
+  const isSliding = ghostStatusId === status.id && !slid
+
+  // Timer-based ghost trigger: onAnimationComplete doesn't fire on the
+  // source element of a Framer Motion shared layoutId transition (FM 11),
+  // so we use a duration-matched timeout instead.
+  useEffect(() => {
+    if (!isSliding) return
+    const t = setTimeout(() => setSlid(true), 300)
+    return () => clearTimeout(t)
+  }, [isSliding])
+
   // Check if this post should show the ghost class
   // Don't ghost if we're inside the thread panel (inPanel=true) or if slide hasn't completed
   const isGhost = ghostStatusId === status.id && slid && !inPanel
@@ -1245,10 +1257,14 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   const { busy, toggleBookmark, toggleReaction, toggleFavourite, toggleReblog } =
     usePostActions({ status, instanceUrl, token, onUpdate: wrapUpdate })
 
-  // Determine if we should show the layoutId animation (pre-slide state)
-  const isSliding = ghostStatusId === status.id && !slid
-
-  const postContent = (
+  const postContent = isGhost ? (
+    <div className="post-row-main">
+      <Avatar name={displayNameRaw} src={account.avatar} staticSrc={account.avatar_static} />
+      <span className="ghost-label">
+        Viewing in thread <ChevronRight size={12} />
+      </span>
+    </div>
+  ) : (
     <>
       {booster && (
         <div className="repost-indicator">
@@ -1340,23 +1356,27 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
     </>
   )
 
+  if (isSliding) {
+    return (
+      <motion.div
+        layoutId={`post-${status.id}`}
+        className="post-row"
+        style={depth != null ? { '--reply-depth': depth } : undefined}
+        data-status-id={status.id}
+        transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+      >
+        {postContent}
+      </motion.div>
+    )
+  }
+
   return (
     <div
       className={`post-row${highlightedId === status.id ? ' highlighted' : ''}${isGhost ? ' ghost' : ''}`}
       style={depth != null ? { '--reply-depth': depth } : undefined}
       data-status-id={status.id}
     >
-      {isSliding ? (
-        <motion.div
-          layoutId={`post-${status.id}`}
-          onAnimationComplete={() => setSlid(true)}
-          transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
-        >
-          {postContent}
-        </motion.div>
-      ) : (
-        postContent
-      )}
+      {postContent}
     </div>
   )
 })
