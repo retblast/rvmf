@@ -10,6 +10,9 @@ test('open a thread and post an inline reply', async ({ page }) => {
   const row = page.locator('.post-row', { hasText: SEED.rootText }).first()
   await row.locator('.post-text').click()
 
+  // Timeline post collapses to a ghost placeholder after the slide animation
+  await expect(row.locator('.ghost-label')).toBeVisible()
+
   // Focal post shows in the panel with its seeded reply beneath
   const panel = page.getByTestId('thread-root')
   await expect(panel.getByText(SEED.rootText)).toBeVisible()
