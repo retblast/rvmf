@@ -132,7 +132,10 @@ export default function App() {
   const [sidePanel, setSidePanel] = useState(null)
   const sidePanelRef = useRef(sidePanel)
   sidePanelRef.current = sidePanel
-  const ghostStatusId = sidePanel?.mode === 'thread' ? sidePanel.status.id : null
+  // Tracks the post the user actually clicked (for the slide + ghost
+  // animation).  Separate from sidePanel.status, which may switch to the
+  // thread root for mid-thread replies.
+  const [ghostStatusId, setGhostStatusId] = useState(null)
   const [profileAccountId, setProfileAccountId] = useState(null)
   const [hashtagTag, setHashtagTag] = useState(null)
   const [focusedReplyId, setFocusedReplyId] = useState(null)
@@ -1110,6 +1113,11 @@ export default function App() {
       .catch(() => {})
   }, [session])
 
+  // Resolves the thread root for `status`.  If the post is a mid-thread
+  // reply (has ancestors), we re-fetch from the root so the full thread
+  // — including sibling branches — is shown.  Returns { root, clickedId }
+  // so the caller can point the panel at the root and highlight the
+  // originally-clicked post.
   const ensureRepliesLoaded = useCallback(
     (status) => {
       setReplyStates((prev) => {
@@ -1117,16 +1125,44 @@ export default function App() {
         return { ...prev, [status.id]: { ...(prev[status.id] || {}), loading: true, error: '' } }
       })
 
-      if (replyStatesRef.current[status.id]?.items) return
+      if (replyStatesRef.current[status.id]?.items) {
+        return Promise.resolve({ root: status, clickedId: status.id })
+      }
 
-      mitra
+      return mitra
         .fetchContext(session.instanceUrl, session.token, status.id)
         .then((context) => {
+          // Mid-thread post: ancestors[0] is the thread root.  Re-fetch
+          // from the root so the full conversation tree is loaded.
+          if (context.ancestors.length > 0) {
+            const root = context.ancestors[0]
+            // Already loaded — just return the root.
+            if (replyStatesRef.current[root.id]?.items) {
+              return { root, clickedId: status.id }
+            }
+            setReplyStates((prev) => ({
+              ...prev,
+              [root.id]: { ...(prev[root.id] || {}), loading: true, error: '' },
+            }))
+            return mitra
+              .fetchContext(session.instanceUrl, session.token, root.id)
+              .then((rootContext) => {
+                const tree = buildReplyTree(rootContext.descendants, root.id)
+                setReplyStates((prev) => ({
+                  ...prev,
+                  [root.id]: { loading: false, error: '', items: tree, ancestors: rootContext.ancestors },
+                }))
+                return { root, clickedId: status.id }
+              })
+          }
+
+          // Top-level post or root of its thread — use as-is.
           const tree = buildReplyTree(context.descendants, status.id)
           setReplyStates((prev) => ({
             ...prev,
             [status.id]: { loading: false, error: '', items: tree, ancestors: context.ancestors },
           }))
+          return { root: status, clickedId: status.id }
         })
         .catch((err) => {
           setReplyStates((prev) => ({
@@ -1137,6 +1173,7 @@ export default function App() {
               error: err.message || 'Failed to load replies.',
             },
           }))
+          return { root: status, clickedId: status.id }
         })
     },
     [session]
@@ -1147,10 +1184,26 @@ export default function App() {
   // way threads open anywhere in the app now: always the slide-out panel,
   // never inline in the timeline.
   function handleOpenThread(status) {
-    setSidePanel((prev) =>
-      prev?.mode === 'thread' && prev.status.id === status.id ? prev : { mode: 'thread', status }
-    )
-    ensureRepliesLoaded(status)
+    // If already showing this exact post, toggle closed.
+    if (sidePanelRef.current?.mode === 'thread' && sidePanelRef.current.status.id === status.id) return
+
+    // Ghost target: the post the user actually clicked, regardless of
+    // whether the panel focal later switches to the thread root.
+    setGhostStatusId(status.id)
+
+    // Open the panel immediately with the clicked post (for the
+    // layoutId slide animation).  ensureRepliesLoaded may later switch
+    // the focal to the thread root if this is a mid-thread reply.
+    setSidePanel({ mode: 'thread', status })
+    ensureRepliesLoaded(status).then(({ root, clickedId }) => {
+      // If the thread root differs from what's showing, switch to it
+      // and highlight the originally-clicked post.
+      if (root.id !== status.id) {
+        setSidePanel({ mode: 'thread', status: root })
+        setFocusedReplyId(clickedId)
+        setTimeout(() => setFocusedReplyId(null), 2000)
+      }
+    })
   }
 
   // Reply button inside the thread panel: compose inline beneath the
@@ -1368,6 +1421,7 @@ export default function App() {
 
   function closeSidePanel() {
     setSidePanel(null)
+    setGhostStatusId(null)
     // Drop the loaded reply trees: an unbound map of every thread ever
     // opened would grow this session's heap forever. Threads always
     // force-refetch on open, so nothing is lost by clearing.
