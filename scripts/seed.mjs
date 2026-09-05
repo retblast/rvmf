@@ -53,6 +53,12 @@ const root = await patient(() => mitra.postStatus(instanceUrl, alice.token,
   'Seeded root post from alice', { visibility: 'public' }), 'post root')
 const rootReply = await patient(() => mitra.postStatus(instanceUrl, bob.token,
   'Reply from bob to the seeded root', { inReplyToId: root.id, visibility: 'public' }), 'post reply')
+// A second-level reply and a sibling branch give the thread specs a
+// mid-thread target and a sibling to assert against.
+const nestedReply = await patient(() => mitra.postStatus(instanceUrl, carol.token,
+  'Nested reply from carol to bob', { inReplyToId: rootReply.id, visibility: 'public' }), 'post nested reply')
+const siblingReply = await patient(() => mitra.postStatus(instanceUrl, carol.token,
+  'Sibling reply from carol to root', { inReplyToId: root.id, visibility: 'public' }), 'post sibling reply')
 const second = await patient(() => mitra.postStatus(instanceUrl, bob.token,
   'Second seeded post from bob #testing', { visibility: 'public' }), 'post second')
 

@@ -19,4 +19,6 @@ export const SEED = {
   rootText: 'Seeded root post from alice',
   replyText: 'Reply from bob to the seeded root',
   secondText: 'Second seeded post from bob #testing',
+  nestedReplyText: 'Nested reply from carol to bob',
+  siblingReplyText: 'Sibling reply from carol to root',
 }
