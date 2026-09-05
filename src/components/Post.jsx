@@ -1,4 +1,5 @@
 import { memo, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
 import {
   MessageCircle,
   Repeat2,
@@ -19,9 +20,10 @@ import {
   Box,
   Download,
   Languages,
+  ChevronRight,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
-import { PickerContext, AppSettingsContext, useEscapeKey, showToast, downloadAllMedia } from '../hooks'
+import { PickerContext, AppSettingsContext, GhostContext, useEscapeKey, showToast, downloadAllMedia } from '../hooks'
 import { formatRelativeTime, htmlToPlainText, processStatusContent, processStatusContentForDisplay, renderEmojiText, renderPlainText } from '../lib/render.jsx'
 import { translateText, translationPressureNotice } from '../lib/translate'
 import { canonicalizeLanguage, canonicalLangName } from '../lib/languages'
@@ -508,6 +510,8 @@ export function ThreadReply({
   onBlock,
   composerFor,
   composerProps,
+  collapsedReplies,
+  onToggleCollapse,
 }) {
   const [mediaHidden, setMediaHidden] = useState(false)
   const [accountsView, setAccountsView] = useState(null)
@@ -567,6 +571,19 @@ export function ThreadReply({
               <span className="post-edited" title={`Edited ${formatRelativeTime(status.edited_at)}`}>
                 (edited)
               </span>
+            )}
+            {node.children.length > 0 && collapsedReplies && (
+              <button
+                className={`reply-collapse-btn${collapsedReplies.has(node.status.id) ? '' : ' open'}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleCollapse?.(node.status.id)
+                }}
+                aria-label={collapsedReplies.has(node.status.id) ? 'Expand replies' : 'Collapse replies'}
+              >
+                <ChevronRight size={13} className="accordion-chevron" />
+                <span className="reply-collapse-count">{node.children.length}</span>
+              </button>
             )}
           </div>
           <ReplyContextLine mentions={replyMentions} onOpenProfile={onOpenProfile} />
@@ -632,34 +649,40 @@ export function ThreadReply({
         </div>
       )}
       {node.children.length > 0 && (
-        <div className="inline-replies-wrap">
-          <div className="inline-replies-track" onClick={(e) => e.stopPropagation()}>
-            {node.children.map((child) => (
-              <ThreadReply
-                key={child.status.id}
-                node={child}
-                depth={depth + 1}
-                instanceUrl={instanceUrl}
-                token={token}
-                onUpdate={onUpdate}
-                onOpenThread={onOpenThread}
-                onComposeReply={onComposeReply}
-                onOpenLightbox={onOpenLightbox}
-                onOpenProfile={onOpenProfile}
-                statusById={statusById}
-                onQuote={onQuote}
-                highlightedId={highlightedId}
-                focusedReplyId={focusedReplyId}
-                onHighlightParent={onHighlightParent}
-                currentAccountId={currentAccountId}
-                onDelete={onDelete}
-                onMute={onMute}
-                onBlock={onBlock}
-                onEdit={onEdit}
-                composerFor={composerFor}
-                composerProps={composerProps}
-              />
-            ))}
+        <div className={`reply-accordion${collapsedReplies?.has(node.status.id) ? '' : ' open'}`}>
+          <div className="reply-accordion-inner">
+            <div className="inline-replies-wrap">
+              <div className="inline-replies-track" onClick={(e) => e.stopPropagation()}>
+                {node.children.map((child) => (
+                  <ThreadReply
+                    key={child.status.id}
+                    node={child}
+                    depth={depth + 1}
+                    instanceUrl={instanceUrl}
+                    token={token}
+                    onUpdate={onUpdate}
+                    onOpenThread={onOpenThread}
+                    onComposeReply={onComposeReply}
+                    onOpenLightbox={onOpenLightbox}
+                    onOpenProfile={onOpenProfile}
+                    statusById={statusById}
+                    onQuote={onQuote}
+                    highlightedId={highlightedId}
+                    focusedReplyId={focusedReplyId}
+                    onHighlightParent={onHighlightParent}
+                    currentAccountId={currentAccountId}
+                    onDelete={onDelete}
+                    onMute={onMute}
+                    onBlock={onBlock}
+                    onEdit={onEdit}
+                    composerFor={composerFor}
+                    composerProps={composerProps}
+                    collapsedReplies={collapsedReplies}
+                    onToggleCollapse={onToggleCollapse}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1200,7 +1223,33 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
     onUpdate(isBoost ? { ...post, reblog: newStatus } : newStatus)
   }
 
-  // Wrap onUpdate to handle boost wrappers — the hook doesn't need to know.
+  // Ghost context for thread panel ghost placeholders
+  const { ghostStatusId, inPanel } = useContext(GhostContext)
+
+  // Track if this post has completed its slide into ghost state (Phase 3)
+  const [slid, setSlid] = useState(false)
+
+  // Reset slid state whenever ghostStatusId changes (thread opened, closed, or changed)
+  useEffect(() => {
+    setSlid(false)
+  }, [ghostStatusId])
+
+  // Determine if we should show the layoutId animation (pre-slide state)
+  const isSliding = ghostStatusId === status.id && !slid
+
+  // Timer-based ghost trigger: onAnimationComplete doesn't fire on the
+  // source element of a Framer Motion shared layoutId transition (FM 11),
+  // so we use a duration-matched timeout instead.
+  useEffect(() => {
+    if (!isSliding) return
+    const t = setTimeout(() => setSlid(true), 300)
+    return () => clearTimeout(t)
+  }, [isSliding])
+
+  // Check if this post should show the ghost class
+  // Don't ghost if we're inside the thread panel (inPanel=true) or if slide hasn't completed
+  const isGhost = ghostStatusId === status.id && slid && !inPanel
+
   const wrapUpdate = useCallback((updated) => {
     onUpdate(isBoost ? { ...post, reblog: updated } : updated)
   }, [onUpdate, isBoost, post])
@@ -1208,8 +1257,15 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   const { busy, toggleBookmark, toggleReaction, toggleFavourite, toggleReblog } =
     usePostActions({ status, instanceUrl, token, onUpdate: wrapUpdate })
 
-  return (
-    <div className={`post-row${highlightedId === status.id ? ' highlighted' : ''}`} style={depth != null ? { '--reply-depth': depth } : undefined}>
+  const postContent = isGhost ? (
+    <div className="post-row-main">
+      <Avatar name={displayNameRaw} src={account.avatar} staticSrc={account.avatar_static} />
+      <span className="ghost-label">
+        Viewing in thread <ChevronRight size={12} />
+      </span>
+    </div>
+  ) : (
+    <>
       {booster && (
         <div className="repost-indicator">
           <Repeat2 size={13} />
@@ -1297,6 +1353,30 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
           <ReplyComposerFields status={status} {...composerProps} />
         </div>
       )}
+    </>
+  )
+
+  if (isSliding) {
+    return (
+      <motion.div
+        layoutId={`post-${status.id}`}
+        className="post-row"
+        style={depth != null ? { '--reply-depth': depth } : undefined}
+        data-status-id={status.id}
+        transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+      >
+        {postContent}
+      </motion.div>
+    )
+  }
+
+  return (
+    <div
+      className={`post-row${highlightedId === status.id ? ' highlighted' : ''}${isGhost ? ' ghost' : ''}`}
+      style={depth != null ? { '--reply-depth': depth } : undefined}
+      data-status-id={status.id}
+    >
+      {postContent}
     </div>
   )
 })

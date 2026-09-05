@@ -313,6 +313,61 @@ button {
   background-color: rgba(0, 0, 0, min(calc(var(--reply-depth, 0) * 0.025), 0.15));
 }
 
+.post-row.ghost {
+  position: relative;
+  height: 48px;
+  overflow: hidden;
+  background-color: var(--accent-bg-subtle);
+  transition: height 0.2s ease;
+}
+
+/* Shimmer overlay */
+.post-row.ghost::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 40%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.06) 60%,
+    transparent 100%
+  );
+  animation: ghost-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes ghost-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.post-row.ghost .post-body,
+.post-row.ghost .post-actions,
+.post-row.ghost .reaction-chips,
+.post-row.ghost .repost-indicator,
+.post-row.ghost .inline-reply-composer {
+  display: none;
+}
+
+.ghost-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  white-space: nowrap;
+  margin-left: auto;
+  padding-right: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .post-row.ghost {
+    transition: none;
+  }
+}
+
 .post-row:last-child {
   border-bottom: none;
 }
@@ -2855,6 +2910,53 @@ button.mention-link {
   box-shadow: none;
   padding: 0;
   margin: 0;
+}
+
+.reply-accordion {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.reply-accordion.open {
+  grid-template-rows: 1fr;
+}
+
+.reply-accordion-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.reply-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.reply-collapse-btn:hover {
+  background: var(--accent-bg-subtle);
+  color: var(--text);
+}
+
+.reply-collapse-btn .accordion-chevron {
+  transition: transform 0.15s;
+}
+
+.reply-collapse-btn:not(.open) .accordion-chevron {
+  transform: rotate(90deg);
+}
+
+.reply-collapse-count {
+  font-size: 0.6875rem;
+  opacity: 0.7;
 }
 
 .reply-row {

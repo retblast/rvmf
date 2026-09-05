@@ -9,6 +9,16 @@ test('favouriting one copy updates the boost-wrapper copy', async ({ page }) => 
   await page.goto('/')
 
   const rows = page.locator('.post-row', { hasText: SEED.rootText })
+
+  // The home feed fetches 10 rows at a time, and other specs' posts plus
+  // the seeded replies can push the standalone copy onto page 2. Drive
+  // the infinite scroll until every copy is rendered before asserting
+  // the cross-copy contract below.
+  await expect(async () => {
+    await page.mouse.move(200, 300)
+    await page.mouse.wheel(0, 4000)
+    if ((await rows.count()) < 2) throw new Error('second copy not loaded yet')
+  }).toPass({ timeout: 10_000 })
   await expect(rows).toHaveCount(2)
 
   // Transition-based: prior state depends on spec order (projects share

@@ -18,7 +18,7 @@ import {
 import { useMitraSession } from './useMitraSession'
 import * as mitra from './lib/mitra'
 import { buildReplyTree, findNode, insertIntoTree, updateTreeNode, mergeStatusIntoRow, htmlToPlainText as noteToPlainText } from './lib/render.jsx'
-import { AppSettingsContext, PickerContext, useLayoutTier, usePullToRefresh } from './hooks'
+import { AppSettingsContext, PickerContext, GhostContext, useLayoutTier, usePullToRefresh } from './hooks'
 import { ChevronRight } from 'lucide-react'
 
 // Collapsible blocked-domain list (the one server list that grows
@@ -132,6 +132,14 @@ export default function App() {
   const [sidePanel, setSidePanel] = useState(null)
   const sidePanelRef = useRef(sidePanel)
   sidePanelRef.current = sidePanel
+  // Tracks the post the user actually clicked (for the slide + ghost
+  // animation).  Separate from sidePanel.status, which may switch to the
+  // thread root for mid-thread replies.
+  const [ghostStatusId, setGhostStatusId] = useState(null)
+  // Guards async thread-open fetches: remembers which status started the
+  // in-flight load so a stale resolve can't clobber a newer open (or an
+  // explicit close).
+  const lastThreadOpenRef = useRef(null)
   const [profileAccountId, setProfileAccountId] = useState(null)
   const [hashtagTag, setHashtagTag] = useState(null)
   const [focusedReplyId, setFocusedReplyId] = useState(null)
@@ -1109,6 +1117,11 @@ export default function App() {
       .catch(() => {})
   }, [session])
 
+  // Resolves the thread root for `status`.  If the post is a mid-thread
+  // reply (has ancestors), we re-fetch from the root so the full thread
+  // — including sibling branches — is shown.  Returns { root, clickedId }
+  // so the caller can point the panel at the root and highlight the
+  // originally-clicked post.
   const ensureRepliesLoaded = useCallback(
     (status) => {
       setReplyStates((prev) => {
@@ -1116,16 +1129,44 @@ export default function App() {
         return { ...prev, [status.id]: { ...(prev[status.id] || {}), loading: true, error: '' } }
       })
 
-      if (replyStatesRef.current[status.id]?.items) return
+      if (replyStatesRef.current[status.id]?.items) {
+        return Promise.resolve({ root: status, clickedId: status.id })
+      }
 
-      mitra
+      return mitra
         .fetchContext(session.instanceUrl, session.token, status.id)
         .then((context) => {
+          // Mid-thread post: ancestors[0] is the thread root.  Re-fetch
+          // from the root so the full conversation tree is loaded.
+          if (context.ancestors.length > 0) {
+            const root = context.ancestors[0]
+            // Already loaded — just return the root.
+            if (replyStatesRef.current[root.id]?.items) {
+              return { root, clickedId: status.id }
+            }
+            setReplyStates((prev) => ({
+              ...prev,
+              [root.id]: { ...(prev[root.id] || {}), loading: true, error: '' },
+            }))
+            return mitra
+              .fetchContext(session.instanceUrl, session.token, root.id)
+              .then((rootContext) => {
+                const tree = buildReplyTree(rootContext.descendants, root.id)
+                setReplyStates((prev) => ({
+                  ...prev,
+                  [root.id]: { loading: false, error: '', items: tree, ancestors: rootContext.ancestors },
+                }))
+                return { root, clickedId: status.id }
+              })
+          }
+
+          // Top-level post or root of its thread — use as-is.
           const tree = buildReplyTree(context.descendants, status.id)
           setReplyStates((prev) => ({
             ...prev,
             [status.id]: { loading: false, error: '', items: tree, ancestors: context.ancestors },
           }))
+          return { root: status, clickedId: status.id }
         })
         .catch((err) => {
           setReplyStates((prev) => ({
@@ -1136,6 +1177,7 @@ export default function App() {
               error: err.message || 'Failed to load replies.',
             },
           }))
+          return { root: status, clickedId: status.id }
         })
     },
     [session]
@@ -1146,9 +1188,32 @@ export default function App() {
   // way threads open anywhere in the app now: always the slide-out panel,
   // never inline in the timeline.
   function handleOpenThread(status) {
-    setSidePanel((prev) =>
-      prev?.mode === 'thread' && prev.status.id === status.id ? prev : { mode: 'thread', status }
-    )
+    // If already showing this exact post, toggle closed.
+    if (sidePanelRef.current?.mode === 'thread' && sidePanelRef.current.status.id === status.id) return
+
+    // Mid-thread reply: resolve the thread root first so the panel opens
+    // directly in the full-thread view — no visible focal switch, no
+    // re-mount of the panel content.  The ghost lands on the root post
+    // once the panel is showing it.
+    if (status.in_reply_to_id) {
+      lastThreadOpenRef.current = status.id
+      ensureRepliesLoaded(status).then(({ root, clickedId }) => {
+        // Stale resolve: a newer click or an explicit close superseded this.
+        if (lastThreadOpenRef.current !== status.id) return
+        setSidePanel({ mode: 'thread', status: root })
+        setGhostStatusId(root.id)
+        if (clickedId !== root.id) {
+          setFocusedReplyId(clickedId)
+          setTimeout(() => setFocusedReplyId(null), 2000)
+        }
+      })
+      return
+    }
+
+    // Top-level post: the clicked post IS the thread's anchor, so open
+    // immediately and ghost it right away.
+    setGhostStatusId(status.id)
+    setSidePanel({ mode: 'thread', status })
     ensureRepliesLoaded(status)
   }
 
@@ -1367,6 +1432,8 @@ export default function App() {
 
   function closeSidePanel() {
     setSidePanel(null)
+    setGhostStatusId(null)
+    lastThreadOpenRef.current = null
     // Drop the loaded reply trees: an unbound map of every thread ever
     // opened would grow this session's heap forever. Threads always
     // force-refetch on open, so nothing is lost by clearing.
@@ -1892,6 +1959,7 @@ export default function App() {
 
   return (
     <UIContext.Provider value={SKINS[skinId]?.components || {}}>
+    <GhostContext.Provider value={{ ghostStatusId, inPanel: false }}>
     <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, translationEnabled, translationProvider, defaultVisibility, gifConversionEnabled, gifIncludeLarge, gifHoverAnimate, instanceUrl: session.instanceUrl, token: session.token }}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
       {!online && (
@@ -2368,6 +2436,7 @@ export default function App() {
       )}
     </PickerContext.Provider>
     </AppSettingsContext.Provider>
+    </GhostContext.Provider>
     </UIContext.Provider>
   )
 }

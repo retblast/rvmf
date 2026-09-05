@@ -1,21 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, LoaderCircle, X } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { PostRow, ThreadReply } from './Post.jsx'
+import { GhostContext } from '../hooks'
 import { ReplyComposerFields } from './ReplyComposer.jsx'
 
 const EASE = [0.32, 0.72, 0, 1]
 
-// Panel-opening choreography: the focal post slides in from the direction
-// of the timeline; ancestors stagger into place converging upward toward
-// it (closest ancestor first, since it's nearest the anchor); replies
-// stagger into place converging downward (closest reply first). Everything
-// arranges itself around the post you actually clicked.
-const focalVariants = {
-  hidden: { opacity: 0, x: -18 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.32, ease: EASE } },
-}
+// Panel-opening choreography: ancestors stagger into place converging
+// upward toward the focal post (closest ancestor first, since it's
+// nearest the anchor); replies stagger into place converging downward
+// (closest reply first).  The focal post itself enters via the shared
+// layoutId slide from the timeline.
 const ancestorItemVariants = {
   hidden: { opacity: 0, y: -14 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: EASE } },
@@ -61,6 +58,16 @@ export function ThreadPanelContent({
   const state = status ? replyStates[status.id] : null
   const composingStatusId = panel?.composingStatusId || null
   const [backfilling, setBackfilling] = useState(false)
+  const [collapsedReplies, setCollapsedReplies] = useState(new Set())
+
+  function toggleCollapse(id) {
+    setCollapsedReplies((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   // Remote posts only show the replies this instance has seen; this asks
   // it to pull the conversation from the origin server, then refreshes.
@@ -130,6 +137,7 @@ export function ThreadPanelContent({
   }
 
   return (
+    <GhostContext.Provider value={{ ghostStatusId: null, inPanel: true }}>
     <motion.div key={status?.id || 'empty'} data-testid="thread-root">
       <div className="thread-panel-header">
         <span className="dialog-title">
@@ -187,19 +195,24 @@ export function ThreadPanelContent({
                 onEdit={onEdit}
                 onMute={onMute}
                 onBlock={onBlock}
+                collapsedReplies={collapsedReplies}
+                onToggleCollapse={toggleCollapse}
               />
             </motion.div>
           ))}
         </motion.div>
       )}
       {status && (
-        <motion.div
-          className="thread-panel-focal"
-          variants={focalVariants}
-          initial="hidden"
-          animate="visible"
-        >
-          <PostRow
+        <div className="thread-panel-focal">
+          <AnimatePresence>
+            <motion.div
+              key={status.id}
+              layoutId={`post-${status.id}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3, ease: EASE }}
+            >
+              <PostRow
             post={status}
             composerFor={composingStatusId}
             composerProps={{ ...composerProps, status }}
@@ -221,7 +234,9 @@ export function ThreadPanelContent({
             onMute={onMute}
             onBlock={onBlock}
           />
-        </motion.div>
+            </motion.div>
+          </AnimatePresence>
+        </div>
       )}
       <motion.div
         className="thread-panel-replies"
@@ -266,11 +281,14 @@ export function ThreadPanelContent({
               onEdit={onEdit}
               onMute={onMute}
               onBlock={onBlock}
+              collapsedReplies={collapsedReplies}
+              onToggleCollapse={toggleCollapse}
             />
           </motion.div>
         ))}
       </motion.div>
     </motion.div>
+    </GhostContext.Provider>
   )
 }
 
