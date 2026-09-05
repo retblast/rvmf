@@ -136,6 +136,10 @@ export default function App() {
   // animation).  Separate from sidePanel.status, which may switch to the
   // thread root for mid-thread replies.
   const [ghostStatusId, setGhostStatusId] = useState(null)
+  // Guards async thread-open fetches: remembers which status started the
+  // in-flight load so a stale resolve can't clobber a newer open (or an
+  // explicit close).
+  const lastThreadOpenRef = useRef(null)
   const [profileAccountId, setProfileAccountId] = useState(null)
   const [hashtagTag, setHashtagTag] = useState(null)
   const [focusedReplyId, setFocusedReplyId] = useState(null)
@@ -1187,23 +1191,30 @@ export default function App() {
     // If already showing this exact post, toggle closed.
     if (sidePanelRef.current?.mode === 'thread' && sidePanelRef.current.status.id === status.id) return
 
-    // Ghost target: the post the user actually clicked, regardless of
-    // whether the panel focal later switches to the thread root.
-    setGhostStatusId(status.id)
-
-    // Open the panel immediately with the clicked post (for the
-    // layoutId slide animation).  ensureRepliesLoaded may later switch
-    // the focal to the thread root if this is a mid-thread reply.
-    setSidePanel({ mode: 'thread', status })
-    ensureRepliesLoaded(status).then(({ root, clickedId }) => {
-      // If the thread root differs from what's showing, switch to it
-      // and highlight the originally-clicked post.
-      if (root.id !== status.id) {
+    // Mid-thread reply: resolve the thread root first so the panel opens
+    // directly in the full-thread view — no visible focal switch, no
+    // re-mount of the panel content.  The ghost lands on the root post
+    // once the panel is showing it.
+    if (status.in_reply_to_id) {
+      lastThreadOpenRef.current = status.id
+      ensureRepliesLoaded(status).then(({ root, clickedId }) => {
+        // Stale resolve: a newer click or an explicit close superseded this.
+        if (lastThreadOpenRef.current !== status.id) return
         setSidePanel({ mode: 'thread', status: root })
-        setFocusedReplyId(clickedId)
-        setTimeout(() => setFocusedReplyId(null), 2000)
-      }
-    })
+        setGhostStatusId(root.id)
+        if (clickedId !== root.id) {
+          setFocusedReplyId(clickedId)
+          setTimeout(() => setFocusedReplyId(null), 2000)
+        }
+      })
+      return
+    }
+
+    // Top-level post: the clicked post IS the thread's anchor, so open
+    // immediately and ghost it right away.
+    setGhostStatusId(status.id)
+    setSidePanel({ mode: 'thread', status })
+    ensureRepliesLoaded(status)
   }
 
   // Reply button inside the thread panel: compose inline beneath the
@@ -1422,6 +1433,7 @@ export default function App() {
   function closeSidePanel() {
     setSidePanel(null)
     setGhostStatusId(null)
+    lastThreadOpenRef.current = null
     // Drop the loaded reply trees: an unbound map of every thread ever
     // opened would grow this session's heap forever. Threads always
     // force-refetch on open, so nothing is lost by clearing.

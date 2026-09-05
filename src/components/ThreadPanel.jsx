@@ -8,15 +8,11 @@ import { ReplyComposerFields } from './ReplyComposer.jsx'
 
 const EASE = [0.32, 0.72, 0, 1]
 
-// Panel-opening choreography: the focal post slides in from the direction
-// of the timeline; ancestors stagger into place converging upward toward
-// it (closest ancestor first, since it's nearest the anchor); replies
-// stagger into place converging downward (closest reply first). Everything
-// arranges itself around the post you actually clicked.
-const focalVariants = {
-  hidden: { opacity: 0, x: -18 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.32, ease: EASE } },
-}
+// Panel-opening choreography: ancestors stagger into place converging
+// upward toward the focal post (closest ancestor first, since it's
+// nearest the anchor); replies stagger into place converging downward
+// (closest reply first).  The focal post itself enters via the shared
+// layoutId slide from the timeline.
 const ancestorItemVariants = {
   hidden: { opacity: 0, y: -14 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: EASE } },
