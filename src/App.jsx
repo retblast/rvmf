@@ -49,7 +49,7 @@ import LoginView from './LoginView'
 import { Avatar, MediaLightbox } from './components/Media.jsx'
 import { NotificationRow, PostRow } from './components/Post.jsx'
 import { ComposeDialog, EditDialog, visibilityLabel as mitraVisibilityLabel } from './components/Compose.jsx'
-import { ThreadPanel, ThreadPanelContent } from './components/ThreadPanel.jsx'
+import { ThreadPanel, ThreadPanelContent, ThreadPanelHeader } from './components/ThreadPanel.jsx'
 import { ProfileView } from './components/ProfileView.jsx'
 import { SearchView } from './components/SearchView.jsx'
 import { HashtagFeed } from './components/HashtagFeed.jsx'
@@ -2400,9 +2400,14 @@ export default function App() {
             <ErrorBoundary>{notificationsBody}</ErrorBoundary>
           </aside>
           <div className="content-scroll scrollbar-thin" ref={setScrollEl}><ErrorBoundary>{timelineContent}</ErrorBoundary></div>
-          <aside className="thread-column scrollbar-thin">
+          <aside className="thread-column">
             {sidePanel ? (
-              <ErrorBoundary><ThreadPanelContent {...threadPanelProps} /></ErrorBoundary>
+              <>
+                <ThreadPanelHeader {...threadPanelProps} />
+                <div className="thread-column-scroll scrollbar-thin">
+                  <ErrorBoundary><ThreadPanelContent {...threadPanelProps} /></ErrorBoundary>
+                </div>
+              </>
             ) : (
                 <div className="thread-column-empty">
                 <StatusPage
@@ -2420,7 +2425,8 @@ export default function App() {
           <ErrorBoundary><ThreadPanel {...threadPanelProps} /></ErrorBoundary>
         </div>
       ) : (
-        <div className="main-layout">
+        <div className={`main-layout${sidePanel ? ' narrow-thread' : ''}`}>
+          {sidePanel && <ThreadPanelHeader {...threadPanelProps} backLabel="Back to timeline" />}
           <div className="content-scroll scrollbar-thin" ref={setScrollEl}>
             {sidePanel ? (
               <div className="timeline-wrap">

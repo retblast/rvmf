@@ -29,6 +29,45 @@ const staggerDownVariants = {
   visible: { transition: { delayChildren: 0.1, staggerChildren: 0.05 } },
 }
 
+// The thread panel header is rendered OUTSIDE the scroll container so it
+// stays pinned at the top via normal flexbox flow — no position:sticky
+// needed (which is broken by overflow ancestors in this layout).
+export function ThreadPanelHeader({ panel, backLabel, onClose, onCancelCompose }) {
+  const status = panel?.status
+  const composingStatusId = panel?.composingStatusId || null
+  const composing = Boolean(composingStatusId)
+
+  if (panel?.mode === 'compose') return null
+
+  return (
+    <div className="thread-panel-header">
+      <span className="dialog-title">
+        {composing ? 'Reply' : (
+          <>
+            {backLabel && (
+              <button className="icon-btn thread-back-btn" aria-label={backLabel} onClick={onClose}>
+                <ArrowLeft size={16} />
+              </button>
+            )}
+            {status ? 'Thread' : 'Replies'}
+          </>
+        )}
+      </span>
+      {composing ? (
+        <button className="icon-btn" aria-label="Cancel reply" onClick={onCancelCompose}>
+          <X size={16} />
+        </button>
+      ) : (
+        !backLabel && (
+          <button className="icon-btn" aria-label="Close replies" onClick={onClose}>
+            <X size={16} />
+          </button>
+        )
+      )}
+    </div>
+  )
+}
+
 export function ThreadPanelContent({
   panel,
   replyStates,
@@ -43,7 +82,6 @@ export function ThreadPanelContent({
   instanceUrl,
   token,
   onReplyPosted,
-  backLabel,
   onQuote,
   currentAccountId,
   onDelete,
@@ -98,8 +136,6 @@ export function ThreadPanelContent({
     return map
   }, [status, state])
 
-  const composing = Boolean(composingStatusId)
-
   const [highlightedId, setHighlightedId] = useState(null)
 
   useEffect(() => {
@@ -138,31 +174,6 @@ export function ThreadPanelContent({
   return (
     <GhostContext.Provider value={{ ghostStatusId: null, inPanel: true }}>
     <motion.div key={status?.id || 'empty'} data-testid="thread-root">
-      <div className="thread-panel-header">
-        <span className="dialog-title">
-          {composing ? 'Reply' : (
-            <>
-              {backLabel && (
-                <button className="icon-btn thread-back-btn" aria-label={backLabel} onClick={onClose}>
-                  <ArrowLeft size={16} />
-                </button>
-              )}
-              {state?.ancestors?.length > 0 ? 'Thread' : 'Replies'}
-            </>
-          )}
-        </span>
-        {composing ? (
-          <button className="icon-btn" aria-label="Cancel reply" onClick={onCancelCompose}>
-            <X size={16} />
-          </button>
-        ) : (
-          !backLabel && (
-            <button className="icon-btn" aria-label="Close replies" onClick={onClose}>
-              <X size={16} />
-            </button>
-          )
-        )}
-      </div>
       {state?.ancestors?.length > 0 && (
         <motion.div
           className="thread-ancestors"
@@ -300,6 +311,7 @@ export function ThreadPanel(props) {
     <>
       <div className="thread-panel-backdrop" onClick={onClose} />
       <aside className={`thread-panel${panel ? ' open' : ''}`}>
+        <ThreadPanelHeader {...props} />
         <div className="thread-panel-inner scrollbar-thin">
           <ThreadPanelContent {...props} />
         </div>

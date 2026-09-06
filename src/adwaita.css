@@ -2807,6 +2807,20 @@ button.mention-link {
   overflow: hidden;
 }
 
+/* Narrow tier: thread replaces the timeline, header stays pinned at top */
+.main-layout.narrow-thread {
+  flex-direction: column;
+}
+
+.main-layout.narrow-thread > .thread-panel-header {
+  flex-shrink: 0;
+}
+
+.main-layout.narrow-thread > .content-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
 /* ---- wide-tier 3-pane shell: notifications | timeline | thread ----
    Nothing here slides or animates open/closed — all three columns are
    always present at this width, which is the whole point of having
@@ -2840,7 +2854,19 @@ button.mention-link {
 .thread-column {
   border-left: 1px solid var(--border);
   background: var(--view-bg);
-  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+.thread-column-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px;
+}
+
+.thread-column > .thread-panel-header {
+  flex-shrink: 0;
 }
 
 /* The 640px reading-width cap on .timeline-wrap makes sense in the
@@ -2856,7 +2882,7 @@ button.mention-link {
 }
 
 .thread-column-empty {
-  height: 100%;
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3001,10 +3027,12 @@ button.mention-link {
 .thread-panel {
   width: 0;
   flex-shrink: 0;
-  overflow: clip;
+  overflow: hidden;
   border-left: 1px solid var(--border);
   background: var(--view-bg);
   transition: width 240ms ease;
+  display: flex;
+  flex-direction: column;
 }
 
 .thread-panel.open {
@@ -3013,7 +3041,7 @@ button.mention-link {
 
 .thread-panel-inner {
   width: min(460px, 40vw);
-  height: 100%;
+  flex: 1;
   overflow-y: auto;
   padding: 14px 16px;
 }
@@ -3022,12 +3050,10 @@ button.mention-link {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: var(--view-bg);
-  margin: -14px -16px 12px;
   padding: 14px 16px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
 }
 
 .thread-panel-focal {
