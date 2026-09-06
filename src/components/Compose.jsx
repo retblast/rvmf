@@ -43,6 +43,7 @@ export function useMediaUploads(instanceUrl, token) {
   const mountedRef = useRef(true)
 
   useEffect(() => {
+    mountedRef.current = true
     return () => {
       mountedRef.current = false
       uploadsRef.current.forEach((u) => URL.revokeObjectURL(u.previewUrl))

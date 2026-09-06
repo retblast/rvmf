@@ -161,7 +161,10 @@ export function useTranslation(status) {
 
   // Guard against setState calls after unmount during async translation.
   const mountedRef = useRef(true)
-  useEffect(() => () => { mountedRef.current = false }, [])
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   // The status language tag is only ever a cosmetic label ("Translated from
   // Japanese"); it is not fed to the translator.
