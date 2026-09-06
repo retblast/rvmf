@@ -11,8 +11,7 @@ const EASE = [0.32, 0.72, 0, 1]
 // Panel-opening choreography: ancestors stagger into place converging
 // upward toward the focal post (closest ancestor first, since it's
 // nearest the anchor); replies stagger into place converging downward
-// (closest reply first).  The focal post itself enters via the shared
-// layoutId slide from the timeline.
+// (closest reply first).
 const ancestorItemVariants = {
   hidden: { opacity: 0, y: -14 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: EASE } },
@@ -207,7 +206,6 @@ export function ThreadPanelContent({
           <AnimatePresence>
             <motion.div
               key={status.id}
-              layoutId={`post-${status.id}`}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.3, ease: EASE }}
@@ -227,7 +225,6 @@ export function ThreadPanelContent({
             statusById={statusById}
             depth={state.ancestors?.length || 0}
             highlightedId={highlightedId}
-            onHighlightParent={setHighlightedId}
             currentAccountId={currentAccountId}
             onDelete={onDelete}
             onEdit={onEdit}

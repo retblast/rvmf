@@ -321,7 +321,7 @@ export function useClientMedia(...args) {
   const { instanceUrl, token } = useContext(AppSettingsContext)
   const resolveUrls = typeof args[args.length - 1] === 'function' ? args.pop() : null
   const urls = args
-  const key = urls.filter(Boolean).join('\0')
+  const key = urls.filter(Boolean).length ? JSON.stringify(urls.filter(Boolean)) : ''
 
   function fetchMedia(url) {
     const headers = {}

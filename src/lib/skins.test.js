@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { SKINS, validateSkin, applySkin } from './skins.js'
+import { SKINS, validateSkin } from './skins.js'
 
 describe('validateSkin', () => {
   it('accepts a valid manifest and normalizes it', () => {

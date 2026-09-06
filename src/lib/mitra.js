@@ -73,7 +73,7 @@ async function apiFetch(instanceUrl, path, options = {}) {
 
   let lastRes = null
   let timedOut = false
-  let hadNetworkError = false
+  let _hadNetworkError = false
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0) await sleep(800 * 2 ** (attempt - 1))
@@ -96,7 +96,7 @@ async function apiFetch(instanceUrl, path, options = {}) {
       // Only a timer-fired abort means "too slow"; anything else is an
       // immediate network-layer failure (refused, reset, CORS, DNS).
       if (state.timedOut) timedOut = true
-      hadNetworkError = true
+      _hadNetworkError = true
     }
   }
 
@@ -333,6 +333,7 @@ export function respondFollowRequest(instanceUrl, token, accountId, action) {
 // page size keeps this to a handful of requests. Mitra caps at 200.
 export async function fetchAllPendingFollowAccountIds(instanceUrl, token) {
   const PAGE_SIZE = 80
+  const MAX_PAGES = 25 // safety cap — 25 pages × 80 = 2000 follow requests max
   const minRequestId = (nextUrl) => {
     // id runs up to the next `&` or to `>` that closes the Link URL.
     const match = /[?&]max_id=([^&>]+)/.exec(nextUrl)
@@ -341,7 +342,8 @@ export async function fetchAllPendingFollowAccountIds(instanceUrl, token) {
 
   const pending = new Set()
   let max_id = null
-  for (;;) {
+  const seenCursors = new Set()
+  for (let page = 0; page < MAX_PAGES; page++) {
     const params = new URLSearchParams({ limit: String(PAGE_SIZE) })
     if (max_id) params.set('max_id', max_id)
     let nextUrl = null
@@ -357,6 +359,9 @@ export async function fetchAllPendingFollowAccountIds(instanceUrl, token) {
     // Follow the server's rel="next" cursor; stop when there is no next page.
     max_id = nextUrl && minRequestId(nextUrl)
     if (!max_id || !Array.isArray(accounts) || accounts.length < PAGE_SIZE) break
+    // Guard against a server echoing the same cursor forever.
+    if (seenCursors.has(max_id)) break
+    seenCursors.add(max_id)
   }
   return pending
 }

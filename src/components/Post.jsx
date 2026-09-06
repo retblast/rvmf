@@ -1,5 +1,4 @@
 import { memo, useCallback, useContext, useEffect, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
 import {
   MessageCircle,
   Repeat2,
@@ -160,6 +159,10 @@ export function useTranslation(status) {
   const [error, setError] = useState(null)
   const [shown, setShown] = useState(false)
 
+  // Guard against setState calls after unmount during async translation.
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
+
   // The status language tag is only ever a cosmetic label ("Translated from
   // Japanese"); it is not fed to the translator.
   const sourceCode = canonicalizeLanguage(status?.language)
@@ -173,6 +176,7 @@ export function useTranslation(status) {
     try {
       const source = htmlToPlainText(status.content)
       const result = await translateText(source, sourceCode, targetCode, setProgress, translationProvider)
+      if (!mountedRef.current) return
       setTranslated(result)
       setPhase('done')
       // The model's heap stays reserved while the page is open; when the
@@ -180,9 +184,10 @@ export function useTranslation(status) {
       // Best-effort — the notice must never fail a translation.
       try {
         const msg = await translationPressureNotice()
-        if (msg) showToast(msg)
+        if (msg && mountedRef.current) showToast(msg)
       } catch { /* notice is optional */ }
     } catch (err) {
+      if (!mountedRef.current) return
       console.error(err)
       setError(String(err?.message || err))
       setPhase('error')
@@ -429,7 +434,6 @@ export function PostActions({
         <ReactionPicker
           status={status}
           instanceUrl={instanceUrl}
-          token={token}
           onReact={toggleReaction}
           onClose={() => setShowPicker(false)}
         />
@@ -690,7 +694,7 @@ export function ThreadReply({
   )
 }
 
-function ReactionChips({ reactions, statusId, instanceUrl, token, onReact }) {
+function ReactionChips({ reactions, statusId, onReact }) {
   if (!reactions || reactions.length === 0) return null
   return (
     <div className="reaction-chips">
@@ -717,7 +721,7 @@ function ReactionChips({ reactions, statusId, instanceUrl, token, onReact }) {
   )
 }
 
-function ReactionPicker({ status, instanceUrl, token, onReact, onClose }) {
+function ReactionPicker({ status, instanceUrl, onReact, onClose }) {
   const [instanceEmoji, setInstanceEmoji] = useState([])
   useEffect(() => {
     let cancelled = false
@@ -1199,7 +1203,7 @@ function PostOptionsMenu({ status, instanceUrl, token, mediaAttachments, isOwn, 
   )
 }
 
-export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onQuote, statusById, depth, highlightedId, onHighlightParent, currentAccountId, onDelete, onMute, onBlock, onEdit, composerFor, composerProps }) {
+export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdate, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onQuote, depth, highlightedId, currentAccountId, onDelete, onMute, onBlock, onEdit, composerFor, composerProps }) {
   const [mediaHidden, setMediaHidden] = useState(false)
   // null | { kind: 'favourited_by' | 'reblogged_by' } — who-did-this popover
   const [accountsView, setAccountsView] = useState(null)
@@ -1214,7 +1218,6 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   const booster = isBoost ? post.account : null
   const content = processStatusContentForDisplay(status, instanceUrl)
   const translation = useTranslation(status)
-  const parentStatus = statusById?.get(status.in_reply_to_id) || null
   // Build the sorted mention list: reply target first, then other body mentions.
   const replyMentions = buildReplyMentions(status)
 
@@ -1226,29 +1229,9 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   // Ghost context for thread panel ghost placeholders
   const { ghostStatusId, inPanel } = useContext(GhostContext)
 
-  // Track if this post has completed its slide into ghost state (Phase 3)
-  const [slid, setSlid] = useState(false)
-
-  // Reset slid state whenever ghostStatusId changes (thread opened, closed, or changed)
-  useEffect(() => {
-    setSlid(false)
-  }, [ghostStatusId])
-
-  // Determine if we should show the layoutId animation (pre-slide state)
-  const isSliding = ghostStatusId === status.id && !slid
-
-  // Timer-based ghost trigger: onAnimationComplete doesn't fire on the
-  // source element of a Framer Motion shared layoutId transition (FM 11),
-  // so we use a duration-matched timeout instead.
-  useEffect(() => {
-    if (!isSliding) return
-    const t = setTimeout(() => setSlid(true), 300)
-    return () => clearTimeout(t)
-  }, [isSliding])
-
-  // Check if this post should show the ghost class
-  // Don't ghost if we're inside the thread panel (inPanel=true) or if slide hasn't completed
-  const isGhost = ghostStatusId === status.id && slid && !inPanel
+  // Ghost is a pure derivation: this row is a placeholder when the
+  // thread panel is open for this post and the row is outside the panel.
+  const isGhost = ghostStatusId === status.id && !inPanel
 
   const wrapUpdate = useCallback((updated) => {
     onUpdate(isBoost ? { ...post, reblog: updated } : updated)
@@ -1355,20 +1338,6 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
       )}
     </>
   )
-
-  if (isSliding) {
-    return (
-      <motion.div
-        layoutId={`post-${status.id}`}
-        className="post-row"
-        style={depth != null ? { '--reply-depth': depth } : undefined}
-        data-status-id={status.id}
-        transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
-      >
-        {postContent}
-      </motion.div>
-    )
-  }
 
   return (
     <div

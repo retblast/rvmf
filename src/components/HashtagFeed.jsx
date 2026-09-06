@@ -5,7 +5,7 @@ import { PostRow } from './Post.jsx'
 
 // Public timeline for a single hashtag. Same shape as the profile view:
 // back button, header, post list, infinite scroll.
-export function HashtagFeed({ hashtag, instanceUrl, token, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onUpdate, onQuote, currentAccountId, onDelete, onMute, onBlock, onEdit, onClose }) {
+export function HashtagFeed({ hashtag, instanceUrl, token, onOpenThread, onComposeReply, onOpenLightbox, onOpenProfile, onQuote, currentAccountId, onDelete, onMute, onBlock, onEdit, onClose }) {
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')

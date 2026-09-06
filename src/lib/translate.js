@@ -76,20 +76,32 @@ export function canMeasurePageMemory() {
 }
 
 // Returns a user-facing message, or null when there's nothing worth saying.
-// Chromium: report the measured footprint when it clears the warning bar.
+// Chromium: report the measured footprint when it clears the warning bar,
+// but at most once per 5 minutes so repeated translations don't nag.
 // Anywhere else (or when measurement is denied): show the stated estimate
 // exactly once per browser, guarded by localStorage, so a user who can't
 // measure isn't nagged on every translation.
+let _lastMeasureNoticeAt = 0
+const MEASURE_COOLDOWN_MS = 5 * 60 * 1000
+
+// Test seam: reset the measured-notice cooldown so tests aren't throttled.
+export function resetTranslationNoticeCooldown() { _lastMeasureNoticeAt = 0 }
+
 export async function translationPressureNotice() {
   if (canMeasurePageMemory()) {
     try {
       const entry = await performance.measureUserAgentSpecificMemory()
       const mb = Math.round(entry.bytes / (1024 * 1024))
       if (mb > TRANSLATION_HEAP_WARN_MB) {
-        return `Translation is using ~${mb.toLocaleString()} MB of this page's memory — normal for the on-device model, but only a reload returns it fully.`
+        const now = Date.now()
+        if (now - _lastMeasureNoticeAt >= MEASURE_COOLDOWN_MS) {
+          _lastMeasureNoticeAt = now
+          return `Translation is using ~${mb.toLocaleString()} MB of this page's memory — normal for the on-device model, but only a reload returns it fully.`
+        }
       }
-      // Measured and fine: say nothing (and don't fall through to the
-      // one-time hint — this browser can measure, so it doesn't need it).
+      // Measured and fine (or cooldown active): say nothing (and don't
+      // fall through to the one-time hint — this browser can measure, so
+      // it doesn't need it).
       return null
     } catch {
       // Measurement denied: fall through to the one-time hint.

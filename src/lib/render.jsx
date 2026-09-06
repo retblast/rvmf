@@ -90,6 +90,10 @@ export function renderEmojiText(text, emojis) {
 // depth, not just direct replies. Build that into an actual tree once, up
 // front, so the whole thread can render fully expanded without any further
 // per-node fetches: this is what "all known replies" actually means.
+//
+// Iterative implementation: avoids stack overflow on extremely deep reply
+// chains (thousands of levels) by using an explicit work stack instead of
+// recursion.
 export function buildReplyTree(descendants, rootId) {
   const byParent = new Map()
   descendants.forEach((s) => {
@@ -97,13 +101,20 @@ export function buildReplyTree(descendants, rootId) {
     list.push(s)
     byParent.set(s.in_reply_to_id, list)
   })
-  function attach(parentId) {
-    return (byParent.get(parentId) || []).map((child) => ({
-      status: child,
-      children: attach(child.id),
-    }))
+  const result = []
+  // Each entry: { parentId, target } — children of parentId get pushed into target.
+  const stack = [{ parentId: rootId, target: result }]
+  while (stack.length > 0) {
+    const { parentId, target } = stack.pop()
+    const children = byParent.get(parentId) || []
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i]
+      const node = { status: child, children: [] }
+      target.push(node)
+      stack.push({ parentId: child.id, target: node.children })
+    }
   }
-  return attach(rootId)
+  return result
 }
 
 // Find a node by status id anywhere in the tree

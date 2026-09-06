@@ -11,10 +11,11 @@ test('open a thread and post an inline reply', async ({ page }, testInfo) => {
   await row.locator('.post-text').click()
 
   // Timeline post collapses to a ghost placeholder ("Viewing in thread")
-  // after the slide animation — but only in tiers where the timeline stays
-  // mounted.  Narrow tier replaces the timeline with the thread view
-  // entirely.  (Assert by label text, not by the row: the collapsed ghost
-  // strips the post's own text, so filtering the row by it finds nothing.)
+  // immediately when the thread opens — the ghost is derived from context,
+  // no animation delay.  Only in tiers where the timeline stays mounted:
+  // narrow tier replaces the timeline with the thread view entirely.
+  // (Assert by label text, not by the row: the collapsed ghost strips the
+  // post's own text, so filtering the row by it finds nothing.)
   if (testInfo.project.name !== 'narrow') {
     await expect(page.getByText('Viewing in thread').first()).toBeVisible()
   }
@@ -58,4 +59,34 @@ test('clicking a mid-thread reply keeps the full thread visible', async ({ page 
   await expect(panel.getByText(SEED.replyText)).toBeVisible()
   await expect(panel.getByText(SEED.siblingReplyText)).toBeVisible()
   await expect(panel.getByText(SEED.nestedReplyText)).toBeVisible()
+})
+
+// Switching between posts from the timeline while the panel is open must
+// move the ghost placeholder to the newly-clicked row immediately — no
+// flicker, no 300ms timer gap.  (Wide tier only: narrow replaces the
+// timeline.)
+test('switching between timeline posts moves the ghost immediately', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'narrow', 'narrow tier replaces the timeline')
+
+  await loginAs(page, 'bob')
+  await page.goto('/')
+
+  // Open the seeded root's thread.
+  const rootRow = page.locator('.post-row', { hasText: SEED.rootText }).first()
+  await rootRow.locator('.post-text').click()
+  await expect(page.getByText('Viewing in thread').first()).toBeVisible()
+
+  // Open a different post — the seeded second post from bob.
+  const secondRow = page.locator('.post-row', { hasText: SEED.secondText }).first()
+  await secondRow.locator('.post-text').click()
+
+  // The ghost must now be on the second post's row (exactly one ghost
+  // label visible, and it appears immediately — no timer delay).
+  const ghostLabels = page.locator('.post-row.ghost .ghost-label')
+  await expect(ghostLabels).toHaveCount(1)
+  await expect(ghostLabels.first()).toBeVisible()
+
+  // The root's row must have its full content back (not ghosted).
+  const rootText = page.locator('.post-row', { hasText: SEED.rootText }).first()
+  await expect(rootText.locator('.post-text')).toBeVisible()
 })

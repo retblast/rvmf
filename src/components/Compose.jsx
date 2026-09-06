@@ -38,9 +38,13 @@ export function useMediaUploads(instanceUrl, token) {
   // guarantees the cleanup revokes whatever is actually attached.
   const uploadsRef = useRef(uploads)
   uploadsRef.current = uploads
+  // Guard against setState after unmount: in-flight upload callbacks check
+  // this before calling setUploads.
+  const mountedRef = useRef(true)
 
   useEffect(() => {
     return () => {
+      mountedRef.current = false
       uploadsRef.current.forEach((u) => URL.revokeObjectURL(u.previewUrl))
     }
   }, [])
@@ -59,6 +63,7 @@ export function useMediaUploads(instanceUrl, token) {
         mitra
           .uploadMedia(instanceUrl, token, file)
           .then((attachment) => {
+            if (!mountedRef.current) return
             setUploads((prev) =>
               prev.map((u) =>
                 u.key === key ? { ...u, uploading: false, mediaId: attachment.id } : u
@@ -73,6 +78,7 @@ export function useMediaUploads(instanceUrl, token) {
             }
           })
           .catch((err) => {
+            if (!mountedRef.current) return
             setUploads((prev) =>
               prev.map((u) =>
                 u.key === key

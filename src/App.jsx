@@ -132,9 +132,10 @@ export default function App() {
   const [sidePanel, setSidePanel] = useState(null)
   const sidePanelRef = useRef(sidePanel)
   sidePanelRef.current = sidePanel
-  // Tracks the post the user actually clicked (for the slide + ghost
-  // animation).  Separate from sidePanel.status, which may switch to the
-  // thread root for mid-thread replies.
+  // The timeline row the user clicked outside the panel — drives the
+  // ghost placeholder ("Viewing in thread").  Anchors independently of
+  // sidePanel.status, which may be the thread root for mid-thread
+  // replies or refreshed by the poll interval.
   const [ghostStatusId, setGhostStatusId] = useState(null)
   // Guards async thread-open fetches: remembers which status started the
   // in-flight load so a stale resolve can't clobber a newer open (or an
@@ -1184,24 +1185,36 @@ export default function App() {
   )
 
   // Opens the side panel for `status` — ancestors and the full reply tree —
-  // or closes it if that same status is already showing. This is the only
+  // or closes it if that same status is already showing.  This is the only
   // way threads open anywhere in the app now: always the slide-out panel,
   // never inline in the timeline.
-  function handleOpenThread(status) {
-    // If already showing this exact post, toggle closed.
-    if (sidePanelRef.current?.mode === 'thread' && sidePanelRef.current.status.id === status.id) return
+  //
+  // { fromPanel } — set when the click originates from inside the thread
+  // panel (e.g. a reply's own onOpenThread).  Panel-internal navigation
+  // never changes the ghost anchor — the marker stays on the row the user
+  // clicked *outside* the panel.
+  function handleOpenThread(status, { fromPanel = false } = {}) {
+    // If already showing this exact post, re-anchor the ghost and bail.
+    if (sidePanelRef.current?.mode === 'thread' && sidePanelRef.current.status.id === status.id) {
+      if (!fromPanel) setGhostStatusId(status.id)
+      return
+    }
+
+    // Ghost the clicked row immediately so the banner appears without
+    // waiting for the async thread resolve.  For mid-thread replies the
+    // panel may briefly still show the previous thread — the ghost is
+    // anchored to the row the user actually clicked.
+    if (!fromPanel) setGhostStatusId(status.id)
 
     // Mid-thread reply: resolve the thread root first so the panel opens
     // directly in the full-thread view — no visible focal switch, no
-    // re-mount of the panel content.  The ghost lands on the root post
-    // once the panel is showing it.
+    // re-mount of the panel content.
     if (status.in_reply_to_id) {
       lastThreadOpenRef.current = status.id
       ensureRepliesLoaded(status).then(({ root, clickedId }) => {
         // Stale resolve: a newer click or an explicit close superseded this.
         if (lastThreadOpenRef.current !== status.id) return
         setSidePanel({ mode: 'thread', status: root })
-        setGhostStatusId(root.id)
         if (clickedId !== root.id) {
           setFocusedReplyId(clickedId)
           setTimeout(() => setFocusedReplyId(null), 2000)
@@ -1211,8 +1224,7 @@ export default function App() {
     }
 
     // Top-level post: the clicked post IS the thread's anchor, so open
-    // immediately and ghost it right away.
-    setGhostStatusId(status.id)
+    // immediately.
     setSidePanel({ mode: 'thread', status })
     ensureRepliesLoaded(status)
   }
@@ -1347,6 +1359,14 @@ export default function App() {
     }, 5000)
     return () => clearInterval(interval)
   }, [sidePanel, session, refreshContext])
+
+  // The ghost marker is only meaningful while the side panel is open in
+  // thread mode.  Other paths that null the panel (profile/hashtag opens,
+  // deletion, close button) must not leave a row frozen as "Viewing in
+  // thread".
+  useEffect(() => {
+    if (!sidePanel) setGhostStatusId(null)
+  }, [sidePanel])
 
   // Auto-refresh notifications every 5 seconds (silent). Also refreshes
   // pendingFollowIds so that newly-arriving follow_request notifications
@@ -1935,7 +1955,7 @@ export default function App() {
   const threadPanelProps = {
     panel: sidePanel,
     replyStates,
-    onOpenThread: handleOpenThread,
+    onOpenThread: (status) => handleOpenThread(status, { fromPanel: true }),
     onComposeReply: handleComposeReplyInPanel,
     onOpenLightbox: setLightboxAttachment,
     onOpenProfile: handleOpenProfile,
