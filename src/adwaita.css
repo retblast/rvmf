@@ -3023,6 +3023,12 @@ button.mention-link {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--view-bg);
+  padding: 14px 16px;
+  margin: 0 -16px 12px;
 }
 
 .thread-panel-focal {
