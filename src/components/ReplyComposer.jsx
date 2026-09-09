@@ -149,7 +149,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
         </button>
       </div>
       {status && (
-        <div className="thread-panel-preview">
+        <div className="thread-panel-preview compose-reply-preview">
           <div className="post-meta">
             <span className="post-name">{name}</span>
             <span className="post-handle">@{account.acct || account.username}</span>
