@@ -226,6 +226,28 @@ button {
   background: var(--active-overlay);
 }
 
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: media-spin 0.7s linear infinite;
+}
+
+.poll-refresh-btn {
+  opacity: 0.6;
+}
+
+.poll-refresh-btn:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.poll-refresh-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .suggested-btn {
   display: flex;
   align-items: center;

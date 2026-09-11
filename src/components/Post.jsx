@@ -20,6 +20,7 @@ import {
   Download,
   Languages,
   ChevronRight,
+  RefreshCw,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { PickerContext, AppSettingsContext, GhostContext, useEscapeKey, showToast, downloadAllMedia } from '../hooks'
@@ -604,6 +605,7 @@ export function ThreadReply({
               instanceUrl={instanceUrl}
               token={token}
               onUpdated={handlePollUpdated}
+              statusId={status.id}
             />
           )}
           <MediaGrid
@@ -925,15 +927,17 @@ export function QuoteCard({ status, instanceUrl, onOpenThread }) {
   )
 }
 
-export function PollCard({ poll, instanceUrl, token, onUpdated }) {
+export function PollCard({ poll, instanceUrl, token, onUpdated, statusId }) {
   const [selected, setSelected] = useState([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [refreshing, setRefreshing] = useState(false)
 
   if (!poll) return null
 
   const { id, options, expired, multiple, votes_count, voters_count, voted, own_votes, expires_at } = poll
   const showResults = expired || voted
+  const hasVoted = voted || (own_votes && own_votes.length > 0)
 
   function toggleOption(idx) {
     if (showResults || busy) return
@@ -957,6 +961,20 @@ export function PollCard({ poll, instanceUrl, token, onUpdated }) {
       setError(err.message || 'Vote failed.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function handleRefresh() {
+    if (refreshing || expired || !statusId) return
+    setRefreshing(true)
+    setError('')
+    try {
+      const freshStatus = await mitra.fetchStatus(instanceUrl, token, statusId)
+      if (freshStatus?.poll) onUpdated(freshStatus.poll)
+    } catch (err) {
+      setError(err.message || 'Refresh failed.')
+    } finally {
+      setRefreshing(false)
     }
   }
 
@@ -1023,6 +1041,21 @@ export function PollCard({ poll, instanceUrl, token, onUpdated }) {
           {timeLeft() && <> · {timeLeft()}</>}
           {expired && <span className="poll-expired"> · Ended</span>}
         </span>
+        {!expired && (
+          <button
+            className="icon-btn poll-refresh-btn"
+            onClick={(e) => { e.stopPropagation(); handleRefresh() }}
+            disabled={refreshing}
+            aria-label={hasVoted ? 'Refresh poll results' : 'Refresh poll'}
+            title={hasVoted ? 'Refresh poll results' : 'Refresh poll'}
+          >
+            {refreshing ? (
+              <span className="spinner" aria-hidden="true" />
+            ) : (
+              <RefreshCw size={14} />
+            )}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -1288,6 +1321,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
               instanceUrl={instanceUrl}
               token={token}
               onUpdated={handlePollUpdated}
+              statusId={status.id}
             />
           )}
           <MediaGrid
