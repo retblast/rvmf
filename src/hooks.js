@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 
 export const GhostContext = createContext({ ghostStatusId: null, inPanel: false })
 import { ensureGifConverted } from './lib/gif/convert.js'
@@ -598,4 +598,58 @@ export function usePullToRefresh(el, onRefresh) {
   }, [refreshing])
 
   return { pull, refreshing }
+}
+
+// Composer draft persistence. Each draft is keyed by its context
+// (reply target, quote target, group, or new post). Drafts are saved
+// to localStorage on change (debounced) and restored on mount.
+// On successful post, the draft is cleared.
+import { loadDraft as loadDraftStorage, saveDraft as saveDraftStorage, clearDraft as clearDraftStorage } from './lib/drafts.js'
+export { getDraftKey } from './lib/drafts.js'
+
+export function useComposeDraft(draftKey, initialState) {
+  const [state, setState] = useState(() => {
+    if (!draftKey) return initialState
+    const stored = loadDraftStorage(draftKey)
+    return stored ? { ...initialState, ...stored } : initialState
+  })
+
+  const saveTimerRef = useRef(null)
+  const stateRef = useRef(state)
+  stateRef.current = state
+  const draftKeyRef = useRef(draftKey)
+  draftKeyRef.current = draftKey
+
+  // Debounced save — fires 500ms after the last change
+  const flushDraft = useCallback(() => {
+    if (!draftKeyRef.current) return
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      saveDraftStorage(draftKeyRef.current, stateRef.current)
+    }, 500)
+  }, [])
+
+  // Save on any state change
+  useEffect(() => {
+    flushDraft()
+  }, [flushDraft, state])
+
+  // Clear draft on successful post
+  const clearDraft = useCallback(() => {
+    if (!draftKeyRef.current) return
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    clearDraftStorage(draftKeyRef.current)
+  }, [])
+
+  // Flush any pending save on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+        if (draftKeyRef.current) saveDraftStorage(draftKeyRef.current, stateRef.current)
+      }
+    }
+  }, [])
+
+  return [state, setState, clearDraft]
 }

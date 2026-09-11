@@ -15,7 +15,7 @@ import {
   usePollDraft, PollEditorFields, ParentPreviewMedia, useStatusPreview, StatusPreviewPane,
   replyVisibilityOptions, defaultReplyVisibility,
 } from './Compose.jsx'
-import { AppSettingsContext } from '../hooks'
+import { AppSettingsContext, useComposeDraft, getDraftKey } from '../hooks'
 import {
   insertAtCaret,
   useEmojiAutocomplete,
@@ -25,11 +25,40 @@ import {
 import { useMentionAutocomplete, MentionDropdown } from './Mention.jsx'
 
 export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted, maxCharacters = 500, currentAccountId }) {
-  const [text, setText] = useState('')
+  const draftKey = getDraftKey({ replyToStatusId: status?.id })
+  const { defaultVisibility } = useContext(AppSettingsContext)
+
+  const parentVisibility = status?.visibility
+  const isSameAuthor = currentAccountId && status?.account?.id === currentAccountId
+  const replyOptions = parentVisibility
+    ? replyVisibilityOptions(parentVisibility, isSameAuthor)
+    : undefined
+
+  const initialDraft = {
+    text: '',
+    visibility: parentVisibility ? defaultReplyVisibility(parentVisibility) : (defaultVisibility || 'public'),
+    spoilerText: '',
+    showCW: false,
+    showTitle: false,
+    title: '',
+    language: '',
+    showPreview: false,
+  }
+
+  const [draft, setDraft, clearDraft] = useComposeDraft(draftKey, initialDraft)
+  const { text, visibility, spoilerText, showCW, showTitle, title, language, showPreview } = draft
+
+  const setText = (v) => setDraft((s) => ({ ...s, text: v }))
+  const setVisibility = (v) => setDraft((s) => ({ ...s, visibility: v }))
+  const setSpoilerText = (v) => setDraft((s) => ({ ...s, spoilerText: v }))
+  const setShowCW = (v) => setDraft((s) => ({ ...s, showCW: v }))
+  const setShowTitle = (v) => setDraft((s) => ({ ...s, showTitle: v }))
+  const setTitle = (v) => setDraft((s) => ({ ...s, title: v }))
+  const setLanguage = (v) => setDraft((s) => ({ ...s, language: v }))
+  const setShowPreview = (v) => setDraft((s) => ({ ...s, showPreview: v }))
+
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [spoilerText, setSpoilerText] = useState('')
-  const [showCW, setShowCW] = useState(false)
   const fileInputRef = useRef(null)
   const textareaRef = useRef(null)
   const [customEmojis, setCustomEmojis] = useState([])
@@ -39,30 +68,11 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
     token
   )
   const poll = usePollDraft()
-  // One key per draft: retries of a timed-out submit dedupe server-side.
-  const draftKeyRef = useRef(
+  const idempotencyKeyRef = useRef(
     typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `draft-${Date.now()}-${Math.random()}`
   )
   const account = status?.account || {}
   const name = account.display_name || account.username || 'Unknown'
-  const { defaultVisibility } = useContext(AppSettingsContext)
-  // Replies may not be raised above the parent — only the visibilities the
-  // server accepts for a reply to `status` are offered, and the select starts
-  // at the sensible default (conversation for limited parents, direct for DM).
-  // A conversation parent is *not* hard-locked: replying as an explicit DM is
-  // still allowed, matching mitra-web.
-  const parentVisibility = status?.visibility
-  const isSameAuthor = currentAccountId && status?.account?.id === currentAccountId
-  const replyOptions = parentVisibility
-    ? replyVisibilityOptions(parentVisibility, isSameAuthor)
-    : undefined
-  const [visibility, setVisibility] = useState(
-    parentVisibility ? defaultReplyVisibility(parentVisibility) : (defaultVisibility || 'public')
-  )
-  const [showTitle, setShowTitle] = useState(false)
-  const [title, setTitle] = useState('')
-  const [language, setLanguage] = useState('')
-  const [showPreview, setShowPreview] = useState(false)
   const preview = useStatusPreview(showPreview, text, instanceUrl, token)
   const { query: acQuery, suggestions: acSuggestions, selectedIndex: acIndex, handleKeyDown: acKeyDown } = useEmojiAutocomplete(text, setText, textareaRef, customEmojis)
   const mn = useMentionAutocomplete(text, setText, textareaRef, instanceUrl, token)
@@ -72,8 +82,6 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
   }, [instanceUrl])
 
   // Builds the @mention prefix for the reply body sent to the server.
-  // Includes the reply target and all other mentions from the parent post,
-  // skipping the current user. Returns an empty string if there are no mentions.
   function mentionPrefix() {
     if (!status?.account) return ''
     const handles = []
@@ -117,9 +125,6 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
     setBusy(true)
     setError('')
     try {
-      // Prepend the @mention prefix to the body sent to the server so the
-      // server populates the mentions array correctly. The textarea itself
-      // stays clean — the prefix is added at submit time, transparently.
       const prefix = mentionPrefix()
       const body = (prefix + text.trim()).trim()
       const reply = await mitra.postStatus(instanceUrl, token, body, {
@@ -128,10 +133,11 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
         mediaIds,
         spoilerText: showCW ? spoilerText : undefined,
         poll: poll.params,
-        idempotencyKey: draftKeyRef.current,
+        idempotencyKey: idempotencyKeyRef.current,
         title: showTitle && title.trim() ? title.trim() : undefined,
         language: language || undefined,
       })
+      clearDraft()
       onPosted(status.id, reply)
     } catch (err) {
       setError(err.message || 'Something went wrong.')
@@ -243,7 +249,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
           className={`icon-btn${showCW ? ' active' : ''}`}
           type="button"
           aria-label="Content warning"
-          onClick={() => setShowCW((v) => !v)}
+          onClick={() => setShowCW(!showCW)}
         >
           <Eye size={16} />
         </button>
@@ -252,7 +258,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
           type="button"
           aria-label="Title"
           title="Add a title"
-          onClick={() => setShowTitle((v) => !v)}
+          onClick={() => setShowTitle(!showTitle)}
         >
           <Heading1 size={16} />
         </button>
@@ -261,7 +267,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
           type="button"
           aria-label="Preview"
           title="Markdown preview"
-          onClick={() => setShowPreview((v) => !v)}
+          onClick={() => setShowPreview(!showPreview)}
         >
           <FileText size={16} />
         </button>

@@ -13,7 +13,7 @@ import * as mitra from '../lib/mitra'
 import { processStatusContent, renderEmojiText } from '../lib/render.jsx'
 import { QuoteCard } from './Post.jsx'
 import { ProxiedImg } from './Media.jsx'
-import { AppSettingsContext } from '../hooks'
+import { AppSettingsContext, useComposeDraft, getDraftKey } from '../hooks'
 import { insertAtCaret,
   useEmojiAutocomplete,
   EmojiDropdown,
@@ -584,7 +584,37 @@ export function PollEditorFields({ poll }) {
 
 export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus, replyToStatus, maxCharacters = 500, groupId = null, groupName = null, currentAccountId }) {
   const { defaultVisibility } = useContext(AppSettingsContext)
-  const [text, setText] = useState('')
+
+  // Draft key from context: same key means same text-composer slot.
+  const draftKey = getDraftKey({
+    replyToStatusId: replyToStatus?.id,
+    quoteStatusId: quoteStatus?.id,
+    groupId,
+  })
+
+  const initialDraft = {
+    text: '',
+    visibility: replyToStatus ? defaultReplyVisibility(replyToStatus.visibility) : (defaultVisibility || 'public'),
+    spoilerText: '',
+    showCW: false,
+    showTitle: false,
+    title: '',
+    language: '',
+    showPreview: false,
+  }
+
+  const [draft, setDraft, clearDraft] = useComposeDraft(draftKey, initialDraft)
+  const { text, visibility, spoilerText, showCW, showTitle, title, language, showPreview } = draft
+
+  const setText = (v) => setDraft((s) => ({ ...s, text: v }))
+  const setVisibility = (v) => setDraft((s) => ({ ...s, visibility: v }))
+  const setSpoilerText = (v) => setDraft((s) => ({ ...s, spoilerText: v }))
+  const setShowCW = (v) => setDraft((s) => ({ ...s, showCW: v }))
+  const setShowTitle = (v) => setDraft((s) => ({ ...s, showTitle: v }))
+  const setTitle = (v) => setDraft((s) => ({ ...s, title: v }))
+  const setLanguage = (v) => setDraft((s) => ({ ...s, language: v }))
+  const setShowPreview = (v) => setDraft((s) => ({ ...s, showPreview: v }))
+
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -594,27 +624,18 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
   const replyOptions = replyToStatus
     ? replyVisibilityOptions(replyToStatus.visibility, currentAccountId && replyToStatus.account?.id === currentAccountId)
     : undefined
-  const [visibility, setVisibility] = useState(
-    replyToStatus ? defaultReplyVisibility(replyToStatus.visibility) : (defaultVisibility || 'public')
-  )
-  const [spoilerText, setSpoilerText] = useState('')
-  const [showCW, setShowCW] = useState(false)
+
   const fileInputRef = useRef(null)
   const textareaRef = useRef(null)
   const [customEmojis, setCustomEmojis] = useState([])
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
-  // Optional title (toggled), language tag, and markdown preview pane.
-  const [showTitle, setShowTitle] = useState(false)
-  const [title, setTitle] = useState('')
-  const [language, setLanguage] = useState('')
-  const [showPreview, setShowPreview] = useState(false)
   const { uploads, addFiles, editDescription, commitDescription, removeUpload, mediaIds, isUploading } = useMediaUploads(
     instanceUrl,
     token
   )
   const poll = usePollDraft()
   // One key per draft: retries of a timed-out submit dedupe server-side.
-  const draftKeyRef = useRef(
+  const idempotencyKeyRef = useRef(
     typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `draft-${Date.now()}-${Math.random()}`
   )
   const { query: acQuery, suggestions: acSuggestions, selectedIndex: acIndex, handleKeyDown: acKeyDown } = useEmojiAutocomplete(text, setText, textareaRef, customEmojis)
@@ -632,8 +653,6 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
   }, [uploads.length, poll.enabled])
 
   // Builds the @mention prefix for the reply body sent to the server.
-  // Includes the reply target and all other mentions from the parent post,
-  // skipping the current user. Returns an empty string if there are no mentions.
   function mentionPrefix() {
     if (!replyToStatus?.account) return ''
     const handles = []
@@ -671,9 +690,6 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
     setBusy(true)
     setError('')
     try {
-      // Prepend the @mention prefix to the body sent to the server so the
-      // server populates the mentions array correctly. The textarea itself
-      // stays clean — the prefix is added at submit time, transparently.
       const prefix = mentionPrefix()
       const body = (prefix + text.trim()).trim()
       const status = await mitra.postStatus(instanceUrl, token, body, {
@@ -683,11 +699,12 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
         quoteId: quoteStatus?.id,
         spoilerText: showCW ? spoilerText : undefined,
         poll: poll.params,
-        idempotencyKey: draftKeyRef.current,
+        idempotencyKey: idempotencyKeyRef.current,
         title: showTitle && title.trim() ? title.trim() : undefined,
         language: language || undefined,
         groupId: groupId || undefined,
       })
+      clearDraft()
       onPosted(status)
       onClose()
     } catch (err) {
@@ -812,7 +829,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
             className={`icon-btn${showCW ? ' active' : ''}`}
             type="button"
             aria-label="Content warning"
-            onClick={() => setShowCW((v) => !v)}
+            onClick={() => setShowCW(!showCW)}
           >
             <Eye size={16} />
           </button>
@@ -821,7 +838,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
             type="button"
             aria-label="Title"
             title="Add a title"
-            onClick={() => setShowTitle((v) => !v)}
+            onClick={() => setShowTitle(!showTitle)}
           >
             <Heading1 size={16} />
           </button>
@@ -830,7 +847,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
             type="button"
             aria-label="Preview"
             title="Markdown preview"
-            onClick={() => setShowPreview((v) => !v)}
+            onClick={() => setShowPreview(!showPreview)}
           >
             <FileText size={16} />
           </button>
