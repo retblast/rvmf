@@ -108,6 +108,7 @@ body {
 
 #root {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -865,6 +866,7 @@ button {
 
 .login-screen {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }
@@ -2037,7 +2039,9 @@ span.img-placeholder.custom-emoji {
   right: 12px;
   z-index: 91;
   width: 320px;
+  max-width: min(320px, calc(100vw - 24px));
   max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
   overflow-y: auto;
   overscroll-behavior: contain;
   background: var(--view-bg);
@@ -3817,4 +3821,58 @@ textarea.profile-edit-input {
   bottom: auto;
   transform: translate(-50%, -50%);
   max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+}
+
+/* ---- mobile / touch ---- */
+
+/* Disable double-tap zoom on interactive elements. */
+button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .icon-btn, .view-switcher-btn, .pill-btn {
+  touch-action: manipulation;
+}
+
+/* Constrain scroll containers to vertical panning so horizontal swipes
+   don't interfere with browser back/forward gestures. */
+.content-scroll,
+.thread-column,
+.thread-panel-inner,
+.dialog-card,
+.boost-dropdown,
+.server-popover,
+.settings-menu,
+.accounts-popover {
+  touch-action: pan-y;
+}
+
+/* Touch tap feedback: use :active for touch devices that lack :hover. */
+@media (hover: none) {
+  .post-row:active {
+    background-color: var(--active-overlay);
+  }
+  .action-btn:active {
+    background: var(--active-overlay);
+    color: var(--text-primary);
+  }
+  .view-switcher-btn:active {
+    background: var(--hover-overlay);
+  }
+  .lightbox-close:active,
+  .lightbox-download:active,
+  .lightbox-prev:active,
+  .lightbox-next:active {
+    background: rgba(255, 255, 255, 0.22);
+  }
+}
+
+/* Lightbox nav: larger hit areas on touch. */
+@media (hover: none) and (max-width: 600px) {
+  .lightbox-prev { left: 8px; }
+  .lightbox-next { right: 8px; }
+  .lightbox-prev, .lightbox-next {
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
 }

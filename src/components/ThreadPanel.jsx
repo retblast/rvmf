@@ -8,25 +8,33 @@ import { ReplyComposerFields } from './ReplyComposer.jsx'
 
 const EASE = [0.32, 0.72, 0, 1]
 
+// Respect prefers-reduced-motion: zero out durations and stagger delays
+// so thread content appears instantly without motion.
+const prefersReducedMotion = typeof window !== 'undefined'
+  && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+const DURATION = prefersReducedMotion ? 0 : 0.3
+const STAGGER = prefersReducedMotion ? 0 : 0.05
+const STAGGER_DELAY = prefersReducedMotion ? 0 : 0.1
+
 // Panel-opening choreography: ancestors stagger into place converging
 // upward toward the focal post (closest ancestor first, since it's
 // nearest the anchor); replies stagger into place converging downward
 // (closest reply first).
 const ancestorItemVariants = {
   hidden: { opacity: 0, y: -14 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: EASE } },
+  visible: { opacity: 1, y: 0, transition: { duration: DURATION, ease: EASE } },
 }
 const descendantItemVariants = {
   hidden: { opacity: 0, y: 14 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: EASE } },
+  visible: { opacity: 1, y: 0, transition: { duration: DURATION, ease: EASE } },
 }
 const staggerUpVariants = {
   hidden: {},
-  visible: { transition: { delayChildren: 0.1, staggerChildren: 0.05, staggerDirection: -1 } },
+  visible: { transition: { delayChildren: STAGGER_DELAY, staggerChildren: STAGGER, staggerDirection: -1 } },
 }
 const staggerDownVariants = {
   hidden: {},
-  visible: { transition: { delayChildren: 0.1, staggerChildren: 0.05 } },
+  visible: { transition: { delayChildren: STAGGER_DELAY, staggerChildren: STAGGER } },
 }
 
 // The thread panel header is rendered OUTSIDE the scroll container so it
@@ -219,7 +227,7 @@ export function ThreadPanelContent({
               key={status.id}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.3, ease: EASE }}
+              transition={{ duration: DURATION, ease: EASE }}
             >
               <PostRow
             post={status}

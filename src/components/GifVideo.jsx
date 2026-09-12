@@ -23,7 +23,10 @@ export function GifVideo({
   ...rest
 }) {
   const { gifConversionEnabled, gifIncludeLarge, gifHoverAnimate } = useContext(AppSettingsContext)
-  const hoverMode = gifHoverAnimate
+  // On touch-only devices there's no hover event, so force autoplay
+  // regardless of the user's hover-animate setting.
+  const canHover = !window.matchMedia || window.matchMedia('(hover: hover)').matches
+  const hoverMode = gifHoverAnimate && canHover
   const convert = gifConversionEnabled
   const { status, videoUrl } = useGifVideo(src, { active: convert, includeLarge: gifIncludeLarge })
 

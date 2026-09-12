@@ -13,7 +13,7 @@ import * as mitra from '../lib/mitra'
 import { processStatusContent, renderEmojiText } from '../lib/render.jsx'
 import { QuoteCard } from './Post.jsx'
 import { ProxiedImg } from './Media.jsx'
-import { AppSettingsContext, useComposeDraft, getDraftKey } from '../hooks'
+import { AppSettingsContext, useComposeDraft, useKeyboardShift, getDraftKey } from '../hooks'
 import { insertAtCaret,
   useEmojiAutocomplete,
   EmojiDropdown,
@@ -380,6 +380,7 @@ export function EditDialog({ status, instanceUrl, token, onClose, onSaved }) {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const keyboardShift = useKeyboardShift()
   const textareaRef = useRef(null)
   const { query: acQuery, suggestions: acSuggestions, selectedIndex: acIndex, handleKeyDown: acKeyDown } = useEmojiAutocomplete(text, setText, textareaRef, [])
   const mn = useMentionAutocomplete(text, setText, textareaRef, instanceUrl, token)
@@ -418,7 +419,7 @@ export function EditDialog({ status, instanceUrl, token, onClose, onSaved }) {
 
   return (
     <div className="dialog-overlay" onClick={onClose}>
-      <div className="dialog-card" onClick={(e) => e.stopPropagation()}>
+      <div className="dialog-card" onClick={(e) => e.stopPropagation()} style={keyboardShift}>
         <div className="dialog-header">
           <span className="dialog-title">Edit post</span>
           <button className="icon-btn" onClick={onClose} aria-label="Cancel">
@@ -617,6 +618,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const keyboardShift = useKeyboardShift()
 
   // Replies may not be raised above the parent — only the visibilities the
   // server accepts for a reply are offered, starting at the sensible default.
@@ -716,7 +718,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
 
   return (
     <div className="dialog-overlay" onClick={onClose}>
-      <div className="dialog-card" onClick={(e) => e.stopPropagation()}>
+      <div className="dialog-card" onClick={(e) => e.stopPropagation()} style={keyboardShift}>
         <div className="dialog-header">
           <span className="dialog-title">New post</span>
           <button className="icon-btn" onClick={onClose} aria-label="Cancel">

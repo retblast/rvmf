@@ -17,8 +17,9 @@ import {
 } from 'lucide-react'
 import { useMitraSession } from './useMitraSession'
 import * as mitra from './lib/mitra'
+import { blipFavicon } from './lib/favicon-blip.js'
 import { buildReplyTree, findNode, insertIntoTree, updateTreeNode, mergeStatusIntoRow, htmlToPlainText as noteToPlainText } from './lib/render.jsx'
-import { AppSettingsContext, PickerContext, GhostContext, useLayoutTier, usePullToRefresh } from './hooks'
+import { AppSettingsContext, PickerContext, GhostContext, useLayoutTier, usePullToRefresh, useSwipeBack } from './hooks'
 import { ChevronRight } from 'lucide-react'
 
 // Collapsible blocked-domain list (the one server list that grows
@@ -254,6 +255,7 @@ export default function App() {
   // Home timeline's own infinite-scroll sentinel — see the observer
   // effect below for why it can't be looked up by class name.
   const homeSentinelRef = useRef(null)
+  const narrowThreadRef = useRef(null)
 
   const [fetchClientMedia, setFetchClientMedia] = useState(() => {
     return storageGet('fetch-client-media') !== 'false'
@@ -467,6 +469,7 @@ export default function App() {
 
   // Browser tab follows the instance: favicon and a "rvmf on <host>"
   // title; both restored to plain "rvmf" when logged out.
+  // When notifUnread > 0, a small red dot is overlaid on the favicon.
   const defaultFaviconRef = useRef(null)
   useEffect(() => {
     let link = document.querySelector("link[rel~='icon']")
@@ -476,13 +479,19 @@ export default function App() {
       document.head.appendChild(link)
     }
     if (!defaultFaviconRef.current) defaultFaviconRef.current = link.href
-    link.href = session
+    const baseUrl = session
       ? `${session.instanceUrl}/favicon.ico`
       : defaultFaviconRef.current
+    link.href = baseUrl
+    if (notifUnread > 0 && session) {
+      blipFavicon(baseUrl, { unread: notifUnread })
+        .then((dataUrl) => { link.href = dataUrl })
+        .catch(() => {})
+    }
     document.title = session
       ? `rvmf on ${session.instanceUrl.replace(/^https?:\/\//, '')}`
       : 'rvmf'
-  }, [session])
+  }, [session, notifUnread])
 
   const loadTimeline = useCallback(async () => {
     if (!session) return
@@ -1458,7 +1467,7 @@ export default function App() {
     }, 1500)
   }
 
-  function closeSidePanel() {
+  const closeSidePanel = useCallback(function closeSidePanel() {
     setSidePanel(null)
     setGhostStatusId(null)
     lastThreadOpenRef.current = null
@@ -1466,7 +1475,7 @@ export default function App() {
     // opened would grow this session's heap forever. Threads always
     // force-refetch on open, so nothing is lost by clearing.
     setReplyStates({})
-  }
+  }, [])
 
   // Favouriting/boosting a reply needs to update that exact node wherever
   // it lives — inside the tree of whichever thread is currently open in
@@ -1976,6 +1985,9 @@ export default function App() {
     focusedReplyId,
   }
 
+  // Swipe-from-left-edge to close thread on narrow tier.
+  useSwipeBack(narrowThreadRef, closeSidePanel, { active: tier === 'narrow' && !!sidePanel })
+
   // Active skin's structural overrides (Tier 3). Adwaita has none and
   // keeps the inline GNOME header bar below.
   const SkinHeaderBar = SKINS[skinId]?.components?.HeaderBar || null
@@ -2425,7 +2437,7 @@ export default function App() {
           <ErrorBoundary><ThreadPanel {...threadPanelProps} /></ErrorBoundary>
         </div>
       ) : (
-        <div className={`main-layout${sidePanel ? ' narrow-thread' : ''}`}>
+        <div className={`main-layout${sidePanel ? ' narrow-thread' : ''}`} ref={narrowThreadRef}>
           {sidePanel && <ThreadPanelHeader {...threadPanelProps} backLabel="Back to timeline" />}
           <div className="content-scroll scrollbar-thin" ref={setScrollEl}>
             {sidePanel ? (

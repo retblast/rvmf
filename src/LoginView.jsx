@@ -130,6 +130,7 @@ export default function LoginView({ onBeginLogin, onCreateAccount, error: extern
                   <span className="entry-label">Instance</span>
                   <input
                     type="text"
+                    inputMode="url"
                     placeholder="mitra.example.social"
                     value={instanceUrl}
                     onChange={(e) => setInstanceUrl(e.target.value)}

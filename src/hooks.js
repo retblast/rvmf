@@ -653,3 +653,84 @@ export function useComposeDraft(draftKey, initialState) {
 
   return [state, setState, clearDraft]
 }
+
+// On mobile, when the virtual keyboard opens the visual viewport shrinks.
+// This hook listens for that and returns a CSS transform that shifts the
+// element upward so the focused input stays visible. Returns null when the
+// keyboard is closed or on desktop (no visualViewport API).
+export function useKeyboardShift() {
+  const [offset, setOffset] = useState(0)
+
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    let raf = null
+    function onResize() {
+      if (raf) cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        const shift = vv.height < window.innerHeight
+          ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+          : 0
+        setOffset(shift)
+      })
+    }
+    vv.addEventListener('resize', onResize)
+    vv.addEventListener('scroll', onResize)
+    return () => {
+      vv.removeEventListener('resize', onResize)
+      vv.removeEventListener('scroll', onResize)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [])
+
+  if (!offset) return undefined
+  return { transform: `translateY(-${offset}px)`, transition: 'transform 0.15s ease' }
+}
+
+// Swipe-from-left-edge gesture to go back on narrow tier. Attaches to
+// the thread panel container. Calls `onSwipeBack` when the user swipes
+// right from the left 20px edge by at least 80px.
+export function useSwipeBack(ref, onSwipeBack, { active = true } = {}) {
+  useEffect(() => {
+    if (!active || !ref.current) return
+    const el = ref.current
+    let startX = 0
+    let tracking = false
+
+    function onTouchStart(e) {
+      if (e.touches.length !== 1) return
+      const x = e.touches[0].clientX
+      if (x < 20) {
+        tracking = true
+        startX = x
+      }
+    }
+
+    function onTouchMove(e) {
+      if (!tracking) return
+      const dx = e.touches[0].clientX - startX
+      if (dx > 0) {
+        el.style.transform = `translateX(${Math.min(dx, 120)}px)`
+        el.style.transition = 'none'
+      }
+    }
+
+    function onTouchEnd(e) {
+      if (!tracking) return
+      tracking = false
+      const dx = e.changedTouches[0].clientX - startX
+      el.style.transform = ''
+      el.style.transition = ''
+      if (dx >= 80) onSwipeBack()
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: true })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+    }
+  }, [ref, onSwipeBack, active])
+}
