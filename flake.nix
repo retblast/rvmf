@@ -65,6 +65,8 @@
               echo "Running npm install..."
               npm install
             fi
+            dev:lan() { npx vite --host "$@"; }
+            export -f dev:lan
           '';
         };
 

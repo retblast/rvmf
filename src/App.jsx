@@ -483,14 +483,16 @@ export default function App() {
       ? `${session.instanceUrl}/favicon.ico`
       : defaultFaviconRef.current
     link.href = baseUrl
+    let cancelled = false
     if (notifUnread > 0 && session) {
       blipFavicon(baseUrl, { unread: notifUnread })
-        .then((dataUrl) => { link.href = dataUrl })
+        .then((dataUrl) => { if (!cancelled) link.href = dataUrl })
         .catch(() => {})
     }
     document.title = session
       ? `rvmf on ${session.instanceUrl.replace(/^https?:\/\//, '')}`
       : 'rvmf'
+    return () => { cancelled = true }
   }, [session, notifUnread])
 
   const loadTimeline = useCallback(async () => {
