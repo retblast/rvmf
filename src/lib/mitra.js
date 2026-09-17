@@ -112,7 +112,11 @@ async function apiFetch(instanceUrl, path, options = {}) {
 
 function loadAppCredentials(instanceUrl) {
   const raw = storageGet(APP_STORAGE_PREFIX + instanceUrl)
-  return raw ? JSON.parse(raw) : null
+  try {
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
 }
 
 function saveAppCredentials(instanceUrl, creds) {
@@ -182,7 +186,11 @@ export async function beginLogin(rawInstanceUrl) {
 
 export function getPendingLogin() {
   const raw = sessionGet(PENDING_LOGIN_KEY)
-  return raw ? JSON.parse(raw) : null
+  try {
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
 }
 
 export function clearPendingLogin() {

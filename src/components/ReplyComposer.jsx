@@ -102,7 +102,9 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
   // Polls and media attachments are mutually exclusive
   useEffect(() => {
     if (uploads.length > 0 && poll.enabled) poll.setEnabled(false)
-    if (poll.enabled && mediaIds.length > 0) removeUpload(mediaIds[0])
+    if (poll.enabled && mediaIds.length > 0) {
+      for (const id of mediaIds) removeUpload(id)
+    }
   }, [uploads.length, poll.enabled])
 
   async function submit() {

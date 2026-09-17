@@ -651,7 +651,7 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
   async function handleDownload() {
     if (dlState === 'busy') return
     setDlState('busy')
-    const blobUrl = displaySrc.startsWith('blob:') ? displaySrc : null
+    const blobUrl = displaySrc?.startsWith('blob:') ? displaySrc : null
     const ok = await downloadAttachment(attachment, { instanceUrl, token }, blobUrl)
     setDlState(ok ? 'done' : 'idle')
     setTimeout(() => setDlState('idle'), 1200)
@@ -672,7 +672,7 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
       <button className="icon-btn lightbox-close" onClick={onClose} aria-label="Close">
         <X size={18} />
       </button>
-      <button className="icon-btn lightbox-download" onClick={(e) => { e.stopPropagation(); handleDownload() }} disabled={dlState === 'busy'} aria-label="Download">
+      <button className="icon-btn lightbox-download" onClick={(e) => { e.stopPropagation(); handleDownload() }} disabled={dlState === 'busy' || !displaySrc} aria-label="Download">
         <Download size={18} />
       </button>
       {hasPrev && (

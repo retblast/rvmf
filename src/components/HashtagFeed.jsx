@@ -29,7 +29,7 @@ export function HashtagFeed({ hashtag, instanceUrl, token, onOpenThread, onCompo
       })
       .catch((err) => setError(err.message || 'Failed to load this hashtag.'))
       .finally(() => setLoading(false))
-  }, [hashtag])
+  }, [hashtag, instanceUrl, token])
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || posts.length === 0) return

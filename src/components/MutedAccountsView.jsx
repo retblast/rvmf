@@ -21,7 +21,7 @@ export function MutedAccountsView({ instanceUrl, token, onOpenProfile }) {
       })
       .catch((err) => setError(err.message || 'Failed to load mutes.'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [instanceUrl, token])
 
   async function unmute(account) {
     if (unmutingId) return

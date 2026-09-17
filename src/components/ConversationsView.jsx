@@ -185,7 +185,7 @@ export function ConversationsView({
                     <div className="dm-main">
                       <div className="dm-topline">
                         <span className="dm-name">{names}</span>
-                        <span className="post-time">{formatRelativeTime(status.created_at)}</span>
+                        {status && <span className="post-time">{formatRelativeTime(status.created_at)}</span>}
                       </div>
                       <div className="dm-snippet">{snippet(conversation)}</div>
                     </div>

@@ -334,17 +334,21 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
     setHasMore(true)
     setPeopleList(null)
 
+    let cancelled = false
     mitra.fetchAccount(instanceUrl, accountId)
       .then((acct) => {
+        if (cancelled) return null
         setAccount(acct)
         return mitra.fetchAccountStatuses(instanceUrl, token, acct.id, tabParams('posts'))
       })
       .then((list) => {
+        if (cancelled || !list) return
         setStatuses(list)
         if (list.length < 20) setHasMore(false)
       })
-      .catch((err) => setError(err.message || 'Failed to load profile.'))
-      .finally(() => setLoading(false))
+      .catch((err) => { if (!cancelled) setError(err.message || 'Failed to load profile.') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [accountId, instanceUrl, token])
 
   useEffect(() => {

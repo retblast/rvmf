@@ -55,8 +55,13 @@ function buildReplyMentions(status) {
     if (target) {
       result.push(target)
       seen.add(target.id)
+    } else if (status.account?.id === status.in_reply_to_account_id) {
+      // Self-reply: the server doesn't include the author in `mentions`,
+      // so fall back to the status author's own account object.
+      result.push(status.account)
+      seen.add(status.account.id)
     } else {
-      // No matching mention — add a minimal placeholder
+      // Target account not in mentions (e.g. deleted or remote) — minimal placeholder
       result.push({ id: status.in_reply_to_account_id })
       seen.add(status.in_reply_to_account_id)
     }

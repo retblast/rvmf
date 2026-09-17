@@ -741,7 +741,7 @@ export default function App() {
       }).catch(() => {})
     }, 2000)
     return () => clearTimeout(timer)
-  }, [session, themeMode, useOsAccent, alwaysSensitive, peekSpoilerMedia, fetchClientMedia, notifExcluded])
+  }, [session, themeMode, skinId, useOsAccent, alwaysSensitive, peekSpoilerMedia, fetchClientMedia, notifExcluded])
 
   // Restore the notifications read marker once per session so the unread
   // count on the tab is accurate.
@@ -981,14 +981,18 @@ export default function App() {
   }
 
   async function respondFollowRequest(accountId, action) {
-    await mitra.respondFollowRequest(session.instanceUrl, session.token, accountId, action)
-    // A handled request must stop offering Accept/Reject immediately — the
-    // next 5s notification poll would also refresh this, but the action
-    // should take effect now rather than waiting for the next tick.
-    mitra
-      .fetchAllPendingFollowAccountIds(session.instanceUrl, session.token)
-      .then((pending) => setPendingFollowIds(pending))
-      .catch(() => {})
+    try {
+      await mitra.respondFollowRequest(session.instanceUrl, session.token, accountId, action)
+      // A handled request must stop offering Accept/Reject immediately — the
+      // next 5s notification poll would also refresh this, but the action
+      // should take effect now rather than waiting for the next tick.
+      mitra
+        .fetchAllPendingFollowAccountIds(session.instanceUrl, session.token)
+        .then((pending) => setPendingFollowIds(pending))
+        .catch(() => {})
+    } catch {
+      // Silently ignore — follow request actions are best-effort
+    }
   }
 
   async function handleDeleteStatus(statusId) {
@@ -1369,7 +1373,7 @@ export default function App() {
         .catch(() => {})
     }, 5000)
     return () => clearInterval(interval)
-  }, [sidePanel, session, refreshContext])
+  }, [sidePanel?.mode, sidePanel?.status?.id, session, refreshContext])
 
   // The ghost marker is only meaningful while the side panel is open in
   // thread mode.  Other paths that null the panel (profile/hashtag opens,

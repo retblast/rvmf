@@ -1,6 +1,7 @@
 import { GifVideo } from '../components/GifVideo.jsx'
 
 export function formatRelativeTime(iso) {
+  if (!iso) return ''
   const diffSec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
   if (diffSec < 60) return `${Math.max(diffSec, 0)}s`
   const min = Math.floor(diffSec / 60)
@@ -229,7 +230,7 @@ function renderRichText(text, mentions, emojis) {
 
     if (token.startsWith('@')) {
       const handle = token.slice(1)
-      const mention = mentions.find((m) => m.acct === handle || m.username === handle)
+      const mention = (mentions || []).find((m) => m.acct === handle || m.username === handle)
       // Navigation is delegated at the document level in App: with a
       // mention id the profile opens directly, otherwise the acct is
       // resolved via /accounts/lookup. Falls back to an external link

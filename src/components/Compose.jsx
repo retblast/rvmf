@@ -651,7 +651,9 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
   // Polls and media attachments are mutually exclusive
   useEffect(() => {
     if (uploads.length > 0 && poll.enabled) poll.setEnabled(false)
-    if (poll.enabled && mediaIds.length > 0) removeUpload(mediaIds[0])
+    if (poll.enabled && mediaIds.length > 0) {
+      for (const id of mediaIds) removeUpload(id)
+    }
   }, [uploads.length, poll.enabled])
 
   // Builds the @mention prefix for the reply body sent to the server.

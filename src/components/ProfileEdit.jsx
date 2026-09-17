@@ -83,6 +83,7 @@ export function ProfileEditDialog({ account, instanceUrl, token, onClose, onSave
         body.header_media_type = header.mediaType
       }
       const updated = await mitra.updateCredentials(instanceUrl, token, body)
+      setBusy(false)
       onSaved(updated)
     } catch (err) {
       setError(err.message || 'Failed to save profile.')

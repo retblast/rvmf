@@ -637,7 +637,10 @@ export function useComposeDraft(draftKey, initialState) {
   // Clear draft on successful post
   const clearDraft = useCallback(() => {
     if (!draftKeyRef.current) return
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
     clearDraftStorage(draftKeyRef.current)
   }, [])
 
