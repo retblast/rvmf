@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, LoaderCircle, X } from 'lucide-react'
 import * as mitra from '../lib/mitra'
@@ -146,11 +146,44 @@ export function ThreadPanelContent({
 
   const [highlightedId, setHighlightedId] = useState(null)
 
+  // Focus target scrolls INTO THE PANEL's own content — the same status
+  // can also exist as a timeline row, so a document-wide query could
+  // scroll the wrong container. Retries when the reply tree lands late
+  // (deps include the loaded state); `scrollLandedFor` stops the 5s
+  // auto-refresh re-renders from yanking the scroll position back.
+  const containerRef = useRef(null)
+  const scrollLandedFor = useRef(null)
+
+  useEffect(() => {
+    if (!focusedReplyId || scrollLandedFor.current === focusedReplyId) return
+    const el = containerRef.current?.querySelector(`[data-status-id="${CSS.escape(focusedReplyId)}"]`)
+    if (!el) return
+    scrollLandedFor.current = focusedReplyId
+    // Defer past the open/stagger animations so the target has reached
+    // its final layout position before we measure it.
+    requestAnimationFrame(() => {
+      if (el.isConnected) {
+        el.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'center' })
+      }
+    })
+  }, [focusedReplyId, status?.id, state])
+
+  // The focused reply can sit inside an accordion the user collapsed
+  // earlier — expand its ancestor chain so it's actually visible.
   useEffect(() => {
     if (!focusedReplyId) return
-    const el = document.querySelector(`[data-status-id="${focusedReplyId}"]`)
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [focusedReplyId])
+    setCollapsedReplies((prev) => {
+      if (prev.size === 0) return prev
+      const next = new Set(prev)
+      let current = statusById.get(focusedReplyId)
+      let changed = false
+      while (current?.in_reply_to_id) {
+        if (next.delete(current.in_reply_to_id)) changed = true
+        current = statusById.get(current.in_reply_to_id)
+      }
+      return changed ? next : prev
+    })
+  }, [focusedReplyId, statusById])
 
   // Rendered inline by the focal post or whichever reply is targeted
   const composerProps = {
@@ -181,7 +214,7 @@ export function ThreadPanelContent({
 
   return (
     <GhostContext.Provider value={{ ghostStatusId: null, inPanel: true }}>
-    <motion.div key={status?.id || 'empty'} data-testid="thread-root">
+    <motion.div key={status?.id || 'empty'} data-testid="thread-root" ref={containerRef}>
       {state?.ancestors?.length > 0 && (
         <motion.div
           className="thread-ancestors"

@@ -1230,17 +1230,17 @@ export default function App() {
         // Stale resolve: a newer click or an explicit close superseded this.
         if (lastThreadOpenRef.current !== status.id) return
         setSidePanel({ mode: 'thread', status: root })
-        if (clickedId !== root.id) {
-          setFocusedReplyId(clickedId)
-          setTimeout(() => setFocusedReplyId(null), 2000)
-        }
+        // Focus stays on the clicked post for the life of the thread —
+        // no timer, so a slow resolve can't wipe a newer focus either.
+        setFocusedReplyId(clickedId !== root.id ? clickedId : null)
       })
       return
     }
 
     // Top-level post: the clicked post IS the thread's anchor, so open
-    // immediately.
+    // immediately — and clear any focus left over from a prior thread.
     setSidePanel({ mode: 'thread', status })
+    setFocusedReplyId(null)
     ensureRepliesLoaded(status)
   }
 
@@ -1380,7 +1380,10 @@ export default function App() {
   // deletion, close button) must not leave a row frozen as "Viewing in
   // thread".
   useEffect(() => {
-    if (!sidePanel) setGhostStatusId(null)
+    if (!sidePanel) {
+      setGhostStatusId(null)
+      setFocusedReplyId(null)
+    }
   }, [sidePanel])
 
   // Auto-refresh notifications every 5 seconds (silent). Also refreshes
@@ -1462,7 +1465,6 @@ export default function App() {
       return null
     })
     setFocusedReplyId(reply.id)
-    setTimeout(() => setFocusedReplyId(null), 2000)
     // Trigger an immediate context refresh so nested replies appear quickly.
     // Read the panel through the ref — the closure above captured a stale
     // `sidePanel` by the time this fires.
@@ -1476,6 +1478,7 @@ export default function App() {
   const closeSidePanel = useCallback(function closeSidePanel() {
     setSidePanel(null)
     setGhostStatusId(null)
+    setFocusedReplyId(null)
     lastThreadOpenRef.current = null
     // Drop the loaded reply trees: an unbound map of every thread ever
     // opened would grow this session's heap forever. Threads always

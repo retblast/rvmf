@@ -3420,8 +3420,12 @@ textarea:focus-visible {
   text-decoration: underline;
 }
 
+/* Focused reply: a brief glow on arrival, then a persistent accent bar
+   so the post that opened the thread stays identifiable. box-shadow is
+   inset and paint-only, so it never shifts layout. */
 .focused-reply {
   animation: focus-glow 2s ease-out;
+  box-shadow: inset 3px 0 0 0 var(--accent);
 }
 
 @keyframes focus-glow {

@@ -61,6 +61,30 @@ test('clicking a mid-thread reply keeps the full thread visible', async ({ page 
   await expect(panel.getByText(SEED.nestedReplyText)).toBeVisible()
 })
 
+// Opening a thread FROM a specific reply must focus that reply inside the
+// panel: scrolled into view and marked persistently — not just flashed
+// for the intro glow and forgotten.
+test('opening a thread from a reply focuses that reply', async ({ page }) => {
+  await loginAs(page, 'alice')
+  await page.goto('/')
+
+  // Bob's reply to alice's root sits in alice's home timeline (b->a follow).
+  const row = page.locator('.post-row', { hasText: SEED.replyText }).first()
+  await row.locator('.post-text').click()
+
+  const panel = page.getByTestId('thread-root')
+  // Root stays the focal post — the full thread opens, not a subtree.
+  await expect(panel.getByText(SEED.rootText)).toBeVisible()
+
+  const focused = panel.locator('.reply-row.focused-reply', { hasText: SEED.replyText })
+  await expect(focused).toBeVisible()
+  await expect(focused).toBeInViewport()
+
+  // Focus persists past the old 2s glow window.
+  await page.waitForTimeout(2500)
+  await expect(focused).toBeVisible()
+})
+
 // Switching between posts from the timeline while the panel is open must
 // move the ghost placeholder to the newly-clicked row immediately — no
 // flicker, no 300ms timer gap.  (Wide tier only: narrow replaces the
