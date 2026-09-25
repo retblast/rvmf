@@ -1,7 +1,33 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { VisibilitySelect, visibilityLabel, CharCounter, replyVisibilityOptions, defaultReplyVisibility } from './Compose.jsx'
+import { VisibilitySelect, visibilityLabel, CharCounter, replyVisibilityOptions, defaultReplyVisibility, friendlyPostError } from './Compose.jsx'
+
+describe('friendlyPostError', () => {
+  it('explains the "can\'t add more recipients" reply-audience rule', () => {
+    const err = new Error("can't add more recipients (422)")
+    expect(friendlyPostError(err)).toBe(
+      'This conversation has limited visibility — replies can only mention people already in it. Remove the extra @mentions to post.'
+    )
+  })
+
+  it('explains narrow-visibility and DM-mention validation', () => {
+    expect(friendlyPostError(new Error('reply must have narrower visibility (422)')))
+      .toContain('visibility')
+    expect(friendlyPostError(new Error('direct message should have at least one mention (422)')))
+      .toContain('@mention')
+  })
+
+  it('passes unknown errors through untouched', () => {
+    const err = new Error('rate limited (429)')
+    expect(friendlyPostError(err)).toBe('rate limited (429)')
+  })
+
+  it('falls back to a generic message', () => {
+    expect(friendlyPostError(null)).toBe('Something went wrong.')
+    expect(friendlyPostError(new Error(''))).toBe('Something went wrong.')
+  })
+})
 
 describe('visibilityLabel', () => {
   it('labels standard and Mitra-specific visibilities', () => {

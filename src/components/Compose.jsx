@@ -215,6 +215,25 @@ export function replyVisibilityOptions(parentVisibility, isSameAuthor = false) {
   }
 }
 
+// Translates Mitra's known post-validation errors into actionable copy.
+// The server is the source of truth for these rules (mentions must
+// resolve against the parent's audience, which needs a server lookup),
+// so we map its messages at display time rather than pre-validating.
+// Unknown errors pass through unchanged.
+export function friendlyPostError(err) {
+  const msg = err?.message || ''
+  if (msg.includes("can't add more recipients")) {
+    return 'This conversation has limited visibility — replies can only mention people already in it. Remove the extra @mentions to post.'
+  }
+  if (msg.includes('reply must have narrower visibility')) {
+    return "That visibility isn't allowed for this reply — pick one that isn't wider than the parent post."
+  }
+  if (msg.includes('direct message should have at least one mention')) {
+    return 'Direct messages need at least one @mention.'
+  }
+  return err?.message || 'Something went wrong.'
+}
+
 // Sensible starting visibility for a reply: DM stays direct (the only valid
 // value), conversation-style/limited parents default to `conversation` (what
 // mitra-web picks), and public/unlisted replies inherit the parent.
@@ -712,7 +731,7 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
       onPosted(status)
       onClose()
     } catch (err) {
-      setError(err.message || 'Something went wrong.')
+      setError(friendlyPostError(err))
     } finally {
       setBusy(false)
     }

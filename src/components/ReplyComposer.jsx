@@ -13,7 +13,7 @@ import { processStatusContent } from '../lib/render.jsx'
 import {
   useMediaUploads, MediaUploadStrip, CharCounter, VisibilitySelect, LanguageSelect,
   usePollDraft, PollEditorFields, ParentPreviewMedia, useStatusPreview, StatusPreviewPane,
-  replyVisibilityOptions, defaultReplyVisibility,
+  replyVisibilityOptions, defaultReplyVisibility, friendlyPostError,
 } from './Compose.jsx'
 import { AppSettingsContext, useComposeDraft, getDraftKey } from '../hooks'
 import {
@@ -142,7 +142,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
       clearDraft()
       onPosted(status.id, reply)
     } catch (err) {
-      setError(err.message || 'Something went wrong.')
+      setError(friendlyPostError(err))
     } finally {
       setBusy(false)
     }
