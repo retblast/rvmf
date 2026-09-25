@@ -100,9 +100,12 @@ test('switching between timeline posts moves the ghost immediately', async ({ pa
   await rootRow.locator('.post-text').click()
   await expect(page.getByText('Viewing in thread').first()).toBeVisible()
 
-  // Open a different post — the seeded second post from bob.
+  // Open a different post — the seeded second post from bob. Click the
+  // start of the text: the post ends in a "#testing" hashtag button, and
+  // a bounding-box center click can land on it, opening the hashtag feed
+  // (and closing the panel) instead of the thread.
   const secondRow = page.locator('.post-row', { hasText: SEED.secondText }).first()
-  await secondRow.locator('.post-text').click()
+  await secondRow.locator('.post-text').click({ position: { x: 10, y: 10 } })
 
   // The ghost must now be on the second post's row (exactly one ghost
   // label visible, and it appears immediately — no timer delay).
