@@ -556,12 +556,17 @@ export function usePullToRefresh(el, onRefresh) {
     let wheelAccum = 0
     let wheelTimer = null
     function onWheel(e) {
-      if (el.scrollTop > 0 || e.deltaY <= 0) {
+      // Pull-to-refresh on wheel = overscrolling UP at the top
+      // (deltaY < 0). Anything else (scrolled away from top, or wheeling
+      // down) resets the gesture — and cancels a pending fire, so the
+      // refresh can't go off after the user has moved on.
+      if (el.scrollTop > 0 || e.deltaY >= 0) {
         wheelAccum = 0
         setPull(0)
+        clearTimeout(wheelTimer)
         return
       }
-      wheelAccum += e.deltaY
+      wheelAccum += -e.deltaY
       setPull(Math.min(wheelAccum * 0.4, PULL_MAX_INDICATOR))
       clearTimeout(wheelTimer)
       wheelTimer = setTimeout(() => {

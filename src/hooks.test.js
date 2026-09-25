@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
-import { attachmentDownloadUrls, filenameForAttachment, downloadAttachment, useComposeDraft } from './hooks.js'
+import { attachmentDownloadUrls, filenameForAttachment, downloadAttachment, useComposeDraft, usePullToRefresh } from './hooks.js'
 import { loadDraft, clearDraft } from './lib/drafts.js'
 
 // Media downloads reuse the dev media proxy and the same credential guard
@@ -260,5 +260,66 @@ describe('useComposeDraft draft-key switching', () => {
     rerender({ k: keyA })
     expect(result.current[0].text).toBe('reply to a')
     expect(loadDraft(keyB).text).toBe('reply to b')
+  })
+})
+
+// Wheel pull-to-refresh: fires on upward overscroll at the top
+// (deltaY < 0), never on downward scrolling, and a scroll-away cancels a
+// pending refresh. Time-based: the fire happens 250ms after the last
+// wheel event, so fake timers drive it.
+describe('usePullToRefresh wheel gesture', () => {
+  const FIRE_DELAY = 250
+
+  function setupHook() {
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    const onRefresh = vi.fn()
+    const { result, unmount } = renderHook(() => usePullToRefresh(el, onRefresh))
+    const wheel = (deltaY) => act(() => {
+      el.dispatchEvent(new WheelEvent('wheel', { deltaY, bubbles: true }))
+    })
+    return { el, onRefresh, result, wheel, unmount }
+  }
+
+  it('fires after accumulated upward overscroll past the threshold', () => {
+    vi.useFakeTimers()
+    const { onRefresh, result, wheel } = setupHook()
+    for (let i = 0; i < 4; i++) wheel(-100) // 400px of upward pull
+    expect(result.current.pull).toBeGreaterThan(0)
+    act(() => vi.advanceTimersByTime(FIRE_DELAY + 10))
+    expect(onRefresh).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it('ignores downward wheeling at the top', () => {
+    vi.useFakeTimers()
+    const { onRefresh, result, wheel } = setupHook()
+    for (let i = 0; i < 4; i++) wheel(100)
+    act(() => vi.advanceTimersByTime(FIRE_DELAY + 10))
+    expect(onRefresh).not.toHaveBeenCalled()
+    expect(result.current.pull).toBe(0)
+    vi.useRealTimers()
+  })
+
+  it('ignores upward wheeling when scrolled away from the top', () => {
+    vi.useFakeTimers()
+    const { el, onRefresh, wheel } = setupHook()
+    el.scrollTop = 200
+    for (let i = 0; i < 4; i++) wheel(-100)
+    act(() => vi.advanceTimersByTime(FIRE_DELAY + 10))
+    expect(onRefresh).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('cancels a pending refresh when the user scrolls down after pulling', () => {
+    vi.useFakeTimers()
+    const { el, onRefresh, wheel } = setupHook()
+    wheel(-100)
+    wheel(-100)
+    el.scrollTop = 50 // user moved on before the fire delay elapsed
+    wheel(-50)
+    act(() => vi.advanceTimersByTime(FIRE_DELAY + 10))
+    expect(onRefresh).not.toHaveBeenCalled()
+    vi.useRealTimers()
   })
 })
