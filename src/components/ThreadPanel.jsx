@@ -196,8 +196,11 @@ export function ThreadPanelContent({
   }
 
   if (panel?.mode === 'compose') {
+    // Keyed by target: the composer must not carry uploads/poll/etc.
+    // across reply targets; draft text survives via useComposeDraft.
     return (
       <ReplyComposerFields
+        key={status?.id || 'new'}
         status={status}
         instanceUrl={instanceUrl}
         token={token}

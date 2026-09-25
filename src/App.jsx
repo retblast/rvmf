@@ -2467,6 +2467,11 @@ export default function App() {
 
       {composing && (
         <ComposeDialog
+          // Remount when the compose context (reply/quote/group target)
+          // changes while open: non-draft state (uploads, poll, error,
+          // idempotency key) must not leak across targets. Draft text
+          // survives via useComposeDraft.
+          key={replyContext?.id || quoteStatus?.id || composerGroup?.id || 'new'}
           instanceUrl={session.instanceUrl}
           token={session.token}
           onClose={() => { setComposing(false); setQuoteStatus(null); setReplyContext(null); setComposerGroup(null) }}

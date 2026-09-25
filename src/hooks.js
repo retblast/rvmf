@@ -619,6 +619,31 @@ export function useComposeDraft(draftKey, initialState) {
   stateRef.current = state
   const draftKeyRef = useRef(draftKey)
   draftKeyRef.current = draftKey
+  // Latest initials, so a draft-key switch resets from the right baseline
+  // (reply visibility defaults depend on the target post).
+  const initialStateRef = useRef(initialState)
+  initialStateRef.current = initialState
+  // Previous key, updated inside the effect below — render-phase refs would
+  // already hold the new key by the time the effect runs.
+  const prevKeyRef = useRef(draftKey)
+
+  // Draft-key switch: the composer is now addressing a different context
+  // (another reply target, quote, group). Persist the current text under
+  // the OLD key, then load whatever belongs to the new key (or the fresh
+  // initial state). Must run before the save-on-change effect below, or
+  // the stale state would be written into the new key and clobber it.
+  useEffect(() => {
+    const prevKey = prevKeyRef.current
+    prevKeyRef.current = draftKey
+    if (prevKey === draftKey) return
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    if (prevKey) saveDraftStorage(prevKey, stateRef.current)
+    const stored = draftKey ? loadDraftStorage(draftKey) : null
+    setState(stored ? { ...initialStateRef.current, ...stored } : initialStateRef.current)
+  }, [draftKey])
 
   // Debounced save — fires 500ms after the last change
   const flushDraft = useCallback(() => {

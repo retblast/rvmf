@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
-import { attachmentDownloadUrls, filenameForAttachment, downloadAttachment } from './hooks.js'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { act, renderHook } from '@testing-library/react'
+import { attachmentDownloadUrls, filenameForAttachment, downloadAttachment, useComposeDraft } from './hooks.js'
+import { loadDraft, clearDraft } from './lib/drafts.js'
 
 // Media downloads reuse the dev media proxy and the same credential guard
 // as the display pipeline. These tests pin down the URL precedence, the
@@ -193,5 +195,70 @@ describe('downloadAttachment', () => {
     // pipeline should not have been invoked.
     expect(fetchMock.mock.calls.length).toBe(1)
     expect(String(fetchMock.mock.calls[0][0])).toBe(blobUrl)
+  })
+})
+
+// Draft-key switching: when the composer starts addressing a different
+// reply/quote/group target mid-flight, the hook must keep the old draft
+// under the old key (never clobber the new key with stale text) and load
+// whatever belongs to the new key.
+describe('useComposeDraft draft-key switching', () => {
+  const initial = { text: '', visibility: 'public' }
+  const keyA = 'rvmf:draft:reply:a'
+  const keyB = 'rvmf:draft:reply:b'
+
+  beforeEach(() => {
+    clearDraft(keyA)
+    clearDraft(keyB)
+  })
+
+  afterEach(() => {
+    clearDraft(keyA)
+    clearDraft(keyB)
+  })
+
+  it('saves the current draft under the old key and resets to the new initial', () => {
+    const { result, rerender } = renderHook(({ k }) => useComposeDraft(k, initial), {
+      initialProps: { k: keyA },
+    })
+    const [, setDraft] = result.current
+    act(() => setDraft((s) => ({ ...s, text: 'reply to a' })))
+
+    rerender({ k: keyB })
+
+    expect(result.current[0].text).toBe('')
+    expect(loadDraft(keyA).text).toBe('reply to a')
+  })
+
+  it('does not clobber the new key with the old draft text', () => {
+    // The historical bug: the save-on-change effect fired with the stale
+    // state under the NEW key. It was debounced, so advance past the
+    // 500ms window to make sure nothing stale ever lands.
+    vi.useFakeTimers()
+    const { result, rerender } = renderHook(({ k }) => useComposeDraft(k, initial), {
+      initialProps: { k: keyA },
+    })
+    act(() => result.current[1]((s) => ({ ...s, text: 'reply to a' })))
+
+    rerender({ k: keyB })
+    act(() => vi.advanceTimersByTime(1000))
+
+    const storedB = loadDraft(keyB)
+    expect(storedB === null || (storedB.text ?? '') === '').toBe(true)
+    vi.useRealTimers()
+  })
+
+  it('restores an existing draft for the new key', () => {
+    const { result, rerender } = renderHook(({ k }) => useComposeDraft(k, initial), {
+      initialProps: { k: keyA },
+    })
+    act(() => result.current[1]((s) => ({ ...s, text: 'reply to a' })))
+
+    rerender({ k: keyB })
+    act(() => result.current[1]((s) => ({ ...s, text: 'reply to b' })))
+
+    rerender({ k: keyA })
+    expect(result.current[0].text).toBe('reply to a')
+    expect(loadDraft(keyB).text).toBe('reply to b')
   })
 })
