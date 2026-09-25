@@ -243,3 +243,50 @@ describe('PostRow ghost placeholder', () => {
     expect(document.querySelector('.post-row').className).toContain('ghost')
   })
 })
+
+// ---------------------------------------------------------------------------
+// "In reply to" context line — only for actual replies
+// ---------------------------------------------------------------------------
+
+function renderPlainRow(post) {
+  return render(
+    <GhostWrapper>
+      <PostRow
+        post={post}
+        instanceUrl="http://test.example.com"
+        token="tk"
+        onUpdate={() => {}}
+        onOpenThread={() => {}}
+        onComposeReply={() => {}}
+        onOpenLightbox={() => {}}
+        onOpenProfile={() => {}}
+        onQuote={() => {}}
+        currentAccountId="u1"
+      />
+    </GhostWrapper>
+  )
+}
+
+describe('PostRow reply context line', () => {
+  const bob = { id: 'u2', acct: 'bob', username: 'bob' }
+
+  it('does not render for a top-level post that merely tags someone', () => {
+    renderPlainRow({
+      ...ghostPost,
+      content: '<p>@bob check this out</p>',
+      mentions: [bob],
+    })
+    expect(document.querySelector('.post-reply-context')).toBeNull()
+  })
+
+  it('renders for an actual reply', () => {
+    renderPlainRow({
+      ...ghostPost,
+      content: '<p>@bob agreed</p>',
+      mentions: [bob],
+      in_reply_to_id: 'p0',
+      in_reply_to_account_id: 'u2',
+    })
+    expect(screen.getByText(/In reply to/)).toBeTruthy()
+  })
+})

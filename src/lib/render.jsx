@@ -195,6 +195,31 @@ function shortenUrlForDisplay(url) {
   }
 }
 
+// Strips the LEADING run of @mentions from a reply's text — the prefix
+// our composers (and other clients) prepend, which would otherwise be
+// duplicated in the "In reply to" line. Only handles actually present in
+// the status's `mentions` count as prefix material; anything after the
+// first non-mention token is untouched, so "my friend @someone worked on
+// this" keeps its mention (and its link).
+function stripLeadingMentionRun(text, mentions) {
+  if (!mentions || mentions.length === 0) return text
+  const handles = new Set()
+  for (const m of mentions) {
+    if (m.acct) handles.add(m.acct)
+    if (m.username) handles.add(m.username)
+  }
+  let rest = text
+  let match
+  // Walk "@handle " tokens from the start until a handle isn't a known
+  // mention or the token isn't a mention at all. \s* on both sides absorbs
+  // the gaps between tokens and between the prefix and the real text.
+  while ((match = rest.match(/^\s*@([\w.-]+(?:@[\w.-]+)?)\s*/)) !== null) {
+    if (!handles.has(match[1])) break
+    rest = rest.slice(match[0].length)
+  }
+  return rest
+}
+
 function renderRichText(text, mentions, emojis) {
   const needles = []
   ;(mentions || []).forEach((m) => {
@@ -438,14 +463,15 @@ export function processStatusContent(status, instanceUrl) {
   return result
 }
 
-// Like processStatusContent but strips @mentions from the rendered text so
-// they only appear in the "In reply to" context line. Uses a separate cache
-// entry so it doesn't interfere with the normal cached result.
+// Like processStatusContent but, for replies, strips the leading @mention
+// prefix from the rendered text so it only appears in the "In reply to"
+// context line. Mentions elsewhere in the body are kept. Uses a separate
+// cache entry so it doesn't interfere with the normal cached result.
 const displayContentCache = new WeakMap()
 export function processStatusContentForDisplay(status, instanceUrl) {
   const cached = displayContentCache.get(status)
   if (cached && cached.instanceUrl === instanceUrl) return cached.result
-  const result = processStatusContentUncached(status, instanceUrl, true)
+  const result = processStatusContentUncached(status, instanceUrl, Boolean(status?.in_reply_to_id))
   displayContentCache.set(status, { instanceUrl, result })
   return result
 }
@@ -459,13 +485,11 @@ function processStatusContentUncached(status, instanceUrl, stripMentions = false
     instanceUrl,
     status.account?.acct
   )
-  // When stripping, drop both the @-tokens from text and the mention list
-  // passed to renderRichText, so nothing about the @mentions survives in
-  // the rendered post body. They live solely in the "In reply to" line.
-  // \s* after the handle pattern consumes the trailing space(s) so there
-  // are no orphaned gaps left in the text.
+  // When stripping, only the leading mention run (the reply prefix that
+  // duplicates the "In reply to" line) is removed; in-body mentions stay
+  // and keep their links, so mentions are passed through either way.
   const textNodes = stripMentions
-    ? renderRichText(cleanedText.replace(/@\w[\w.]*\b\s*/g, '').trim(), [], status.emojis)
+    ? renderRichText(stripLeadingMentionRun(cleanedText, status.mentions), status.mentions, status.emojis)
     : renderRichText(cleanedText, status.mentions, status.emojis)
 
   // Both local-instance and poster-domain recovered images are shown behind

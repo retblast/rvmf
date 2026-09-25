@@ -44,9 +44,10 @@ function unwrapStatus(post) {
 // the direct reply target (in_reply_to_account_id) first, then any other
 // mentions from the post body. Deduplicates by id. The list is truncated
 // to a small number of handles for display; the full list is visible on
-// hover.
+// hover. Only actual replies get the line — a top-level post that merely
+// tags people has nothing to be "in reply to".
 function buildReplyMentions(status) {
-  if (!status?.in_reply_to_account_id && !(status.mentions?.length > 0)) return []
+  if (!status?.in_reply_to_account_id) return []
   const seen = new Set()
   const result = []
   // Reply target first

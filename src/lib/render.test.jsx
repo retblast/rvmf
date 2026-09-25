@@ -7,6 +7,7 @@ import {
   updateTreeNode,
   mergeStatusIntoRow,
   processStatusContent,
+  processStatusContentForDisplay,
 } from './render.jsx'
 
 describe('htmlToPlainText', () => {
@@ -102,6 +103,56 @@ describe('mergeStatusIntoRow', () => {
     expect(next[0]).toBe(updated)
     expect(next[1].reblog).toBe(updated)
     expect(next[2]).toBe(list[2])
+  })
+})
+
+// Replies get their LEADING mention prefix stripped (it duplicates the
+// "In reply to" line); mentions elsewhere in the body must survive with
+// their links. Top-level posts are never stripped.
+describe('processStatusContentForDisplay mention handling', () => {
+  const instanceUrl = 'https://inst.example'
+  const flatText = (nodes) => nodes
+    .map((n) => (typeof n === 'string' ? n : String(n.props?.children ?? '').replace(/,/g, '')))
+    .join('')
+  const mentions = [
+    { id: '1', acct: 'alice', username: 'alice' },
+    { id: '2', acct: 'bob@remote.example', username: 'bob' },
+    { id: '3', acct: 'carol', username: 'carol' },
+  ]
+  const base = { account: { acct: 'me' }, emojis: [], media_attachments: [] }
+
+  it('strips the leading mention run on replies but keeps in-body mentions linked', () => {
+    const out = processStatusContentForDisplay({
+      ...base,
+      content: '<p><a class="mention" href="x">@alice</a> <a class="mention" href="x">@bob</a> hey, my friend @carol worked on this</p>',
+      mentions,
+      in_reply_to_id: 'p0',
+      in_reply_to_account_id: '1',
+    }, instanceUrl)
+    const text = flatText(out.textNodes)
+    expect(text.startsWith('hey, my friend')).toBe(true)
+    expect(text).toContain('@carol')
+    expect(out.textNodes.some((n) => typeof n !== 'string' && n.props?.className === 'mention-link')).toBe(true)
+  })
+
+  it('never strips top-level posts, even when they start with a mention', () => {
+    const out = processStatusContentForDisplay({
+      ...base,
+      content: '<p><a class="mention" href="x">@alice</a> look at this cool thing</p>',
+      mentions,
+    }, instanceUrl)
+    expect(flatText(out.textNodes)).toBe('@alice look at this cool thing')
+  })
+
+  it('matches prefix mentions by username-only handles too', () => {
+    const out = processStatusContentForDisplay({
+      ...base,
+      content: '<p><a class="mention" href="x">@bob</a> nice one</p>',
+      mentions,
+      in_reply_to_id: 'p0',
+      in_reply_to_account_id: '2',
+    }, instanceUrl)
+    expect(flatText(out.textNodes)).toBe('nice one')
   })
 })
 
