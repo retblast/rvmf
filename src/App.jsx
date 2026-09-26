@@ -18,12 +18,11 @@ import {
 } from 'lucide-react'
 import { useMitraSession } from './useMitraSession'
 import { useAppSettings } from './useAppSettings'
+import { useNotifications, NOTIF_FILTERS } from './useNotifications'
 import * as mitra from './lib/mitra'
-import { blipFavicon } from './lib/favicon-blip.js'
 import { buildReplyTree, findNode, insertIntoTree, updateTreeNode, mergeStatusIntoRow, htmlToPlainText as noteToPlainText } from './lib/render.jsx'
-import { AppSettingsContext, PickerContext, GhostContext, useLayoutTier, usePullToRefresh, useSwipeBack } from './hooks'
+import { AppSettingsContext, PickerContext, GhostContext, useLayoutTier, usePullToRefresh, useSwipeBack, useInstanceFavicon } from './hooks'
 
-// Server-side notification filters (exclude_types[]). A group counts as
 import LoginView from './LoginView'
 import { Avatar, MediaLightbox } from './components/Media.jsx'
 import { NotificationRow, PostRow } from './components/Post.jsx'
@@ -38,7 +37,7 @@ import { ScrollTopButton } from './components/ScrollTopButton.jsx'
 import { SettingsMenu } from './components/SettingsMenu.jsx'
 import { ServerInfoPopover } from './components/ServerInfoPopover.jsx'
 import { ToastStack } from './components/ToastStack.jsx'
-import { storageGet, storageSet } from './lib/storage.js'
+
 import { ListsView } from './components/ListsView.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { GroupsView } from './components/GroupsView.jsx'
@@ -47,19 +46,6 @@ import { AccountSettingsView } from './components/AccountSettingsView.jsx'
 import { FavouritesView } from './components/FavouritesView.jsx'
 import { StatusPage } from './components/StatusPage.jsx'
 import { UIContext } from './ui/index.jsx'
-
-// Server-side notification filters (exclude_types[]). A group counts as
-// "off" when any of its types is excluded; groups never overlap.
-const NOTIF_FILTERS = [
-  ['Mentions', ['mention']],
-  ['Boosts', ['reblog']],
-  ['Quotes', ['quote']],
-  ['Favourites', ['favourite']],
-  ['Reactions', ['pleroma:emoji_reaction']],
-  ['Follows', ['follow', 'follow_request']],
-  ['Polls', ['poll']],
-  ['Edits', ['update']],
-]
 
 // Hard cap on in-memory timeline rows. The server paginates the home feed
 // forever, and an unbounded array would quietly grow this session's heap
@@ -110,28 +96,6 @@ export default function App() {
   const [hashtagTag, setHashtagTag] = useState(null)
   const [focusedReplyId, setFocusedReplyId] = useState(null)
   const [lightboxAttachment, setLightboxAttachment] = useState(null)
-  const [notifications, setNotifications] = useState([])
-  const [notificationsLoading, setNotificationsLoading] = useState(false)
-  const [notificationsError, setNotificationsError] = useState('')
-  // Server-side notification filtering (exclude_types[]) — persisted so
-  // the mute choices survive reloads.
-  const [notifExcluded, setNotifExcluded] = useState(() => {
-    try {
-      const raw = JSON.parse(storageGet('notif-excluded'))
-      return Array.isArray(raw) ? raw : []
-    } catch {
-      return []
-    }
-  })
-  const [notificationsHasMore, setNotificationsHasMore] = useState(true)
-  const [notificationsLoadingMore, setNotificationsLoadingMore] = useState(false)
-  const notifSentinelRef = useRef(null)
-  // Server-synced read position for notifications (markers API). Compared
-  // against notification created_at timestamps — reliable regardless of
-  // how the server assigns ids.
-  const [notifMarkerAt, setNotifMarkerAt] = useState(null)
-  const [notifUnread, setNotifUnread] = useState(0)
-  const notifMarkerSyncingRef = useRef(false)
   const [exploreFeed, setExploreFeed] = useState('federated') // 'federated' | 'local' | 'people'
   const [exploreTimelines, setExploreTimelines] = useState({ federated: null, local: null })
   const [directoryAccounts, setDirectoryAccounts] = useState([])
@@ -154,6 +118,11 @@ export default function App() {
   const [serverInfoOpen, setServerInfoOpen] = useState(false)
   // Where the settings panel was opened from (null = centered)
   const [settingsAnchor, setSettingsAnchor] = useState(null)
+
+  // Notifications domain hook — must be declared before useAppSettings,
+  // whose client_config sync reads notifExcluded.
+  const notifs = useNotifications(session, { view, tier })
+
 
   // Build id→status maps so PostRow can look up parent statuses for
   // "in reply to" links.  Each feed gets its own map so updates stay
@@ -181,11 +150,11 @@ export default function App() {
   }, [bookmarks])
   const notifStatusById = useMemo(() => {
     const m = new Map()
-    for (const n of notifications) {
+    for (const n of notifs.notifications) {
       if (n.status) { m.set(n.status.id, n.status); if (n.status.reblog) m.set(n.status.reblog.id, n.status.reblog) }
     }
     return m
-  }, [notifications])
+  }, [notifs.notifications])
 
   function openSettingsFrom(e) {
     const rect = e?.currentTarget?.getBoundingClientRect()
@@ -193,9 +162,6 @@ export default function App() {
     setSettingsOpen(true)
   }
 
-  // Account ids with pending incoming follow requests (null = unknown yet)
-  const [pendingFollowIds, setPendingFollowIds] = useState(null)
-  const [clearingNotifications, setClearingNotifications] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   // Home timeline's own infinite-scroll sentinel — see the observer
@@ -205,54 +171,13 @@ export default function App() {
 
   // All user settings (appearance/content/GIF/translation/account) live in
   // this hook, bundled with the client_config server sync. notif-excluded
-  // is owned by the notifications code below but rides the same sync.
+  // is owned by the notifications hook above but rides the same sync.
   const appSettings = useAppSettings(session, {
     onClientNameChange: logout,
-    extraSynced: { 'notif-excluded': [notifExcluded, setNotifExcluded] },
+    extraSynced: { 'notif-excluded': [notifs.notifExcluded, notifs.setNotifExcluded] },
   })
 
-  async function handleClearNotifications() {
-    if (!session || clearingNotifications) return
-    if (!window.confirm('Clear all notifications? This cannot be undone.')) return
-    setClearingNotifications(true)
-    try {
-      await mitra.clearNotifications(session.instanceUrl, session.token)
-      setNotifications([])
-      setNotifUnread(0)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setClearingNotifications(false)
-    }
-  }
-
-  // Browser tab follows the instance: favicon and a "rvmf on <host>"
-  // title; both restored to plain "rvmf" when logged out.
-  // When notifUnread > 0, a small red dot is overlaid on the favicon.
-  const defaultFaviconRef = useRef(null)
-  useEffect(() => {
-    let link = document.querySelector("link[rel~='icon']")
-    if (!link) {
-      link = document.createElement('link')
-      link.rel = 'icon'
-      document.head.appendChild(link)
-    }
-    if (!defaultFaviconRef.current) defaultFaviconRef.current = link.href
-    const baseUrl = session
-      ? `${session.instanceUrl}/favicon.ico`
-      : defaultFaviconRef.current
-    link.href = baseUrl
-    let cancelled = false
-    if (notifUnread > 0 && session) {
-      blipFavicon(baseUrl, { unread: notifUnread })
-        .then((dataUrl) => { if (!cancelled) link.href = dataUrl })
-        .catch(() => {})
-    }
-    document.title = session
-      ? `rvmf on ${session.instanceUrl.replace(/^https?:\/\//, '')}`
-      : 'rvmf'
-    return () => { cancelled = true }
-  }, [session, notifUnread])
+  useInstanceFavicon(session, notifs.notifUnread)
 
   const loadTimeline = useCallback(async () => {
     if (!session) return
@@ -316,76 +241,6 @@ export default function App() {
     return () => observer.disconnect()
   }, [view, tier, loadMoreTimeline, timeline.length])
 
-  function toggleNotifFilter(types) {
-    setNotifExcluded((prev) => {
-      const isOn = !types.some((t) => prev.includes(t))
-      const next = isOn
-        ? [...prev, ...types.filter((t) => !prev.includes(t))]
-        : prev.filter((t) => !types.includes(t))
-      storageSet('notif-excluded', JSON.stringify(next))
-      return next
-    })
-  }
-
-  const loadNotifications = useCallback(async () => {
-    if (!session) return
-    setNotificationsLoading(true)
-    setNotificationsError('')
-    setNotificationsHasMore(true)
-    try {
-      const [items, pending] = await Promise.all([
-        mitra.fetchNotifications(session.instanceUrl, session.token),
-        // Which requests are still awaiting action — old follow_request
-        // notifications for handled accounts must not offer buttons.
-        // Fetched in full (paginated) so no pending request gets treated
-        // as already-handled just because it fell off the first page.
-        mitra.fetchAllPendingFollowAccountIds(session.instanceUrl, session.token)
-          .catch(() => null),
-      ])
-      setNotifications(items)
-      if (pending) setPendingFollowIds(pending)
-    } catch (err) {
-      setNotificationsError(err.message || 'Failed to load notifications.')
-    } finally {
-      setNotificationsLoading(false)
-    }
-  }, [session])
-
-  const loadMoreNotifications = useCallback(async () => {
-    if (!session || notificationsLoadingMore || !notificationsHasMore) return
-    if (notifications.length === 0) return
-    setNotificationsLoadingMore(true)
-    try {
-      const lastId = notifications[notifications.length - 1]?.id
-      if (!lastId) return
-      const more = await mitra.fetchNotifications(session.instanceUrl, session.token, { max_id: lastId })
-      setNotifications((prev) => [...prev, ...more])
-      if (more.length < 30) setNotificationsHasMore(false)
-    } catch {
-      // silently fail — user can scroll again to retry
-    } finally {
-      setNotificationsLoadingMore(false)
-    }
-  }, [session, notificationsLoadingMore, notificationsHasMore, notifications])
-
-  // Notifications infinite scroll observer (active in the tab view and
-  // in the wide tier's permanent column — same sentinel either way).
-  useEffect(() => {
-    const sentinel = notifSentinelRef.current
-    if (!sentinel) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) loadMoreNotifications()
-      },
-      { rootMargin: '200px' }
-    )
-    observer.observe(sentinel)
-    return () => observer.disconnect()
-  }, [loadMoreNotifications, notifications.length])
-
-  // Flaky-connection awareness: while the browser reports itself offline,
-  // all polling pauses and an amber banner explains why; coming back
-  // online refreshes the current view and notifications immediately.
   const [online, setOnline] = useState(() => navigator.onLine)
 
   // Global keyboard shortcuts
@@ -406,13 +261,17 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [session])
+
+  // Flaky-connection awareness: while the browser reports itself offline,
+  // all polling pauses and an amber banner explains why; coming back
+  // online refreshes the current view and notifications immediately.
   useEffect(() => {
     function goOffline() { setOnline(false) }
     function goOnline() {
       setOnline(true)
       if (!session) return
       refreshRef.current()
-      if (view === 'notifications' || tier === 'wide') loadNotifications()
+      if (notifs.notificationsVisible) notifs.loadNotifications()
     }
     window.addEventListener('offline', goOffline)
     window.addEventListener('online', goOnline)
@@ -420,61 +279,7 @@ export default function App() {
       window.removeEventListener('offline', goOffline)
       window.removeEventListener('online', goOnline)
     }
-  }, [session, view, tier, loadNotifications])
-
-  // Restore the notifications read marker once per session so the unread
-  // count on the tab is accurate.
-  useEffect(() => {
-    if (!session) return
-    let cancelled = false
-    mitra.fetchMarkers(session.instanceUrl, session.token, ['notifications'])
-      .then((markers) => {
-        if (cancelled || !markers?.notifications?.updated_at) return
-        setNotifMarkerAt(new Date(markers.notifications.updated_at))
-      })
-      .catch(() => {})
-    return () => { cancelled = true }
-  }, [session])
-
-  // Recompute the unread badge whenever the list or the marker changes.
-  useEffect(() => {
-    if (!notifMarkerAt) {
-      setNotifUnread(0)
-      return
-    }
-    const count = notifications.filter((n) => new Date(n.created_at) > notifMarkerAt).length
-    setNotifUnread(count)
-  }, [notifications, notifMarkerAt])
-
-  // While the user can see notifications, keep the marker pinned to the
-  // newest item — that's what "read" means here. Throttled so the 5s
-  // poll doesn't hammer the endpoint.
-  const notificationsVisible = view === 'notifications' || tier === 'wide'
-  useEffect(() => {
-    if (!session || !notificationsVisible || notifications.length === 0) return
-    if (notifMarkerSyncingRef.current) return
-    const newest = notifications[0]
-    if (!newest) return
-    notifMarkerSyncingRef.current = true
-    mitra.updateMarker(session.instanceUrl, session.token, {
-      notifications: { last_read_id: String(newest.id) },
-    })
-      .then((markers) => {
-        if (markers?.notifications?.updated_at) {
-          setNotifMarkerAt(new Date(markers.notifications.updated_at))
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        setTimeout(() => { notifMarkerSyncingRef.current = false }, 5000)
-      })
-  }, [notificationsVisible, notifications, session])
-
-  useEffect(() => {
-    if (view === 'notifications' || tier === 'wide') {
-      loadNotifications()
-    }
-  }, [view, tier, loadNotifications])
+  }, [session, notifs.notificationsVisible, notifs.loadNotifications])
 
   // Wide tier shows notifications as a permanent column, not a tab — if
   // the window shrinks below wide while "Notifications" is the active
@@ -645,21 +450,6 @@ export default function App() {
     })
   }
 
-  async function respondFollowRequest(accountId, action) {
-    try {
-      await mitra.respondFollowRequest(session.instanceUrl, session.token, accountId, action)
-      // A handled request must stop offering Accept/Reject immediately — the
-      // next 5s notification poll would also refresh this, but the action
-      // should take effect now rather than waiting for the next tick.
-      mitra
-        .fetchAllPendingFollowAccountIds(session.instanceUrl, session.token)
-        .then((pending) => setPendingFollowIds(pending))
-        .catch(() => {})
-    } catch {
-      // Silently ignore — follow request actions are best-effort
-    }
-  }
-
   async function handleDeleteStatus(statusId) {
     try {
       await mitra.deleteStatus(session.instanceUrl, session.token, statusId)
@@ -691,7 +481,7 @@ export default function App() {
     // (not smooth: prepended items would fight an animated scroll).
     scrollEl?.scrollTo({ top: 0 })
     if (view === 'notifications') {
-      loadNotifications()
+      notifs.loadNotifications()
     } else if (view === 'explore') {
       setExploreHasMore((prev) => ({ ...prev, [exploreFeed]: true }))
       loadExplore(exploreFeed)
@@ -761,7 +551,7 @@ export default function App() {
     updatePost(updated)
     updateExplorePost(updated)
     updateBookmarkedPost(updated)
-    updateNotificationStatus(updated)
+    notifs.updateNotificationStatus(updated)
     if (sidePanel?.status) updateReplyInPanel(updated)
   }
 
@@ -1054,28 +844,6 @@ export default function App() {
     }
   }, [sidePanel])
 
-  // Auto-refresh notifications every 5 seconds (silent). Also refreshes
-  // pendingFollowIds so that newly-arriving follow_request notifications
-  // immediately show Accept/Reject instead of flashing "already handled".
-  useEffect(() => {
-    if (view !== 'notifications' && tier !== 'wide') return
-    if (!session) return
-    const interval = setInterval(() => {
-      if (!navigator.onLine) return // paused while offline; reconnect refreshes
-      Promise.all([
-        mitra.fetchNotifications(session.instanceUrl, session.token),
-        mitra.fetchAllPendingFollowAccountIds(session.instanceUrl, session.token)
-          .catch(() => null),
-      ])
-        .then(([items, pending]) => {
-          setNotifications(items)
-          if (pending) setPendingFollowIds(pending)
-        })
-        .catch(() => {})
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [view, tier, session])
-
   // Keep home-timeline rows live: poll the visible posts' state on the
   // same 5s cadence as the thread panel, so counts/flags update everywhere
   // at once instead of only inside an open thread. Batch endpoint keeps
@@ -1176,16 +944,6 @@ export default function App() {
     })
   }
 
-  function updateNotificationStatus(updated) {
-    setNotifications((prev) =>
-      prev.map((n) => {
-        if (!n.status) return n
-        const merged = mergeStatusIntoRow(n.status, updated)
-        return merged === n.status ? n : { ...n, status: merged }
-      })
-    )
-  }
-
   if (!session) {
     return (
       <LoginView
@@ -1200,55 +958,55 @@ export default function App() {
   // Mitra has no exclude_types[] query param, so chip filtering happens
   // here at render time. The unread badge and marker sync above still
   // use the full list — hiding a category doesn't mark it read.
-  const visibleNotifications = notifications.filter((n) => !notifExcluded.includes(n.type))
+  const visibleNotifications = notifs.visibleNotifications
 
   const notificationsBody = (
     <>
       <div className="notif-filters" role="group" aria-label="Notification filters">
         {NOTIF_FILTERS.map(([label, types]) => {
-          const isOff = types.some((t) => notifExcluded.includes(t))
+          const isOff = types.some((t) => notifs.notifExcluded.includes(t))
           return (
             <button
               key={label}
               type="button"
               className={`notif-filter-chip${isOff ? ' off' : ''}`}
-              onClick={() => toggleNotifFilter(types)}
+              onClick={() => notifs.toggleNotifFilter(types)}
             >
               {label}
             </button>
           )
         })}
       </div>
-      {notificationsError && (
+      {notifs.notificationsError && (
         <>
-          <div className="banner banner-error">{notificationsError}</div>
+          <div className="banner banner-error">{notifs.notificationsError}</div>
           <div className="empty-state">
-            <button className="pill-btn suggested" onClick={loadNotifications}>Retry</button>
+            <button className="pill-btn suggested" onClick={notifs.loadNotifications}>Retry</button>
           </div>
         </>
       )}
-      {notificationsLoading && notifications.length === 0 ? (
+      {notifs.notificationsLoading && notifs.notifications.length === 0 ? (
         <div className="empty-state">Loading…</div>
-      ) : notifications.length === 0 ? (
+      ) : notifs.notifications.length === 0 ? (
         <div className="empty-state">Nothing here yet.</div>
       ) : visibleNotifications.length === 0 ? (
         <div className="empty-state">All notifications are filtered out.</div>
       ) : (
         <>
           <div className="timeline-list">
-            {visibleNotifications.map((n) => (
+            {notifs.visibleNotifications.map((n) => (
               <NotificationRow
                 key={n.id}
                 notification={n}
                 instanceUrl={session.instanceUrl}
                 token={session.token}
-                onUpdateStatus={updateNotificationStatus}
+                onUpdateStatus={notifs.updateNotificationStatus}
                 onOpenThread={handleOpenThread}
                 onComposeReply={handleComposeReply}
                 onOpenLightbox={setLightboxAttachment}
                 onOpenProfile={handleOpenProfile}
-                onRespondFollowRequest={respondFollowRequest}
-                pendingFollowIds={pendingFollowIds}
+                onRespondFollowRequest={notifs.respondFollowRequest}
+                pendingFollowIds={notifs.pendingFollowIds}
                 statusById={notifStatusById}
                 onQuote={handleQuote}
                 currentAccountId={session.account?.id}
@@ -1259,8 +1017,8 @@ export default function App() {
               />
             ))}
           </div>
-          {notificationsHasMore && <div ref={notifSentinelRef} className="scroll-sentinel" />}
-          {notificationsLoadingMore && <div className="empty-state">Loading…</div>}
+          {notifs.notificationsHasMore && <div ref={notifs.notifSentinelRef} className="scroll-sentinel" />}
+          {notifs.notificationsLoadingMore && <div className="empty-state">Loading…</div>}
         </>
       )}
     </>
@@ -1620,13 +1378,13 @@ export default function App() {
         <>
           <div className="section-label-row">
             <div className="section-label">Notifications</div>
-            {notifications.length > 0 && (
+            {notifs.notifications.length > 0 && (
               <button
                 className="icon-btn"
                 aria-label="Clear all notifications"
                 title="Clear all"
-                onClick={handleClearNotifications}
-                disabled={clearingNotifications}
+                onClick={notifs.clearNotifications}
+                disabled={notifs.clearingNotifications}
               >
                 <Trash2 size={14} />
               </button>
@@ -1669,7 +1427,7 @@ export default function App() {
   // keeps the inline GNOME header bar below.
   const SkinHeaderBar = appSettings.skin?.components?.HeaderBar || null
   const headerProps = {
-    session, tier, view, setView, notifUnread,
+    session, tier, view, setView, notifUnread: notifs.notifUnread,
     handleRefresh, setComposing, logout, openSettingsFrom,
     settingsOpen,
   }
@@ -1736,7 +1494,7 @@ export default function App() {
             >
               <Bell size={14} />
               Notifications
-              {notifUnread > 0 && <span className="notif-badge">{notifUnread > 99 ? '99+' : notifUnread}</span>}
+              {notifs.notifUnread > 0 && <span className="notif-badge">{notifs.notifUnread > 99 ? '99+' : notifs.notifUnread}</span>}
             </button>
           )}
           <button
@@ -1840,13 +1598,13 @@ export default function App() {
           <aside className="notif-column scrollbar-thin">
             <div className="section-label-row">
             <div className="section-label">Notifications</div>
-            {notifications.length > 0 && (
+            {notifs.notifications.length > 0 && (
               <button
                 className="icon-btn"
                 aria-label="Clear all notifications"
                 title="Clear all"
-                onClick={handleClearNotifications}
-                disabled={clearingNotifications}
+                onClick={notifs.clearNotifications}
+                disabled={notifs.clearingNotifications}
               >
                 <Trash2 size={14} />
               </button>

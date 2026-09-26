@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
+import { blipFavicon } from './lib/favicon-blip.js'
 
 export const GhostContext = createContext({ ghostStatusId: null, inPanel: false })
 import { ensureGifConverted } from './lib/gif/convert.js'
@@ -603,6 +604,36 @@ export function usePullToRefresh(el, onRefresh) {
   }, [refreshing])
 
   return { pull, refreshing }
+}
+
+// Browser tab follows the instance: favicon and a "rvmf on <host>"
+// title; both restored to plain "rvmf" when logged out.
+// When `unread` > 0, a small red dot is overlaid on the favicon.
+export function useInstanceFavicon(session, unread) {
+  const defaultFaviconRef = useRef(null)
+  useEffect(() => {
+    let link = document.querySelector("link[rel~='icon']")
+    if (!link) {
+      link = document.createElement('link')
+      link.rel = 'icon'
+      document.head.appendChild(link)
+    }
+    if (!defaultFaviconRef.current) defaultFaviconRef.current = link.href
+    const baseUrl = session
+      ? `${session.instanceUrl}/favicon.ico`
+      : defaultFaviconRef.current
+    link.href = baseUrl
+    let cancelled = false
+    if (unread > 0 && session) {
+      blipFavicon(baseUrl, { unread })
+        .then((dataUrl) => { if (!cancelled) link.href = dataUrl })
+        .catch(() => {})
+    }
+    document.title = session
+      ? `rvmf on ${session.instanceUrl.replace(/^https?:\/\//, '')}`
+      : 'rvmf'
+    return () => { cancelled = true }
+  }, [session, unread])
 }
 
 // Composer draft persistence. Each draft is keyed by its context
