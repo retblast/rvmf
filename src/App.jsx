@@ -10,6 +10,7 @@ import {
   MessageCircle,
   Plus,
   RotateCw,
+  ArrowUpToLine,
   LogOut,
   Globe,
   Settings,
@@ -56,6 +57,7 @@ import { SearchView } from './components/SearchView.jsx'
 import { HashtagFeed } from './components/HashtagFeed.jsx'
 import { MutedAccountsView } from './components/MutedAccountsView.jsx'
 import InstanceIcon from './components/InstanceIcon.jsx'
+import { ScrollTopButton } from './components/ScrollTopButton.jsx'
 import { applyOsAccent } from './lib/osAccent'
 import { storageGet, storageSet } from './lib/storage.js'
 import { PROVIDERS, PROVIDER_IDS, DEFAULT_PROVIDER, unloadProvider } from './lib/translate.js'
@@ -1022,6 +1024,9 @@ export default function App() {
   }
 
   function handleRefresh() {
+    // Refreshing means "show me the newest" — jump to the top instantly
+    // (not smooth: prepended items would fight an animated scroll).
+    scrollEl?.scrollTo({ top: 0 })
     if (view === 'notifications') {
       loadNotifications()
     } else if (view === 'explore') {
@@ -2027,6 +2032,7 @@ export default function App() {
           <span>{refreshing ? 'Refreshing…' : pull >= 80 ? 'Release to refresh' : 'Pull to refresh'}</span>
         </div>
       )}
+      <ScrollTopButton scrollEl={scrollEl} tier={tier} />
       {SkinHeaderBar ? (
         <SkinHeaderBar {...headerProps} />
       ) : (
@@ -2165,6 +2171,19 @@ export default function App() {
         </div>
 
         <div className="headerbar-actions">
+          {tier === 'wide' && (
+            <button
+              className="icon-btn"
+              aria-label="Back to top"
+              title="Back to top"
+              onClick={() => scrollEl?.scrollTo({
+                top: 0,
+                behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+              })}
+            >
+              <ArrowUpToLine size={16} />
+            </button>
+          )}
           <button className="icon-btn" aria-label="Refresh" title="Refresh" onClick={handleRefresh}>
             <RotateCw size={16} />
           </button>

@@ -1503,6 +1503,30 @@ button {
   to { transform: rotate(360deg); }
 }
 
+/* Floating "back to top" pill — medium/narrow tiers only (the wide tier
+   gets an always-visible headerbar button instead). */
+.scroll-top-btn {
+  align-items: center;
+  background: var(--accent);
+  border: none;
+  border-radius: 9999px;
+  bottom: 24px;
+  box-shadow: var(--shadow, 0 2px 8px rgba(0, 0, 0, 0.15));
+  color: var(--accent-fg);
+  cursor: pointer;
+  display: flex;
+  height: 40px;
+  justify-content: center;
+  position: fixed;
+  right: 24px;
+  width: 40px;
+  z-index: 50;
+}
+
+.scroll-top-btn:hover {
+  filter: brightness(1.08);
+}
+
 /* Generic spinner for backfill buttons etc. */
 .spin {
   animation: pull-spin 0.9s linear infinite;
