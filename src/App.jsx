@@ -37,6 +37,7 @@ import InstanceIcon from './components/InstanceIcon.jsx'
 import { ScrollTopButton } from './components/ScrollTopButton.jsx'
 import { SettingsMenu } from './components/SettingsMenu.jsx'
 import { ServerInfoPopover } from './components/ServerInfoPopover.jsx'
+import { ToastStack } from './components/ToastStack.jsx'
 import { storageGet, storageSet } from './lib/storage.js'
 import { ListsView } from './components/ListsView.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
@@ -387,18 +388,7 @@ export default function App() {
   // online refreshes the current view and notifications immediately.
   const [online, setOnline] = useState(() => navigator.onLine)
 
-  // Toast stack + global shortcuts
-  const [toasts, setToasts] = useState([])
-  useEffect(() => {
-    function onToast(e) {
-      const id = `${Date.now()}-${Math.random()}`
-      setToasts((prev) => [...prev, { id, message: e.detail }])
-      setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000)
-    }
-    window.addEventListener('rvmf-toast', onToast)
-    return () => window.removeEventListener('rvmf-toast', onToast)
-  }, [])
-
+  // Global keyboard shortcuts
   useEffect(() => {
     function onKey(e) {
       if (!(e.ctrlKey || e.metaKey)) return
@@ -1694,11 +1684,7 @@ export default function App() {
           You&apos;re offline — updates paused. Content is from cache.
         </div>
       )}
-      <div className="toast-stack" aria-live="polite">
-        {toasts.map((t) => (
-          <div key={t.id} className="toast" data-testid="toast">{t.message}</div>
-        ))}
-      </div>
+      <ToastStack />
       {showPullIndicator && (
         <div className={`pull-indicator${refreshing ? ' refreshing' : ''}`} style={pull ? { transform: `translateX(-50%) translateY(${Math.min(pull / 2, 24)}px)` } : undefined}>
           <RotateCw size={14} className={refreshing ? 'spin' : undefined} />
