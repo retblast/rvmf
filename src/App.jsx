@@ -17,40 +17,17 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useMitraSession } from './useMitraSession'
+import { useAppSettings } from './useAppSettings'
 import * as mitra from './lib/mitra'
 import { blipFavicon } from './lib/favicon-blip.js'
 import { buildReplyTree, findNode, insertIntoTree, updateTreeNode, mergeStatusIntoRow, htmlToPlainText as noteToPlainText } from './lib/render.jsx'
 import { AppSettingsContext, PickerContext, GhostContext, useLayoutTier, usePullToRefresh, useSwipeBack } from './hooks'
-import { ChevronRight } from 'lucide-react'
 
-// Collapsible blocked-domain list (the one server list that grows
-// without limit). Grid-rows 0fr->1fr animates the height without JS
-// measurement; inner box scrolls past ~180px.
-function DomainsAccordion({ domains }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <>
-      <button type="button" className="accordion-header" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <ChevronRight size={13} className={`accordion-chevron${open ? ' open' : ''}`} />
-        <span className="settings-menu-heading">Blocked Domains</span>
-        <span className="notif-policy-badge">{domains.length}</span>
-      </button>
-      <div className={`accordion-body${open ? ' open' : ''}`}>
-        <div className="accordion-inner scrollbar-thin">
-          {domains.map((block) => (
-            <div key={block.digest} className="settings-menu-row settings-menu-subrow">
-              <span>{block.domain}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
-  )
-}
+// Server-side notification filters (exclude_types[]). A group counts as
 import LoginView from './LoginView'
 import { Avatar, MediaLightbox } from './components/Media.jsx'
 import { NotificationRow, PostRow } from './components/Post.jsx'
-import { ComposeDialog, EditDialog, visibilityLabel as mitraVisibilityLabel } from './components/Compose.jsx'
+import { ComposeDialog, EditDialog } from './components/Compose.jsx'
 import { ThreadPanel, ThreadPanelContent, ThreadPanelHeader } from './components/ThreadPanel.jsx'
 import { ProfileView } from './components/ProfileView.jsx'
 import { SearchView } from './components/SearchView.jsx'
@@ -58,22 +35,16 @@ import { HashtagFeed } from './components/HashtagFeed.jsx'
 import { MutedAccountsView } from './components/MutedAccountsView.jsx'
 import InstanceIcon from './components/InstanceIcon.jsx'
 import { ScrollTopButton } from './components/ScrollTopButton.jsx'
-import { applyOsAccent } from './lib/osAccent'
+import { SettingsMenu } from './components/SettingsMenu.jsx'
+import { ServerInfoPopover } from './components/ServerInfoPopover.jsx'
 import { storageGet, storageSet } from './lib/storage.js'
-import { PROVIDERS, PROVIDER_IDS, DEFAULT_PROVIDER, unloadProvider } from './lib/translate.js'
-import { GIF_LARGE_BYTES } from './lib/gif/convert.js'
-import { gifCacheClear, gifCacheSweep } from './lib/gif/cache.js'
-import { installGifHoverAnimator } from './lib/gif/hoverAnimator.js'
 import { ListsView } from './components/ListsView.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { GroupsView } from './components/GroupsView.jsx'
 import { ConversationsView } from './components/ConversationsView.jsx'
 import { AccountSettingsView } from './components/AccountSettingsView.jsx'
 import { FavouritesView } from './components/FavouritesView.jsx'
-import { Switch } from './components/Switch.jsx'
-import { ConfirmDialog } from './components/ConfirmDialog.jsx'
 import { StatusPage } from './components/StatusPage.jsx'
-import { SKINS, applySkin } from './lib/skins.js'
 import { UIContext } from './ui/index.jsx'
 
 // Server-side notification filters (exclude_types[]). A group counts as
@@ -87,16 +58,6 @@ const NOTIF_FILTERS = [
   ['Follows', ['follow', 'follow_request']],
   ['Polls', ['poll']],
   ['Edits', ['update']],
-]
-
-// Server-side notification policy rules (GET /v2/notifications/policy).
-// Values are 'accept' | 'drop' and can't be changed from the API — the
-// instance decides them.
-const NOTIF_POLICY_RULES = [
-  ['for_not_following', "From people you don't follow"],
-  ['for_not_followers', "From people not following you"],
-  ['for_new_accounts', 'From brand-new accounts'],
-  ['for_private_mentions', 'From direct mentions'],
 ]
 
 // Hard cap on in-memory timeline rows. The server paginates the home feed
@@ -231,26 +192,8 @@ export default function App() {
     setSettingsOpen(true)
   }
 
-  // Anchor the settings panel to its trigger while capping its height to the
-  // space that actually fits the viewport; the panel scrolls internally when
-  // the content is taller than that.
-  function settingsMenuStyle() {
-    if (!settingsAnchor) return undefined
-    const fromBottom = settingsAnchor.bottom + 460 > window.innerHeight
-    const space = (fromBottom ? settingsAnchor.top : window.innerHeight - settingsAnchor.bottom) - 14
-    return {
-      top: fromBottom ? undefined : settingsAnchor.bottom + 6,
-      bottom: fromBottom ? window.innerHeight - settingsAnchor.top + 6 : undefined,
-      maxHeight: Math.max(160, space),
-      left: Math.max(8, Math.min(settingsAnchor.left, window.innerWidth - 340)),
-    }
-  }
-  const [clientName, setClientNameState] = useState(() => mitra.getClientName())
-  const [notifPolicy, setNotifPolicy] = useState(null)
   // Account ids with pending incoming follow requests (null = unknown yet)
   const [pendingFollowIds, setPendingFollowIds] = useState(null)
-  const [domainBlocks, setDomainBlocks] = useState(null)
-  const [defaultVisibility, setDefaultVisibility] = useState('public')
   const [clearingNotifications, setClearingNotifications] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -259,150 +202,13 @@ export default function App() {
   const homeSentinelRef = useRef(null)
   const narrowThreadRef = useRef(null)
 
-  const [fetchClientMedia, setFetchClientMedia] = useState(() => {
-    return storageGet('fetch-client-media') !== 'false'
+  // All user settings (appearance/content/GIF/translation/account) live in
+  // this hook, bundled with the client_config server sync. notif-excluded
+  // is owned by the notifications code below but rides the same sync.
+  const appSettings = useAppSettings(session, {
+    onClientNameChange: logout,
+    extraSynced: { 'notif-excluded': [notifExcluded, setNotifExcluded] },
   })
-
-  const [alwaysSensitive, setAlwaysSensitive] = useState(() => {
-    return storageGet('always-sensitive') === 'true'
-  })
-
-  const [useOsAccent, setUseOsAccent] = useState(() => {
-    return storageGet('use-os-accent') !== 'false'
-  })
-
-  function toggleUseOsAccent() {
-    setUseOsAccent((prev) => {
-      const next = !prev
-      applyOsAccent(next)
-      storageSet('use-os-accent', String(next))
-      return next
-    })
-  }
-
-  function toggleAlwaysSensitive() {
-    setAlwaysSensitive((prev) => {
-      const next = !prev
-      storageSet('always-sensitive', String(next))
-      return next
-    })
-  }
-
-  // Only meaningful when strict sensitive mode hides everything: allow
-  // hover previews to peek at unrevealed media.
-  const [peekSpoilerMedia, setPeekSpoilerMedia] = useState(() => {
-    return storageGet('peek-spoiler') === 'true'
-  })
-
-  function togglePeekSpoilerMedia() {
-    setPeekSpoilerMedia((prev) => {
-      const next = !prev
-      storageSet('peek-spoiler', String(next))
-      return next
-    })
-  }
-
-  function toggleFetchClientMedia() {
-    setFetchClientMedia((prev) => {
-      const next = !prev
-      storageSet('fetch-client-media', String(next))
-      return next
-    })
-  }
-
-  // On-device translation is off by default and opt-in behind a confirm:
-  // the first use downloads a ~3 GB model, so we want the user's explicit
-  // ok before flipping it on. Local-only (not synced) — whether to stash a
-  // multi-GB model on a device is a per-machine decision.
-  const [translationEnabled, setTranslationEnabled] = useState(() => {
-    return storageGet('translation-enabled') === 'true'
-  })
-  const [confirmingTranslation, setConfirmingTranslation] = useState(false)
-  // Which on-device translator to use: the lightweight CPU model (default) or
-  // the larger GPU model. Local-only, persisted alongside the enable toggle.
-  const [translationProvider, setTranslationProvider] = useState(() => {
-    const stored = storageGet('translation-provider')
-    return PROVIDER_IDS.includes(stored) ? stored : DEFAULT_PROVIDER
-  })
-
-  function handleToggleTranslation(next) {
-    if (next && !translationEnabled) {
-      setConfirmingTranslation(true)
-      return
-    }
-    setTranslationEnabled(next)
-    storageSet('translation-enabled', String(next))
-    // Turning the feature off should stop pinning the loaded model in memory —
-    // release whichever provider(s) were loaded so the freed memory returns to
-    // the browser/GPU immediately.
-    if (!next) PROVIDER_IDS.forEach(unloadProvider)
-  }
-
-  function confirmTranslation() {
-    setConfirmingTranslation(false)
-    setTranslationEnabled(true)
-    storageSet('translation-enabled', 'true')
-  }
-
-  function handleTranslationProvider(provider) {
-    // Switching providers should not keep the previous model resident (esp.
-    // the ~3 GB WebGPU Gemma) — release the one we're leaving.
-    if (provider !== translationProvider) unloadProvider(translationProvider)
-    setTranslationProvider(provider)
-    storageSet('translation-provider', provider)
-  }
-
-  // GIF -> AV1 power saver. Local-only (not synced), like translation:
-  // whether this browser re-encodes GIFs is a per-device decision.
-  const [gifConversionEnabled, setGifConversionEnabled] = useState(() => {
-    return storageGet('gif-conversion-enabled') === 'true'
-  })
-  const [gifIncludeLarge, setGifIncludeLarge] = useState(() => {
-    return storageGet('gif-conversion-large') === 'true'
-  })
-  const [gifHoverAnimate, setGifHoverAnimate] = useState(() => {
-    return storageGet('gif-hover-animate') === 'true'
-  })
-
-  function toggleGifConversion() {
-    setGifConversionEnabled((prev) => {
-      const next = !prev
-      storageSet('gif-conversion-enabled', String(next))
-      // Stashed conversions are meaningless while the feature is off —
-      // drop them so a re-enable starts clean (and frees the space).
-      if (!next) gifCacheClear()
-      return next
-    })
-  }
-
-  function toggleGifIncludeLarge() {
-    setGifIncludeLarge((prev) => {
-      const next = !prev
-      storageSet('gif-conversion-large', String(next))
-      return next
-    })
-  }
-
-  function toggleGifHoverAnimate() {
-    setGifHoverAnimate((prev) => {
-      const next = !prev
-      storageSet('gif-hover-animate', String(next))
-      return next
-    })
-  }
-
-  // Cache housekeeping + the hover animator's document listeners. Installed
-  // once; the animator only acts on videos that opted in via the
-  // data-rvmf-animatable attribute, so it's inert while the feature is off.
-  useEffect(() => {
-    gifCacheSweep()
-    const timer = setInterval(() => gifCacheSweep(), 60 * 60 * 1000)
-    const uninstall = installGifHoverAnimator()
-    return () => {
-      clearInterval(timer)
-      uninstall()
-    }
-  }, [])
 
   async function handleClearNotifications() {
     if (!session || clearingNotifications) return
@@ -418,56 +224,6 @@ export default function App() {
       setClearingNotifications(false)
     }
   }
-
-  // Persist the posting default on the account (SharedClientConfig) so
-  // it applies everywhere, not just this browser.
-  function handleDefaultVisibilityChange(v) {
-    const previous = defaultVisibility
-    setDefaultVisibility(v)
-    if (!session) return
-    mitra.updateCredentials(session.instanceUrl, session.token, { source: { privacy: v } })
-      .catch(() => setDefaultVisibility(previous))
-  }
-
-  function handleClientNameChange(name) {
-    setClientNameState(name)
-    mitra.setClientName(name)
-    if (session) {
-      mitra.clearAppCredentials(session.instanceUrl)
-      logout()
-    }
-  }
-
-  const [themeMode, setThemeMode] = useState(() => {
-    return storageGet('theme-mode') || 'system'
-  })
-
-  // Skin (look-and-feel package): adwaita is the baseline; others are
-  // token manifests from src/lib/skins.js.
-  const [skinId, setSkinId] = useState(() => storageGet('skin') || 'adwaita')
-  useEffect(() => {
-    const skin = SKINS[skinId]
-    if (!skin) return
-    applySkin(skin)
-    storageSet('skin', skinId)
-    // Non-GNOME skins own their accent — the OS-accent feature yields.
-    if (!skin.respectOsAccent) {
-      document.documentElement.classList.remove('os-accent')
-      document.documentElement.style.removeProperty('--os-accent')
-    } else {
-      applyOsAccent(useOsAccent)
-    }
-  }, [skinId, useOsAccent])
-
-  useEffect(() => {
-    const root = document.documentElement
-    if (themeMode === 'system') {
-      delete root.dataset.theme
-    } else {
-      root.dataset.theme = themeMode
-    }
-    storageSet('theme-mode', themeMode)
-  }, [themeMode])
 
   // Browser tab follows the instance: favicon and a "rvmf on <host>"
   // title; both restored to plain "rvmf" when logged out.
@@ -660,9 +416,6 @@ export default function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [session])
-  // Flips true once the settings backfill attempt has resolved; gates
-  // the debounced push below.
-  const [configSyncReady, setConfigSyncReady] = useState(false)
   useEffect(() => {
     function goOffline() { setOnline(false) }
     function goOnline() {
@@ -678,72 +431,6 @@ export default function App() {
       window.removeEventListener('online', goOnline)
     }
   }, [session, view, tier, loadNotifications])
-
-  // Server-backed settings sync. Fresh devices backfill missing values
-  // from the account's client_config; a device that already has a value
-  // locally is never overridden — local always wins. Changes push back
-  // (debounced) so they follow you across devices.
-  const restoredConfigRef = useRef(null)
-  useEffect(() => {
-    if (!session || restoredConfigRef.current === session.account?.id) return
-    restoredConfigRef.current = session.account?.id ?? 'anon'
-    let cancelled = false
-    mitra.fetchOwnAccount(session.instanceUrl, session.token)
-      .then((acct) => {
-        if (cancelled) return
-        setConfigSyncReady(true)
-        const cfg = acct?.client_config?.rvmf
-        if (!cfg) return
-        if (storageGet('theme-mode') === null && typeof cfg['theme-mode'] === 'string') {
-          setThemeMode(cfg['theme-mode'])
-        }
-        if (storageGet('skin') === null && typeof cfg['skin'] === 'string' && SKINS[cfg['skin']]) {
-          setSkinId(cfg['skin'])
-          storageSet('skin', cfg['skin'])
-        }
-        if (storageGet('use-os-accent') === null && typeof cfg['use-os-accent'] === 'boolean') {
-          const enabled = Boolean(cfg['use-os-accent'])
-          setUseOsAccent(enabled)
-          applyOsAccent(enabled)
-          storageSet('use-os-accent', String(enabled))
-        }
-        for (const key of ['always-sensitive', 'peek-spoiler', 'fetch-client-media']) {
-          if (storageGet(key) === null && typeof cfg[key] === 'boolean') {
-            storageSet(key, String(cfg[key]))
-            if (key === 'always-sensitive') setAlwaysSensitive(Boolean(cfg[key]))
-            if (key === 'peek-spoiler') setPeekSpoilerMedia(Boolean(cfg[key]))
-            if (key === 'fetch-client-media') setFetchClientMedia(Boolean(cfg[key]))
-          }
-        }
-        if (storageGet('notif-excluded') === null && Array.isArray(cfg['notif-excluded'])) {
-          setNotifExcluded(cfg['notif-excluded'])
-          storageSet('notif-excluded', JSON.stringify(cfg['notif-excluded']))
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setConfigSyncReady(true)
-      })
-    return () => { cancelled = true }
-  }, [session])
-
-  useEffect(() => {
-    // Hold pushes until the initial backfill attempt has resolved —
-    // otherwise a fresh device would overwrite server config with its
-    // local defaults before reading what's there.
-    if (!session || !configSyncReady) return undefined
-    const timer = setTimeout(() => {
-      mitra.pushClientConfig(session.instanceUrl, session.token, {
-        'theme-mode': themeMode,
-        'skin': skinId,
-        'use-os-accent': useOsAccent,
-        'always-sensitive': alwaysSensitive,
-        'peek-spoiler': peekSpoilerMedia,
-        'fetch-client-media': fetchClientMedia,
-        'notif-excluded': notifExcluded,
-      }).catch(() => {})
-    }, 2000)
-    return () => clearTimeout(timer)
-  }, [session, themeMode, skinId, useOsAccent, alwaysSensitive, peekSpoilerMedia, fetchClientMedia, notifExcluded])
 
   // Restore the notifications read marker once per session so the unread
   // count on the tab is accurate.
@@ -886,20 +573,6 @@ export default function App() {
       loadMoreDirectory()
     }
   }, [view, exploreFeed, directoryAccounts.length, directoryLoading, loadMoreDirectory])
-
-  // Server-side posting default: seeds the composer's visibility and
-  // syncs across devices via SharedClientConfig.
-  useEffect(() => {
-    if (!session) return
-    let cancelled = false
-    mitra.fetchPreferences(session.instanceUrl, session.token)
-      .then((prefs) => {
-        const v = prefs?.['posting:default:visibility']
-        if (!cancelled && v) setDefaultVisibility(v)
-      })
-      .catch(() => {})
-    return () => { cancelled = true }
-  }, [session])
 
   const loadBookmarks = useCallback(async () => {
     if (!session) return
@@ -1069,7 +742,7 @@ export default function App() {
       } else if (openPickerId) {
         e.preventDefault()
         setOpenPickerId(null)
-      } else if (settingsOpen && !confirmingTranslation) {
+      } else if (settingsOpen && !appSettings.confirmingTranslation) {
         // While the translation confirm dialog is up, Escape is owned by the
         // dialog (it cancels it and keeps the settings menu open).
         e.preventDefault()
@@ -1081,7 +754,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [composing, editing, openPickerId, settingsOpen, confirmingTranslation, sidePanel])
+  }, [composing, editing, openPickerId, settingsOpen, appSettings.confirmingTranslation, sidePanel])
 
   function updatePost(updated) {
     setTimeline((prev) => prev.map((p) => mergeStatusIntoRow(p, updated)))
@@ -2004,7 +1677,7 @@ export default function App() {
 
   // Active skin's structural overrides (Tier 3). Adwaita has none and
   // keeps the inline GNOME header bar below.
-  const SkinHeaderBar = SKINS[skinId]?.components?.HeaderBar || null
+  const SkinHeaderBar = appSettings.skin?.components?.HeaderBar || null
   const headerProps = {
     session, tier, view, setView, notifUnread,
     handleRefresh, setComposing, logout, openSettingsFrom,
@@ -2012,9 +1685,9 @@ export default function App() {
   }
 
   return (
-    <UIContext.Provider value={SKINS[skinId]?.components || {}}>
+    <UIContext.Provider value={appSettings.skin?.components || {}}>
     <GhostContext.Provider value={{ ghostStatusId, inPanel: false }}>
-    <AppSettingsContext.Provider value={{ fetchClientMedia, alwaysSensitive, peekSpoilerMedia, translationEnabled, translationProvider, defaultVisibility, gifConversionEnabled, gifIncludeLarge, gifHoverAnimate, instanceUrl: session.instanceUrl, token: session.token }}>
+    <AppSettingsContext.Provider value={appSettings.contextValue}>
     <PickerContext.Provider value={{ openPickerId, setOpenPickerId }}>
       {!online && (
         <div className="banner banner-offline">
@@ -2042,19 +1715,7 @@ export default function App() {
             type="button"
             className="headerbar-brand headerbar-brand-btn"
             aria-label="Server details"
-            onClick={() => {
-              setServerInfoOpen((v) => !v)
-              if (!notifPolicy) {
-                mitra.fetchNotificationPolicy(session.instanceUrl, session.token)
-                  .then(setNotifPolicy)
-                  .catch(() => {})
-              }
-              if (!domainBlocks) {
-                mitra.fetchDomainBlocks(session.instanceUrl, session.token)
-                  .then(setDomainBlocks)
-                  .catch(() => {})
-              }
-            }}
+            onClick={() => setServerInfoOpen((v) => !v)}
           >
             <InstanceIcon instanceUrl={session.instanceUrl} />
             <div>
@@ -2065,46 +1726,12 @@ export default function App() {
             </div>
           </button>
           {serverInfoOpen && (
-            <>
-              <div className="settings-menu-backdrop" onClick={() => setServerInfoOpen(false)} />
-              <div className="server-popover">
-                <span className="settings-menu-heading">{session.instanceUrl.replace(/^https?:\/\//, '')}</span>
-                {notifPolicy ? (
-                  <div className="settings-menu-section">
-                    <span className="settings-menu-heading">Notification Filters</span>
-                    {/* Mitra's policy values are 'accept' | 'drop' — which
-                        notifications the instance filters before you ever
-                        see them. Server-decided, so display-only. */}
-                    {NOTIF_POLICY_RULES.map(([key, label]) => {
-                      const value = notifPolicy[key]
-                      if (!value) return null
-                      return (
-                        <div key={key} className="settings-menu-row settings-menu-subrow">
-                          <span>{label}</span>
-                          <span className={`notif-policy-badge${value === 'drop' ? ' drop' : ''}`}>
-                            {value}
-                          </span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <span className="poll-meta">Loading filters…</span>
-                )}
-                {domainBlocks && (
-                  <div className="settings-menu-section">
-                    {domainBlocks.length === 0 ? (
-                      <>
-                        <span className="settings-menu-heading">Blocked Domains</span>
-                        <span className="poll-meta">None.</span>
-                      </>
-                    ) : (
-                      <DomainsAccordion domains={domainBlocks} />
-                    )}
-                  </div>
-                )}
-              </div>
-            </>
+            <ServerInfoPopover
+              open={serverInfoOpen}
+              onClose={() => setServerInfoOpen(false)}
+              instanceUrl={session.instanceUrl}
+              token={session.token}
+            />
           )}
         </div>
 
@@ -2214,211 +1841,13 @@ export default function App() {
         </div>
       </header>
       )}
-            {settingsOpen && (
-              <>
-                <div className="settings-menu-backdrop" onClick={() => setSettingsOpen(false)} />
-                <div
-                  className={`settings-menu${settingsAnchor ? '' : ' centered'}`}
-                  style={settingsMenuStyle()}
-                >
-                  <div className="settings-group">
-                    <span className="settings-menu-heading">Appearance</span>
-                    <div className="settings-menu-row">
-                      <span>Style</span>
-                      <select
-                        className="compose-visibility-select"
-                        value={skinId}
-                        onChange={(e) => setSkinId(e.target.value)}
-                        aria-label="Style"
-                      >
-                        {Object.values(SKINS).map((s) => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <label className="settings-menu-row">
-                      <span>Use System Accent Color</span>
-                      <Switch checked={useOsAccent} onChange={toggleUseOsAccent} label="Use System Accent Color" />
-                    </label>
-                    <div className="settings-menu-row">
-                      <span>Theme</span>
-                      <div className="theme-toggle">
-                        <button
-                          className={`theme-toggle-btn${themeMode === 'system' ? ' active' : ''}`}
-                          onClick={() => setThemeMode('system')}
-                        >
-                          System
-                        </button>
-                        <button
-                          className={`theme-toggle-btn${themeMode === 'light' ? ' active' : ''}`}
-                          onClick={() => setThemeMode('light')}
-                        >
-                          Light
-                        </button>
-                        <button
-                          className={`theme-toggle-btn${themeMode === 'dark' ? ' active' : ''}`}
-                          onClick={() => setThemeMode('dark')}
-                        >
-                          Dark
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="settings-group">
-                    <span className="settings-menu-heading">Content</span>
-                    <label className="settings-menu-row">
-                      <span>Fetch Media Directly</span>
-                      <Switch checked={fetchClientMedia} onChange={toggleFetchClientMedia} label="Fetch Media Directly" />
-                    </label>
-                    <label className="settings-menu-row">
-                      <span>Mark All Media As Sensitive</span>
-                      <Switch checked={alwaysSensitive} onChange={toggleAlwaysSensitive} label="Mark All Media As Sensitive" />
-                    </label>
-                    {alwaysSensitive && (
-                      <label className="settings-menu-row settings-menu-subrow">
-                        <span>Reveal Media on Hover (Peek)</span>
-                        <Switch checked={peekSpoilerMedia} onChange={togglePeekSpoilerMedia} label="Reveal Media on Hover (Peek)" />
-                      </label>
-                    )}
-                  </div>
-
-                  <div className="settings-group">
-                    <span className="settings-menu-heading">GIF Power Saver</span>
-                    <label className="settings-menu-row">
-                      <span>Convert GIFs to AV1</span>
-                      <Switch checked={gifConversionEnabled} onChange={toggleGifConversion} label="Convert GIFs to AV1" />
-                    </label>
-                    <div className="settings-menu-note">
-                      Re-encodes animated GIFs as AV1 video on this device so scrolling drains less battery. Conversions live in a private cache that expires after 30 days of disuse.
-                    </div>
-                    {gifConversionEnabled && (
-                      <>
-                        <label className="settings-menu-row settings-menu-subrow">
-                          <span>Convert Large GIFs Too</span>
-                          <Switch checked={gifIncludeLarge} onChange={toggleGifIncludeLarge} label="Convert Large GIFs Too" />
-                        </label>
-                        <div className="settings-menu-note">
-                          By default GIFs over {Math.round(GIF_LARGE_BYTES / 1024 / 1024)} MB stay as-is — conversion is slower for them.
-                        </div>
-                        <label className="settings-menu-row settings-menu-subrow">
-                          <span>Animate on Hover</span>
-                          <Switch checked={gifHoverAnimate} onChange={toggleGifHoverAnimate} label="Animate on Hover" />
-                        </label>
-                        <div className="settings-menu-note">
-                          Emojis and avatars stay still until you hover them.
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="settings-group">
-                    <span className="settings-menu-heading">Translation</span>
-                    <label className="settings-menu-row">
-                      <span>Translate Foreign Posts</span>
-                      <Switch checked={translationEnabled} onChange={handleToggleTranslation} label="Translate Foreign Posts" />
-                    </label>
-                    <div className="settings-menu-note">
-                      Runs on-device in your browser — post text never leaves your device.
-                    </div>
-                    {translationEnabled && (
-                      <div className="settings-menu-row settings-menu-subrow settings-menu-radio-group">
-                        <span className="settings-menu-radios">
-                          {PROVIDER_IDS.map((id) => (
-                            <label
-                              key={id}
-                              className="settings-menu-radio"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <input
-                                type="radio"
-                                name="translation-provider"
-                                value={id}
-                                checked={translationProvider === id}
-                                onChange={() => handleTranslationProvider(id)}
-                              />
-                              <span>{PROVIDERS[id].uiLabel}</span>
-                            </label>
-                          ))}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="settings-group">
-                    <span className="settings-menu-heading">Account</span>
-                    <div className="settings-menu-row">
-                      <span>Default Post Visibility</span>
-                      <select
-                        className="compose-visibility-select"
-                        value={defaultVisibility}
-                        onChange={(e) => handleDefaultVisibilityChange(e.target.value)}
-                      >
-                        {['public', 'unlisted', 'private', 'subscribers', 'direct'].map((v) => (
-                          <option key={v} value={v}>{mitraVisibilityLabel(v)}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="settings-menu-row">
-                      <span>Sent From</span>
-                      <input
-                        type="text"
-                        className="settings-text-input"
-                        value={clientName}
-                        onChange={(e) => handleClientNameChange(e.target.value)}
-                        maxLength={32}
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="settings-menu-row settings-menu-link"
-                    onClick={() => { setSettingsOpen(false); setView('favourites') }}
-                  >
-                    <span>Favourites</span>
-                    <span className="settings-menu-arrow">→</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="settings-menu-row settings-menu-link"
-                    onClick={() => { setSettingsOpen(false); setView('muted') }}
-                  >
-                    <span>Muted Accounts</span>
-                    <span className="settings-menu-arrow">→</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="settings-menu-row settings-menu-link"
-                    onClick={() => { setSettingsOpen(false); setView('account') }}
-                  >
-                    <span>Account &amp; Sessions</span>
-                    <span className="settings-menu-arrow">→</span>
-                  </button>
-                </div>
-              </>
-            )}
-
-            {confirmingTranslation && (
-              <ConfirmDialog
-                title="Enable on-device translation?"
-                confirmLabel="Enable"
-                onCancel={() => setConfirmingTranslation(false)}
-                onConfirm={confirmTranslation}
-              >
-                <p>
-                  This turns on in-browser translation for posts in a language
-                  that isn't yours. Translations run on-device — post text is
-                  never sent to a server.
-                </p>
-                <p className="confirm-note">
-                  The default uses the fast, lightweight Qwen model (~600 MB,
-                  CPU). You can switch to the higher-quality Gemma 4 model
-                  (WebGPU) from the Translation settings. Models download
-                  once, then stay cached.
-                </p>
-              </ConfirmDialog>
-            )}
+      <SettingsMenu
+        open={settingsOpen}
+        anchor={settingsAnchor}
+        settings={appSettings}
+        onClose={() => setSettingsOpen(false)}
+        onNavigate={setView}
+      />
 
       {tier === 'wide' ? (
         <div className="app-shell">
