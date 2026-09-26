@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Home,
   Bell,
@@ -19,8 +19,8 @@ import { useMitraSession } from './useMitraSession'
 import { useAppSettings } from './useAppSettings'
 import { useNotifications, NOTIF_FILTERS } from './useNotifications'
 import { useTimeline } from './useTimeline'
+import { useThreadPanel } from './useThreadPanel'
 import * as mitra from './lib/mitra'
-import { buildReplyTree, findNode, insertIntoTree, updateTreeNode } from './lib/render.jsx'
 import { AppSettingsContext, PickerContext, GhostContext, useLayoutTier, usePullToRefresh, useSwipeBack, useInstanceFavicon } from './hooks'
 
 import LoginView from './LoginView'
@@ -64,24 +64,8 @@ export default function App() {
   const [replyContext, setReplyContext] = useState(null)
   const [editing, setEditing] = useState(null)
   const [openPickerId, setOpenPickerId] = useState(null)
-  const [replyStates, setReplyStates] = useState({})
-  const replyStatesRef = useRef(replyStates)
-  replyStatesRef.current = replyStates
-  const [sidePanel, setSidePanel] = useState(null)
-  const sidePanelRef = useRef(sidePanel)
-  sidePanelRef.current = sidePanel
-  // The timeline row the user clicked outside the panel — drives the
-  // ghost placeholder ("Viewing in thread").  Anchors independently of
-  // sidePanel.status, which may be the thread root for mid-thread
-  // replies or refreshed by the poll interval.
-  const [ghostStatusId, setGhostStatusId] = useState(null)
-  // Guards async thread-open fetches: remembers which status started the
-  // in-flight load so a stale resolve can't clobber a newer open (or an
-  // explicit close).
-  const lastThreadOpenRef = useRef(null)
   const [profileAccountId, setProfileAccountId] = useState(null)
   const [hashtagTag, setHashtagTag] = useState(null)
-  const [focusedReplyId, setFocusedReplyId] = useState(null)
   const [lightboxAttachment, setLightboxAttachment] = useState(null)
   const [exploreRefreshTick, setExploreRefreshTick] = useState(0)
   const [bookmarksRefreshTick, setBookmarksRefreshTick] = useState(0)
@@ -103,6 +87,16 @@ export default function App() {
   // Home timeline hook — owns the list, pagination, sentinel, and poll.
   const tl = useTimeline(session, { view, tier })
 
+  // Side-panel thread engine — reply trees, ghost anchor, focused reply,
+  // the 5s silent refresh, and panel-scoped compose routing.
+  const threadPanel = useThreadPanel(session, {
+    openComposerForReply: (status) => {
+      setQuoteStatus(null)
+      setReplyContext(status)
+      setComposing(true)
+    },
+  })
+  const { sidePanel, ghostStatusId, focusedReplyId } = threadPanel
   // Build an id→status map so PostRow can look up parent statuses for
   // "in reply to" links within notifications.
   const notifStatusById = useMemo(() => {
@@ -185,7 +179,7 @@ export default function App() {
     try {
       await mitra.deleteStatus(session.instanceUrl, session.token, statusId)
       tl.removeStatus(statusId)
-      if (sidePanel?.status?.id === statusId) setSidePanel(null)
+      if (sidePanel?.status?.id === statusId) threadPanel.setSidePanel(null)
     } catch (err) {
       console.error(err)
     }
@@ -262,7 +256,7 @@ export default function App() {
         setSettingsOpen(false)
       } else if (sidePanel) {
         e.preventDefault()
-        closeSidePanel()
+        threadPanel.closeSidePanel()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -282,180 +276,14 @@ export default function App() {
     setEditedStatus(updated)
     tl.updatePost(updated)
     notifs.updateNotificationStatus(updated)
-    if (sidePanel?.status) updateReplyInPanel(updated)
+    if (sidePanel?.status) threadPanel.updateReplyInPanel(updated)
   }
 
-  // Fetches the ENTIRE descendant tree for `status` (not just its direct
-  // children — /context returns every depth in one call) plus its
-  // ancestors, and always refetches on open rather than relying on a
-  // stale cache, so what's shown is actually current. Every thread opens
-  // through this, unconditionally — the OP, a notification's status, a
-  // reply, a reply to a reply, all the same path, all the same panel.
-  // Force-refetch the reply tree for a thread root. Shared by the
-  // auto-refresh interval, the post-reply refresh, and the "load missing
-  // replies from origin" backfill button.
-  const refreshContext = useCallback((rootId) => {
-    if (!session || !rootId) return
-    mitra.fetchContext(session.instanceUrl, session.token, rootId)
-      .then((context) => {
-        const tree = buildReplyTree(context.descendants, rootId)
-        setReplyStates((prev) => ({
-          ...prev,
-          [rootId]: { loading: false, error: '', items: tree, ancestors: context.ancestors },
-        }))
-      })
-      .catch(() => {})
-  }, [session])
-
-  // Resolves the thread root for `status`.  If the post is a mid-thread
-  // reply (has ancestors), we re-fetch from the root so the full thread
-  // — including sibling branches — is shown.  Returns { root, clickedId }
-  // so the caller can point the panel at the root and highlight the
-  // originally-clicked post.
-  const ensureRepliesLoaded = useCallback(
-    (status) => {
-      setReplyStates((prev) => {
-        if (prev[status.id]?.items) return prev
-        return { ...prev, [status.id]: { ...(prev[status.id] || {}), loading: true, error: '' } }
-      })
-
-      if (replyStatesRef.current[status.id]?.items) {
-        return Promise.resolve({ root: status, clickedId: status.id })
-      }
-
-      return mitra
-        .fetchContext(session.instanceUrl, session.token, status.id)
-        .then((context) => {
-          // Mid-thread post: ancestors[0] is the thread root.  Re-fetch
-          // from the root so the full conversation tree is loaded.
-          if (context.ancestors.length > 0) {
-            const root = context.ancestors[0]
-            // Already loaded — just return the root.
-            if (replyStatesRef.current[root.id]?.items) {
-              return { root, clickedId: status.id }
-            }
-            setReplyStates((prev) => ({
-              ...prev,
-              [root.id]: { ...(prev[root.id] || {}), loading: true, error: '' },
-            }))
-            return mitra
-              .fetchContext(session.instanceUrl, session.token, root.id)
-              .then((rootContext) => {
-                const tree = buildReplyTree(rootContext.descendants, root.id)
-                setReplyStates((prev) => ({
-                  ...prev,
-                  [root.id]: { loading: false, error: '', items: tree, ancestors: rootContext.ancestors },
-                }))
-                return { root, clickedId: status.id }
-              })
-          }
-
-          // Top-level post or root of its thread — use as-is.
-          const tree = buildReplyTree(context.descendants, status.id)
-          setReplyStates((prev) => ({
-            ...prev,
-            [status.id]: { loading: false, error: '', items: tree, ancestors: context.ancestors },
-          }))
-          return { root: status, clickedId: status.id }
-        })
-        .catch((err) => {
-          setReplyStates((prev) => ({
-            ...prev,
-            [status.id]: {
-              ...(prev[status.id] || {}),
-              loading: false,
-              error: err.message || 'Failed to load replies.',
-            },
-          }))
-          return { root: status, clickedId: status.id }
-        })
-    },
-    [session]
-  )
-
-  // Opens the side panel for `status` — ancestors and the full reply tree —
-  // or closes it if that same status is already showing.  This is the only
-  // way threads open anywhere in the app now: always the slide-out panel,
-  // never inline in the timeline.
-  //
-  // { fromPanel } — set when the click originates from inside the thread
-  // panel (e.g. a reply's own onOpenThread).  Panel-internal navigation
-  // never changes the ghost anchor — the marker stays on the row the user
-  // clicked *outside* the panel.
-  function handleOpenThread(status, { fromPanel = false } = {}) {
-    // If already showing this exact post, re-anchor the ghost and bail.
-    if (sidePanelRef.current?.mode === 'thread' && sidePanelRef.current.status.id === status.id) {
-      if (!fromPanel) setGhostStatusId(status.id)
-      return
-    }
-
-    // Ghost the clicked row immediately so the banner appears without
-    // waiting for the async thread resolve.  For mid-thread replies the
-    // panel may briefly still show the previous thread — the ghost is
-    // anchored to the row the user actually clicked.
-    if (!fromPanel) setGhostStatusId(status.id)
-
-    // Mid-thread reply: resolve the thread root first so the panel opens
-    // directly in the full-thread view — no visible focal switch, no
-    // re-mount of the panel content.
-    if (status.in_reply_to_id) {
-      lastThreadOpenRef.current = status.id
-      ensureRepliesLoaded(status).then(({ root, clickedId }) => {
-        // Stale resolve: a newer click or an explicit close superseded this.
-        if (lastThreadOpenRef.current !== status.id) return
-        setSidePanel({ mode: 'thread', status: root })
-        // Focus stays on the clicked post for the life of the thread —
-        // no timer, so a slow resolve can't wipe a newer focus either.
-        setFocusedReplyId(clickedId !== root.id ? clickedId : null)
-      })
-      return
-    }
-
-    // Top-level post: the clicked post IS the thread's anchor, so open
-    // immediately — and clear any focus left over from a prior thread.
-    setSidePanel({ mode: 'thread', status })
-    setFocusedReplyId(null)
-    ensureRepliesLoaded(status)
-  }
-
-  // Reply button inside the thread panel: compose inline beneath the
-  // focal post. Only panel-resident statuses can resolve here — the
-  // inline composer looks its preview up in the thread's own tree.
-  function handleComposeReplyInPanel(status) {
-    setSidePanel((prev) => {
-      if (prev?.mode === 'thread') {
-        return { ...prev, composingStatusId: status.id }
-      }
-      return { mode: 'compose', status, threadRoot: null }
-    })
-  }
-
-  // Reply button on timeline/notification/profile rows. When a thread is
-  // occupying the side panel, the inline composer would silently fail
-  // (the target status isn't in that thread's tree) — so bring up the
-  // main composer instead, with the target post shown as context.
-  function handleComposeReply(status) {
-    if (sidePanelRef.current?.mode === 'thread') {
-      setQuoteStatus(null)
-      setReplyContext(status)
-      setComposing(true)
-      return
-    }
-    handleComposeReplyInPanel(status)
-  }
-
-  function handleCancelCompose() {
-    setSidePanel((prev) => {
-      if (!prev || !prev.composingStatusId) return prev
-      const { composingStatusId, ...rest } = prev
-      return rest
-    })
-  }
 
   // Opens the profile view for an account.
   function handleOpenProfile(account) {
     if (!account?.id) return
-    setSidePanel(null)
+    threadPanel.setSidePanel(null)
     setHashtagTag(null)
     setProfileAccountId(account.id)
     setView('home')
@@ -465,7 +293,7 @@ export default function App() {
   // here via document-level click delegation (see the effect below).
   function handleOpenHashtag(tag) {
     if (!tag) return
-    setSidePanel(null)
+    threadPanel.setSidePanel(null)
     setProfileAccountId(null)
     setHashtagTag(tag)
     setView('home')
@@ -526,107 +354,6 @@ export default function App() {
     setComposing(true)
   }
 
-  // Auto-refresh the thread panel every 5 seconds (silent, no loading flash)
-  useEffect(() => {
-    if (sidePanel?.mode !== 'thread' || !sidePanel.status) return
-    const statusId = sidePanel.status.id
-    const interval = setInterval(() => {
-      if (!navigator.onLine) return // paused while offline; reconnect refreshes
-      refreshContext(statusId)
-      // Keep the focal post itself fresh too — counts and flags on the
-      // tree come from /context, but the root's own state doesn't.
-      mitra
-        .fetchStatus(session.instanceUrl, session.token, statusId)
-        .then((fresh) => {
-          setSidePanel((prev) =>
-            prev?.mode === 'thread' && prev.status?.id === fresh.id
-              ? { ...prev, status: fresh }
-              : prev
-          )
-        })
-        .catch(() => {})
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [sidePanel?.mode, sidePanel?.status?.id, session, refreshContext])
-
-  // The ghost marker is only meaningful while the side panel is open in
-  // thread mode.  Other paths that null the panel (profile/hashtag opens,
-  // deletion, close button) must not leave a row frozen as "Viewing in
-  // thread".
-  useEffect(() => {
-    if (!sidePanel) {
-      setGhostStatusId(null)
-      setFocusedReplyId(null)
-    }
-  }, [sidePanel])
-
-  // After a reply posts successfully, insert it into the correct position in
-  // the already-loaded tree so it shows up immediately, then swap the panel
-  // back to thread view and trigger an immediate refresh.
-  function handleReplyPosted(parentId, reply) {
-    const newReply = { status: reply, children: [] }
-    setReplyStates((prev) => {
-      // Find which root key contains parentId in its tree
-      let rootKey = prev[parentId] ? parentId : null
-      if (!rootKey) {
-        for (const key of Object.keys(prev)) {
-          if (findNode(prev[key].items, parentId)) { rootKey = key; break }
-        }
-      }
-      if (!rootKey || !prev[rootKey]?.items) return prev
-      const updated = insertIntoTree(prev[rootKey].items, parentId, newReply)
-      return { ...prev, [rootKey]: { ...prev[rootKey], items: updated } }
-    })
-    setSidePanel((prev) => {
-      if (prev?.mode === 'thread' && prev.status) {
-        return { mode: 'thread', status: prev.status }
-      }
-      return null
-    })
-    setFocusedReplyId(reply.id)
-    // Trigger an immediate context refresh so nested replies appear quickly.
-    // Read the panel through the ref — the closure above captured a stale
-    // `sidePanel` by the time this fires.
-    setTimeout(() => {
-      const panel = sidePanelRef.current
-      const rootId = panel?.threadRoot?.id || panel?.status?.id
-      if (rootId) refreshContext(rootId)
-    }, 1500)
-  }
-
-  const closeSidePanel = useCallback(function closeSidePanel() {
-    setSidePanel(null)
-    setGhostStatusId(null)
-    setFocusedReplyId(null)
-    lastThreadOpenRef.current = null
-    // Drop the loaded reply trees: an unbound map of every thread ever
-    // opened would grow this session's heap forever. Threads always
-    // force-refetch on open, so nothing is lost by clearing.
-    setReplyStates({})
-  }, [])
-
-  // Favouriting/boosting a reply needs to update that exact node wherever
-  // it lives — inside the tree of whichever thread is currently open in
-  // the panel, or (for a notification's own status) the notifications
-  // list directly. Two different data shapes, so two small helpers rather
-  // than one that tries to cover both.
-  function updateReplyInPanel(updated) {
-    if (!sidePanel?.status) return
-    const rootId = sidePanel.status.id
-    if (updated.id === rootId) {
-      setSidePanel((prev) => (prev ? { ...prev, status: updated } : prev))
-    }
-    setReplyStates((prev) => {
-      const current = prev[rootId]
-      if (!current) return prev
-      const items = current.items ? updateTreeNode(current.items, updated) : current.items
-      const ancestors = current.ancestors
-        ? current.ancestors.map((a) => (a.id === updated.id ? updated : a))
-        : current.ancestors
-      return { ...prev, [rootId]: { ...current, items, ancestors } }
-    })
-  }
-
   if (!session) {
     return (
       <LoginView
@@ -684,8 +411,8 @@ export default function App() {
                 instanceUrl={session.instanceUrl}
                 token={session.token}
                 onUpdateStatus={notifs.updateNotificationStatus}
-                onOpenThread={handleOpenThread}
-                onComposeReply={handleComposeReply}
+                onOpenThread={threadPanel.handleOpenThread}
+                onComposeReply={threadPanel.handleComposeReply}
                 onOpenLightbox={setLightboxAttachment}
                 onOpenProfile={handleOpenProfile}
                 onRespondFollowRequest={notifs.respondFollowRequest}
@@ -712,8 +439,8 @@ export default function App() {
       hashtag={hashtagTag}
       instanceUrl={session.instanceUrl}
       token={session.token}
-      onOpenThread={handleOpenThread}
-      onComposeReply={handleComposeReply}
+      onOpenThread={threadPanel.handleOpenThread}
+      onComposeReply={threadPanel.handleComposeReply}
       onOpenLightbox={setLightboxAttachment}
       onOpenProfile={(account) => { setHashtagTag(null); handleOpenProfile(account) }}
       onUpdate={tl.updatePost}
@@ -730,8 +457,8 @@ export default function App() {
       accountId={profileAccountId}
       instanceUrl={session.instanceUrl}
       token={session.token}
-      onOpenThread={handleOpenThread}
-      onComposeReply={handleComposeReply}
+      onOpenThread={threadPanel.handleOpenThread}
+      onComposeReply={threadPanel.handleComposeReply}
       onOpenLightbox={setLightboxAttachment}
       onOpenProfile={handleOpenProfile}
       onUpdate={tl.updatePost}
@@ -773,8 +500,8 @@ export default function App() {
                   instanceUrl={session.instanceUrl}
                   token={session.token}
                   onUpdate={tl.updatePost}
-                  onOpenThread={handleOpenThread}
-                  onComposeReply={handleComposeReply}
+                  onOpenThread={threadPanel.handleOpenThread}
+                  onComposeReply={threadPanel.handleComposeReply}
                   onOpenLightbox={setLightboxAttachment}
                   onOpenProfile={handleOpenProfile}
                   onQuote={handleQuote}
@@ -800,8 +527,8 @@ export default function App() {
           session={session}
           refreshTick={exploreRefreshTick}
           editedStatus={editedStatus}
-          onOpenThread={handleOpenThread}
-          onComposeReply={handleComposeReply}
+          onOpenThread={threadPanel.handleOpenThread}
+          onComposeReply={threadPanel.handleComposeReply}
           onOpenLightbox={setLightboxAttachment}
           onOpenProfile={handleOpenProfile}
           onQuote={handleQuote}
@@ -834,8 +561,8 @@ export default function App() {
         <ListsView
           instanceUrl={session.instanceUrl}
           token={session.token}
-          onOpenThread={handleOpenThread}
-          onComposeReply={handleComposeReply}
+          onOpenThread={threadPanel.handleOpenThread}
+          onComposeReply={threadPanel.handleComposeReply}
           onOpenLightbox={setLightboxAttachment}
           onOpenProfile={handleOpenProfile}
           onQuote={handleQuote}
@@ -851,8 +578,8 @@ export default function App() {
         <GroupsView
           instanceUrl={session.instanceUrl}
           token={session.token}
-          onOpenThread={handleOpenThread}
-          onComposeReply={handleComposeReply}
+          onOpenThread={threadPanel.handleOpenThread}
+          onComposeReply={threadPanel.handleComposeReply}
           onOpenLightbox={setLightboxAttachment}
           onOpenProfile={handleOpenProfile}
           onQuote={handleQuote}
@@ -869,8 +596,8 @@ export default function App() {
         <SearchView
           instanceUrl={session.instanceUrl}
           token={session.token}
-          onOpenThread={handleOpenThread}
-          onComposeReply={handleComposeReply}
+          onOpenThread={threadPanel.handleOpenThread}
+          onComposeReply={threadPanel.handleComposeReply}
           onOpenLightbox={setLightboxAttachment}
           onOpenProfile={handleOpenProfile}
           onUpdatePost={tl.updatePost}
@@ -890,8 +617,8 @@ export default function App() {
           instanceUrl={session.instanceUrl}
           token={session.token}
           currentAccountId={session.account?.id}
-          onOpenThread={handleOpenThread}
-          onComposeReply={handleComposeReply}
+          onOpenThread={threadPanel.handleOpenThread}
+          onComposeReply={threadPanel.handleComposeReply}
           onOpenLightbox={setLightboxAttachment}
           onOpenProfile={handleOpenProfile}
           onUpdatePost={tl.updatePost}
@@ -908,8 +635,8 @@ export default function App() {
           key={favouritesRefreshTick}
           instanceUrl={session.instanceUrl}
           token={session.token}
-          onOpenThread={handleOpenThread}
-          onComposeReply={handleComposeReply}
+          onOpenThread={threadPanel.handleOpenThread}
+          onComposeReply={threadPanel.handleComposeReply}
           onOpenLightbox={setLightboxAttachment}
           onOpenProfile={handleOpenProfile}
           onQuote={handleQuote}
@@ -926,8 +653,8 @@ export default function App() {
           session={session}
           refreshTick={bookmarksRefreshTick}
           editedStatus={editedStatus}
-          onOpenThread={handleOpenThread}
-          onComposeReply={handleComposeReply}
+          onOpenThread={threadPanel.handleOpenThread}
+          onComposeReply={threadPanel.handleComposeReply}
           onOpenLightbox={setLightboxAttachment}
           onOpenProfile={handleOpenProfile}
           onQuote={handleQuote}
@@ -963,18 +690,18 @@ export default function App() {
 
   const threadPanelProps = {
     panel: sidePanel,
-    replyStates,
-    onOpenThread: (status) => handleOpenThread(status, { fromPanel: true }),
-    onComposeReply: handleComposeReplyInPanel,
+    replyStates: threadPanel.replyStates,
+    onOpenThread: (status) => threadPanel.handleOpenThread(status, { fromPanel: true }),
+    onComposeReply: threadPanel.handleComposeReplyInPanel,
     onOpenLightbox: setLightboxAttachment,
     onOpenProfile: handleOpenProfile,
-    onUpdateReply: updateReplyInPanel,
-    onClose: closeSidePanel,
+    onUpdateReply: threadPanel.updateReplyInPanel,
+    onClose: threadPanel.closeSidePanel,
     instanceUrl: session.instanceUrl,
     token: session.token,
-    onReplyPosted: handleReplyPosted,
-    onCancelCompose: handleCancelCompose,
-    onRefreshContext: refreshContext,
+    onReplyPosted: threadPanel.handleReplyPosted,
+    onCancelCompose: threadPanel.handleCancelCompose,
+    onRefreshContext: threadPanel.refreshContext,
     onQuote: handleQuote,
     currentAccountId: session.account?.id,
     onDelete: handleDeleteStatus,
@@ -986,7 +713,7 @@ export default function App() {
   }
 
   // Swipe-from-left-edge to close thread on narrow tier.
-  useSwipeBack(narrowThreadRef, closeSidePanel, { active: tier === 'narrow' && !!sidePanel })
+  useSwipeBack(narrowThreadRef, threadPanel.closeSidePanel, { active: tier === 'narrow' && !!sidePanel })
 
   // Active skin's structural overrides (Tier 3). Adwaita has none and
   // keeps the inline GNOME header bar below.
