@@ -18,8 +18,9 @@ import {
 import { useMitraSession } from './useMitraSession'
 import { useAppSettings } from './useAppSettings'
 import { useNotifications, NOTIF_FILTERS } from './useNotifications'
+import { useTimeline } from './useTimeline'
 import * as mitra from './lib/mitra'
-import { buildReplyTree, findNode, insertIntoTree, updateTreeNode, mergeStatusIntoRow } from './lib/render.jsx'
+import { buildReplyTree, findNode, insertIntoTree, updateTreeNode } from './lib/render.jsx'
 import { AppSettingsContext, PickerContext, GhostContext, useLayoutTier, usePullToRefresh, useSwipeBack, useInstanceFavicon } from './hooks'
 
 import LoginView from './LoginView'
@@ -48,27 +49,12 @@ import { FavouritesView } from './components/FavouritesView.jsx'
 import { StatusPage } from './components/StatusPage.jsx'
 import { UIContext } from './ui/index.jsx'
 
-// Hard cap on in-memory timeline rows. The server paginates the home feed
-// forever, and an unbounded array would quietly grow this session's heap
-// the whole time the tab is open. ~400 rows is well past any realistic
-// scrolling session (infinite scroll fetches older pages on demand), so
-// the array is trimmed to the newest TIMELINE_MAX_ROWS whenever it grows.
-const TIMELINE_MAX_ROWS = 400
-
 export default function App() {
   const { session, beginLogin, signup, logout, authError, completingLogin } = useMitraSession()
   const tier = useLayoutTier()
   const [scrollEl, setScrollEl] = useState(null)
   const refreshRef = useRef(() => {})
   const [view, setView] = useState('home')
-  const [timeline, setTimeline] = useState([])
-  // Pagination cursor for the home feed, tracked separately from the array:
-  // with TIMELINE_MAX_ROWS trimming scroll-spam rows, the array's tail is
-  // "the oldest row still in memory", not the true fetch boundary — reading
-  // the cursor from the array would re-request the same page forever.
-  const lastStatusIdRef = useRef(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
   const [composing, setComposing] = useState(false)
   const [quoteStatus, setQuoteStatus] = useState(null)
   // Group the open composer is addressing, when "Post to this group" was
@@ -114,17 +100,11 @@ export default function App() {
   const notifs = useNotifications(session, { view, tier })
 
 
+  // Home timeline hook — owns the list, pagination, sentinel, and poll.
+  const tl = useTimeline(session, { view, tier })
+
   // Build an id→status map so PostRow can look up parent statuses for
-  // "in reply to" links. Kept scoped to the home timeline — a boost here
-  // shouldn't leak into other feeds (they keep their own maps).
-  const timelineStatusById = useMemo(() => {
-    const m = new Map()
-    for (const p of timeline) {
-      m.set(p.id, p)
-      if (p.reblog) m.set(p.reblog.id, p.reblog)
-    }
-    return m
-  }, [timeline])
+  // "in reply to" links within notifications.
   const notifStatusById = useMemo(() => {
     const m = new Map()
     for (const n of notifs.notifications) {
@@ -139,11 +119,6 @@ export default function App() {
     setSettingsOpen(true)
   }
 
-  const [hasMore, setHasMore] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  // Home timeline's own infinite-scroll sentinel — see the observer
-  // effect below for why it can't be looked up by class name.
-  const homeSentinelRef = useRef(null)
   const narrowThreadRef = useRef(null)
 
   // All user settings (appearance/content/GIF/translation/account) live in
@@ -155,68 +130,6 @@ export default function App() {
   })
 
   useInstanceFavicon(session, notifs.notifUnread)
-
-  const loadTimeline = useCallback(async () => {
-    if (!session) return
-    setLoading(true)
-    setError('')
-    setHasMore(true)
-    try {
-      const statuses = await mitra.fetchHomeTimeline(session.instanceUrl, session.token)
-      setTimeline(statuses.slice(0, TIMELINE_MAX_ROWS))
-      lastStatusIdRef.current = statuses[statuses.length - 1]?.id || null
-      // Sync the home read marker to the newest post so other clients
-      // (and future sessions) can resume from here.
-      if (statuses[0]?.id) {
-        mitra.updateMarker(session.instanceUrl, session.token, {
-          home: { last_read_id: String(statuses[0].id) },
-        }).catch(() => {})
-      }
-    } catch (err) {
-      setError(err.message || 'Failed to load timeline.')
-    } finally {
-      setLoading(false)
-    }
-  }, [session])
-
-  const loadMoreTimeline = useCallback(async () => {
-    if (!session || loadingMore || !hasMore) return
-    setLoadingMore(true)
-    try {
-      const lastId = lastStatusIdRef.current
-      if (!lastId) return
-      const statuses = await mitra.fetchHomeTimeline(session.instanceUrl, session.token, { max_id: lastId })
-      setTimeline((prev) => [...prev, ...statuses].slice(0, TIMELINE_MAX_ROWS))
-      if (statuses.length > 0) lastStatusIdRef.current = statuses[statuses.length - 1].id || null
-      if (statuses.length < 10) setHasMore(false)
-    } catch {
-      // silently fail — user can scroll again to retry
-    } finally {
-      setLoadingMore(false)
-    }
-  }, [session, loadingMore, hasMore])
-
-  useEffect(() => {
-    loadTimeline()
-  }, [loadTimeline])
-
-  useEffect(() => {
-    if (view !== 'home') return
-    // Own ref, not document.querySelector: on the wide tier the
-    // notifications column renders before this view and carries a
-    // sentinel of its own — a class-based lookup would grab that one
-    // and home's infinite scroll would watch the wrong element.
-    const sentinel = homeSentinelRef.current
-    if (!sentinel) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) loadMoreTimeline()
-      },
-      { rootMargin: '200px' }
-    )
-    observer.observe(sentinel)
-    return () => observer.disconnect()
-  }, [view, tier, loadMoreTimeline, timeline.length])
 
   const [online, setOnline] = useState(() => navigator.onLine)
 
@@ -271,7 +184,7 @@ export default function App() {
   async function handleDeleteStatus(statusId) {
     try {
       await mitra.deleteStatus(session.instanceUrl, session.token, statusId)
-      setTimeline((prev) => prev.filter((p) => p.id !== statusId))
+      tl.removeStatus(statusId)
       if (sidePanel?.status?.id === statusId) setSidePanel(null)
     } catch (err) {
       console.error(err)
@@ -314,7 +227,7 @@ export default function App() {
       // Same pattern as messages: FavouritesView owns its data.
       setFavouritesRefreshTick((t) => t + 1)
     } else {
-      loadTimeline()
+      tl.loadTimeline()
     }
   }
   refreshRef.current = handleRefresh
@@ -356,10 +269,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [composing, editing, openPickerId, settingsOpen, appSettings.confirmingTranslation, sidePanel])
 
-  function updatePost(updated) {
-    setTimeline((prev) => prev.map((p) => mergeStatusIntoRow(p, updated)))
-  }
-
   function handleEditStatus(status) {
     setEditing(status)
   }
@@ -371,13 +280,9 @@ export default function App() {
   function handleEditSaved(updated) {
     setEditing(null)
     setEditedStatus(updated)
-    updatePost(updated)
+    tl.updatePost(updated)
     notifs.updateNotificationStatus(updated)
     if (sidePanel?.status) updateReplyInPanel(updated)
-  }
-
-  function prependPost(post) {
-    setTimeline((prev) => [post, ...prev].slice(0, TIMELINE_MAX_ROWS))
   }
 
   // Fetches the ENTIRE descendant tree for `status` (not just its direct
@@ -655,39 +560,6 @@ export default function App() {
     }
   }, [sidePanel])
 
-  // Keep home-timeline rows live: poll the visible posts' state on the
-  // same 5s cadence as the thread panel, so counts/flags update everywhere
-  // at once instead of only inside an open thread. Batch endpoint keeps
-  // this to one request; boost wrappers are rebuilt around fresh inner
-  // statuses since /statuses returns originals, never wrappers.
-  const timelineRef = useRef([])
-  timelineRef.current = timeline
-  useEffect(() => {
-    if (!session || view !== 'home') return
-    const interval = setInterval(() => {
-      if (!navigator.onLine) return // paused while offline; reconnect refreshes
-      const posts = timelineRef.current.slice(0, 30)
-      if (posts.length === 0) return
-      mitra
-        .fetchStatuses(session.instanceUrl, session.token, posts.map((p) => p.id))
-        .then((fresh) => {
-          if (!Array.isArray(fresh) || fresh.length === 0) return
-          const byId = new Map(fresh.map((s) => [s.id, s]))
-          setTimeline((prev) =>
-            prev.map((post) => {
-              if (post.reblog) {
-                const inner = byId.get(post.reblog.id)
-                return inner ? { ...post, reblog: inner } : post
-              }
-              return byId.get(post.id) || post
-            })
-          )
-        })
-        .catch(() => {})
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [session, view])
-
   // After a reply posts successfully, insert it into the correct position in
   // the already-loaded tree so it shows up immediately, then swap the panel
   // back to thread view and trigger an immediate refresh.
@@ -844,7 +716,7 @@ export default function App() {
       onComposeReply={handleComposeReply}
       onOpenLightbox={setLightboxAttachment}
       onOpenProfile={(account) => { setHashtagTag(null); handleOpenProfile(account) }}
-      onUpdate={updatePost}
+      onUpdate={tl.updatePost}
       onQuote={handleQuote}
       currentAccountId={session.account?.id}
       onDelete={handleDeleteStatus}
@@ -862,7 +734,7 @@ export default function App() {
       onComposeReply={handleComposeReply}
       onOpenLightbox={setLightboxAttachment}
       onOpenProfile={handleOpenProfile}
-      onUpdate={updatePost}
+      onUpdate={tl.updatePost}
       onQuote={handleQuote}
       currentAccountId={session.account?.id}
       onDelete={handleDeleteStatus}
@@ -875,18 +747,18 @@ export default function App() {
     <div className="timeline-wrap">
       {view === 'home' && (
         <>
-          {error && (
+          {tl.error && (
             <>
-              <div className="banner banner-error">{error}</div>
+              <div className="banner banner-error">{tl.error}</div>
               <div className="empty-state">
-                <button className="pill-btn suggested" onClick={loadTimeline}>Retry</button>
+                <button className="pill-btn suggested" onClick={tl.loadTimeline}>Retry</button>
               </div>
             </>
           )}
           <div className="section-label">Home timeline</div>
-          {loading && timeline.length === 0 ? (
+          {tl.loading && tl.timeline.length === 0 ? (
             <div className="empty-state">Loading…</div>
-          ) : timeline.length === 0 ? (
+          ) : tl.timeline.length === 0 ? (
             <StatusPage
               icon={Home}
               heading="No posts yet"
@@ -894,19 +766,19 @@ export default function App() {
             />
           ) : (
             <div className="timeline-list">
-              {timeline.map((post) => (
+              {tl.timeline.map((post) => (
                 <PostRow
                   key={post.id}
                   post={post}
                   instanceUrl={session.instanceUrl}
                   token={session.token}
-                  onUpdate={updatePost}
+                  onUpdate={tl.updatePost}
                   onOpenThread={handleOpenThread}
                   onComposeReply={handleComposeReply}
                   onOpenLightbox={setLightboxAttachment}
                   onOpenProfile={handleOpenProfile}
                   onQuote={handleQuote}
-                  statusById={timelineStatusById}
+                  statusById={tl.statusById}
                   currentAccountId={session.account?.id}
                   onDelete={handleDeleteStatus}
                   onEdit={handleEditStatus}
@@ -916,9 +788,9 @@ export default function App() {
               ))}
             </div>
           )}
-          {loadingMore && <div className="empty-state">Loading…</div>}
-          {hasMore && !loadingMore && timeline.length > 0 && (
-            <div ref={homeSentinelRef} className="scroll-sentinel" />
+          {tl.loadingMore && <div className="empty-state">Loading…</div>}
+          {tl.hasMore && !tl.loadingMore && tl.timeline.length > 0 && (
+            <div ref={tl.homeSentinelRef} className="scroll-sentinel" />
           )}
         </>
       )}
@@ -1001,7 +873,7 @@ export default function App() {
           onComposeReply={handleComposeReply}
           onOpenLightbox={setLightboxAttachment}
           onOpenProfile={handleOpenProfile}
-          onUpdatePost={updatePost}
+          onUpdatePost={tl.updatePost}
           onQuote={handleQuote}
           currentAccountId={session.account?.id}
           onDelete={handleDeleteStatus}
@@ -1022,7 +894,7 @@ export default function App() {
           onComposeReply={handleComposeReply}
           onOpenLightbox={setLightboxAttachment}
           onOpenProfile={handleOpenProfile}
-          onUpdatePost={updatePost}
+          onUpdatePost={tl.updatePost}
           onQuote={handleQuote}
           onDelete={handleDeleteStatus}
           onEdit={handleEditStatus}
@@ -1360,7 +1232,7 @@ export default function App() {
           instanceUrl={session.instanceUrl}
           token={session.token}
           onClose={() => { setComposing(false); setQuoteStatus(null); setReplyContext(null); setComposerGroup(null) }}
-          onPosted={prependPost}
+          onPosted={tl.prependPost}
           quoteStatus={quoteStatus}
           replyToStatus={replyContext}
           maxCharacters={session.maxCharacters || 500}
