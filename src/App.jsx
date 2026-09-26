@@ -12,7 +12,6 @@ import {
   RotateCw,
   ArrowUpToLine,
   LogOut,
-  Globe,
   Settings,
   Trash2,
 } from 'lucide-react'
@@ -20,7 +19,7 @@ import { useMitraSession } from './useMitraSession'
 import { useAppSettings } from './useAppSettings'
 import { useNotifications, NOTIF_FILTERS } from './useNotifications'
 import * as mitra from './lib/mitra'
-import { buildReplyTree, findNode, insertIntoTree, updateTreeNode, mergeStatusIntoRow, htmlToPlainText as noteToPlainText } from './lib/render.jsx'
+import { buildReplyTree, findNode, insertIntoTree, updateTreeNode, mergeStatusIntoRow } from './lib/render.jsx'
 import { AppSettingsContext, PickerContext, GhostContext, useLayoutTier, usePullToRefresh, useSwipeBack, useInstanceFavicon } from './hooks'
 
 import LoginView from './LoginView'
@@ -39,6 +38,8 @@ import { ServerInfoPopover } from './components/ServerInfoPopover.jsx'
 import { ToastStack } from './components/ToastStack.jsx'
 
 import { ListsView } from './components/ListsView.jsx'
+import { ExploreView } from './components/ExploreView.jsx'
+import { BookmarksView } from './components/BookmarksView.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { GroupsView } from './components/GroupsView.jsx'
 import { ConversationsView } from './components/ConversationsView.jsx'
@@ -96,22 +97,11 @@ export default function App() {
   const [hashtagTag, setHashtagTag] = useState(null)
   const [focusedReplyId, setFocusedReplyId] = useState(null)
   const [lightboxAttachment, setLightboxAttachment] = useState(null)
-  const [exploreFeed, setExploreFeed] = useState('federated') // 'federated' | 'local' | 'people'
-  const [exploreTimelines, setExploreTimelines] = useState({ federated: null, local: null })
-  const [directoryAccounts, setDirectoryAccounts] = useState([])
-  const [directoryLoading, setDirectoryLoading] = useState(false)
-  const [directoryHasMore, setDirectoryHasMore] = useState(true)
-  const [exploreLoading, setExploreLoading] = useState(false)
-  const [exploreError, setExploreError] = useState('')
-  const [exploreHasMore, setExploreHasMore] = useState({ federated: true, local: true })
-  const [exploreLoadingMore, setExploreLoadingMore] = useState(false)
-  const exploreSentinelRef = useRef(null)
-  const [bookmarks, setBookmarks] = useState([])
-  const [bookmarksLoading, setBookmarksLoading] = useState(false)
-  const [bookmarksError, setBookmarksError] = useState('')
-  const [bookmarksHasMore, setBookmarksHasMore] = useState(true)
-  const [bookmarksLoadingMore, setBookmarksLoadingMore] = useState(false)
-  const bookmarksSentinelRef = useRef(null)
+  const [exploreRefreshTick, setExploreRefreshTick] = useState(0)
+  const [bookmarksRefreshTick, setBookmarksRefreshTick] = useState(0)
+  // Last edit saved via the global EditDialog — handed to extracted list
+  // views so they can merge it into their own rows.
+  const [editedStatus, setEditedStatus] = useState(null)
   const [messagesRefreshTick, setMessagesRefreshTick] = useState(0)
   const [favouritesRefreshTick, setFavouritesRefreshTick] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -124,9 +114,9 @@ export default function App() {
   const notifs = useNotifications(session, { view, tier })
 
 
-  // Build id→status maps so PostRow can look up parent statuses for
-  // "in reply to" links.  Each feed gets its own map so updates stay
-  // scoped — a boost in the timeline shouldn't leak into bookmarks.
+  // Build an id→status map so PostRow can look up parent statuses for
+  // "in reply to" links. Kept scoped to the home timeline — a boost here
+  // shouldn't leak into other feeds (they keep their own maps).
   const timelineStatusById = useMemo(() => {
     const m = new Map()
     for (const p of timeline) {
@@ -135,19 +125,6 @@ export default function App() {
     }
     return m
   }, [timeline])
-  const exploreStatusById = useMemo(() => {
-    const m = new Map()
-    for (const feed of Object.values(exploreTimelines)) {
-      if (!feed) continue
-      for (const p of feed) { m.set(p.id, p); if (p.reblog) m.set(p.reblog.id, p.reblog) }
-    }
-    return m
-  }, [exploreTimelines])
-  const bookmarksStatusById = useMemo(() => {
-    const m = new Map()
-    for (const p of bookmarks) { m.set(p.id, p); if (p.reblog) m.set(p.reblog.id, p.reblog) }
-    return m
-  }, [bookmarks])
   const notifStatusById = useMemo(() => {
     const m = new Map()
     for (const n of notifs.notifications) {
@@ -291,165 +268,6 @@ export default function App() {
     }
   }, [tier, view])
 
-  const loadExplore = useCallback(
-    async (feed) => {
-      if (!session) return
-      setExploreLoading(true)
-      setExploreError('')
-      setExploreHasMore((prev) => ({ ...prev, [feed]: true }))
-      try {
-        const items = await mitra.fetchPublicTimeline(
-          session.instanceUrl,
-          session.token,
-          feed === 'local'
-        )
-        setExploreTimelines((prev) => ({ ...prev, [feed]: items }))
-      } catch (err) {
-        setExploreError(err.message || 'Failed to load timeline.')
-      } finally {
-        setExploreLoading(false)
-      }
-    },
-    [session]
-  )
-
-  const loadMoreExplore = useCallback(async () => {
-    if (!session || exploreLoadingMore || !exploreHasMore[exploreFeed]) return
-    const items = exploreTimelines[exploreFeed]
-    if (!items || items.length === 0) return
-    setExploreLoadingMore(true)
-    try {
-      const lastId = items[items.length - 1]?.id
-      if (!lastId) return
-      const more = await mitra.fetchPublicTimeline(
-        session.instanceUrl,
-        session.token,
-        exploreFeed === 'local',
-        { max_id: lastId }
-      )
-      setExploreTimelines((prev) => ({
-        ...prev,
-        [exploreFeed]: [...(prev[exploreFeed] || []), ...more],
-      }))
-      if (more.length < 30) setExploreHasMore((prev) => ({ ...prev, [exploreFeed]: false }))
-    } catch {
-      // silently fail
-    } finally {
-      setExploreLoadingMore(false)
-    }
-  }, [session, exploreLoadingMore, exploreHasMore, exploreFeed, exploreTimelines])
-
-  useEffect(() => {
-    if (view === 'explore' && exploreTimelines[exploreFeed] === null) {
-      loadExplore(exploreFeed)
-    }
-  }, [view, exploreFeed, exploreTimelines, loadExplore])
-
-  const loadMoreDirectory = useCallback(async () => {
-    if (!session || directoryLoading || !directoryHasMore) return
-    setDirectoryLoading(true)
-    try {
-      const more = await mitra.fetchDirectory(
-        session.instanceUrl,
-        session.token,
-        { offset: directoryAccounts.length }
-      )
-      setDirectoryAccounts((prev) => [...prev, ...more])
-      if (more.length < 20) setDirectoryHasMore(false)
-    } catch {
-      // silent
-    } finally {
-      setDirectoryLoading(false)
-    }
-  }, [session, directoryLoading, directoryHasMore, directoryAccounts.length])
-
-  useEffect(() => {
-    if (view === 'explore' && exploreFeed === 'people' && directoryAccounts.length === 0 && !directoryLoading) {
-      loadMoreDirectory()
-    }
-  }, [view, exploreFeed, directoryAccounts.length, directoryLoading, loadMoreDirectory])
-
-  const loadBookmarks = useCallback(async () => {
-    if (!session) return
-    setBookmarksLoading(true)
-    setBookmarksError('')
-    setBookmarksHasMore(true)
-    try {
-      const items = await mitra.fetchBookmarks(session.instanceUrl, session.token)
-      setBookmarks(items)
-    } catch (err) {
-      setBookmarksError(err.message || 'Failed to load bookmarks.')
-    } finally {
-      setBookmarksLoading(false)
-    }
-  }, [session])
-
-  const loadMoreBookmarks = useCallback(async () => {
-    if (!session || bookmarksLoadingMore || !bookmarksHasMore) return
-    if (bookmarks.length === 0) return
-    setBookmarksLoadingMore(true)
-    try {
-      const lastId = bookmarks[bookmarks.length - 1]?.id
-      if (!lastId) return
-      const more = await mitra.fetchBookmarks(session.instanceUrl, session.token, { max_id: lastId })
-      setBookmarks((prev) => [...prev, ...more])
-      if (more.length < 20) setBookmarksHasMore(false)
-    } catch {
-      // silently fail
-    } finally {
-      setBookmarksLoadingMore(false)
-    }
-  }, [session, bookmarksLoadingMore, bookmarksHasMore, bookmarks])
-
-  useEffect(() => {
-    if (view === 'bookmarks') {
-      loadBookmarks()
-    }
-  }, [view, loadBookmarks])
-
-  // Bookmarks infinite scroll observer
-  useEffect(() => {
-    if (view !== 'bookmarks') return
-    const sentinel = bookmarksSentinelRef.current
-    if (!sentinel) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) loadMoreBookmarks()
-      },
-      { rootMargin: '200px' }
-    )
-    observer.observe(sentinel)
-    return () => observer.disconnect()
-  }, [view, loadMoreBookmarks, bookmarks.length])
-
-  // Explore infinite scroll observer
-  useEffect(() => {
-    if (view !== 'explore') return
-    const sentinel = exploreSentinelRef.current
-    if (!sentinel) return
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          if (exploreFeed === 'people') loadMoreDirectory()
-          else loadMoreExplore()
-        }
-      },
-      { rootMargin: '200px' }
-    )
-    observer.observe(sentinel)
-    return () => observer.disconnect()
-  }, [view, exploreFeed, loadMoreExplore, loadMoreDirectory, exploreTimelines[exploreFeed]?.length])
-
-  function updateExplorePost(updated) {
-    setExploreTimelines((prev) => {
-      const next = { ...prev }
-      for (const key of Object.keys(next)) {
-        if (next[key]) next[key] = next[key].map((p) => mergeStatusIntoRow(p, updated))
-      }
-      return next
-    })
-  }
-
   async function handleDeleteStatus(statusId) {
     try {
       await mitra.deleteStatus(session.instanceUrl, session.token, statusId)
@@ -483,10 +301,12 @@ export default function App() {
     if (view === 'notifications') {
       notifs.loadNotifications()
     } else if (view === 'explore') {
-      setExploreHasMore((prev) => ({ ...prev, [exploreFeed]: true }))
-      loadExplore(exploreFeed)
+      // ExploreView owns its data; bumping the tick makes it reload the
+      // current feed.
+      setExploreRefreshTick((t) => t + 1)
     } else if (view === 'bookmarks') {
-      loadBookmarks()
+      // Same pattern: BookmarksView reloads when this changes.
+      setBookmarksRefreshTick((t) => t + 1)
     } else if (view === 'messages') {
       // ConversationsView owns its data; bumping the key remounts it.
       setMessagesRefreshTick((t) => t + 1)
@@ -546,23 +366,14 @@ export default function App() {
 
   // After an edit saves, sweep the updated status through every surface
   // it might appear on — the helpers no-op when the id isn't found.
+  // Extracted lists (explore/bookmarks) receive it as a prop and merge it
+  // themselves; the rest update in place here.
   function handleEditSaved(updated) {
     setEditing(null)
+    setEditedStatus(updated)
     updatePost(updated)
-    updateExplorePost(updated)
-    updateBookmarkedPost(updated)
     notifs.updateNotificationStatus(updated)
     if (sidePanel?.status) updateReplyInPanel(updated)
-  }
-
-  // In the bookmarks list, unbookmarking removes the row — that's the
-  // natural expectation of a list of things you saved.
-  function updateBookmarkedPost(updated) {
-    if (!updated.bookmarked) {
-      setBookmarks((prev) => prev.filter((p) => p.id !== updated.id && p.reblog?.id !== updated.id))
-      return
-    }
-    setBookmarks((prev) => prev.map((p) => mergeStatusIntoRow(p, updated)))
   }
 
   function prependPost(post) {
@@ -1113,111 +924,21 @@ export default function App() {
       )}
 
       {view === 'explore' && (
-        <>
-          {exploreError && (
-            <>
-              <div className="banner banner-error">{exploreError}</div>
-              <div className="empty-state">
-                <button className="pill-btn suggested" onClick={() => loadExplore(exploreFeed)}>Retry</button>
-              </div>
-            </>
-          )}
-          <div className="explore-header">
-            <div className="section-label" style={{ paddingBottom: 0 }}>
-              Explore
-            </div>
-            <div className="feed-toggle">
-              <button
-                className={`feed-toggle-btn${exploreFeed === 'federated' ? ' active' : ''}`}
-                onClick={() => setExploreFeed('federated')}
-                type="button"
-              >
-                <Globe size={13} />
-                Federated
-              </button>
-              <button
-                className={`feed-toggle-btn${exploreFeed === 'local' ? ' active' : ''}`}
-                onClick={() => setExploreFeed('local')}
-                type="button"
-              >
-                <Home size={13} />
-                Local
-              </button>
-              <button
-                className={`feed-toggle-btn${exploreFeed === 'people' ? ' active' : ''}`}
-                onClick={() => setExploreFeed('people')}
-                type="button"
-              >
-                <Users size={13} />
-                People
-              </button>
-            </div>
-          </div>
-          {exploreFeed === 'people' ? (
-            directoryAccounts.length === 0 && directoryLoading ? (
-              <div className="empty-state">Loading…</div>
-            ) : (
-              <>
-                <div className="timeline-list">
-                  {directoryAccounts.map((account) => (
-                    <button
-                      type="button"
-                      key={account.id}
-                      className="search-account-row directory-card"
-                      onClick={() => handleOpenProfile(account)}
-                    >
-                      <Avatar name={account.display_name || account.username} src={account.avatar} />
-                      <div className="search-account-names">
-                        <span className="post-name">{account.display_name || account.username}</span>
-                        <span className="post-handle">@{account.acct || account.username}</span>
-                      </div>
-                      <span className="directory-bio">{account.note ? noteToPlainText(account.note) : ''}</span>
-                    </button>
-                  ))}
-                </div>
-                {directoryHasMore && directoryAccounts.length > 0 && (
-                  <div ref={exploreSentinelRef} className="scroll-sentinel" />
-                )}
-                {directoryLoading && <div className="empty-state">Loading…</div>}
-              </>
-            )
-          ) : (
-            <>
-              {exploreLoading && !exploreTimelines[exploreFeed] ? (
-                <div className="empty-state">Loading…</div>
-              ) : !exploreTimelines[exploreFeed] || exploreTimelines[exploreFeed].length === 0 ? (
-                <div className="empty-state">Nothing here yet.</div>
-              ) : (
-                <div className="timeline-list">
-                  {exploreTimelines[exploreFeed].map((post) => (
-                    <PostRow
-                      key={post.id}
-                      post={post}
-                      instanceUrl={session.instanceUrl}
-                      token={session.token}
-                      onUpdate={updateExplorePost}
-                      onOpenThread={handleOpenThread}
-                      onComposeReply={handleComposeReply}
-                      onOpenLightbox={setLightboxAttachment}
-                      onOpenProfile={handleOpenProfile}
-                      onQuote={handleQuote}
-                      statusById={exploreStatusById}
-                      currentAccountId={session.account?.id}
-                      onDelete={handleDeleteStatus}
-                      onEdit={handleEditStatus}
-                      onMute={handleMuteAccount}
-                      onBlock={handleBlockAccount}
-                    />
-                  ))}
-                </div>
-              )}
-              {exploreLoadingMore && <div className="empty-state">Loading…</div>}
-              {exploreHasMore[exploreFeed] && !exploreLoadingMore && exploreTimelines[exploreFeed]?.length > 0 && (
-                <div ref={exploreSentinelRef} className="scroll-sentinel" />
-              )}
-            </>
-          )}
-        </>
+        <ExploreView
+          session={session}
+          refreshTick={exploreRefreshTick}
+          editedStatus={editedStatus}
+          onOpenThread={handleOpenThread}
+          onComposeReply={handleComposeReply}
+          onOpenLightbox={setLightboxAttachment}
+          onOpenProfile={handleOpenProfile}
+          onQuote={handleQuote}
+          currentAccountId={session.account?.id}
+          onDelete={handleDeleteStatus}
+          onEdit={handleEditStatus}
+          onMute={handleMuteAccount}
+          onBlock={handleBlockAccount}
+        />
       )}
 
       {view === 'muted' && (
@@ -1329,49 +1050,21 @@ export default function App() {
       )}
 
       {view === 'bookmarks' && (
-        <>
-          {bookmarksError && (
-            <>
-              <div className="banner banner-error">{bookmarksError}</div>
-              <div className="empty-state">
-                <button className="pill-btn suggested" onClick={loadBookmarks}>Retry</button>
-              </div>
-            </>
-          )}
-          <div className="section-label">Bookmarks</div>
-          {bookmarksLoading && bookmarks.length === 0 ? (
-            <div className="empty-state">Loading…</div>
-          ) : bookmarks.length === 0 ? (
-            <div className="empty-state">Nothing here yet.</div>
-          ) : (
-            <div className="timeline-list">
-              {bookmarks.map((post) => (
-                <PostRow
-                  key={post.id}
-                  post={post}
-                  instanceUrl={session.instanceUrl}
-                  token={session.token}
-                  onUpdate={updateBookmarkedPost}
-                  onOpenThread={handleOpenThread}
-                  onComposeReply={handleComposeReply}
-                  onOpenLightbox={setLightboxAttachment}
-                  onOpenProfile={handleOpenProfile}
-                  onQuote={handleQuote}
-                  statusById={bookmarksStatusById}
-                  currentAccountId={session.account?.id}
-                  onDelete={handleDeleteStatus}
-                  onEdit={handleEditStatus}
-                  onMute={handleMuteAccount}
-                  onBlock={handleBlockAccount}
-                />
-              ))}
-            </div>
-          )}
-          {bookmarksLoadingMore && <div className="empty-state">Loading…</div>}
-          {bookmarksHasMore && !bookmarksLoadingMore && bookmarks.length > 0 && (
-            <div ref={bookmarksSentinelRef} className="scroll-sentinel" />
-          )}
-        </>
+        <BookmarksView
+          session={session}
+          refreshTick={bookmarksRefreshTick}
+          editedStatus={editedStatus}
+          onOpenThread={handleOpenThread}
+          onComposeReply={handleComposeReply}
+          onOpenLightbox={setLightboxAttachment}
+          onOpenProfile={handleOpenProfile}
+          onQuote={handleQuote}
+          currentAccountId={session.account?.id}
+          onDelete={handleDeleteStatus}
+          onEdit={handleEditStatus}
+          onMute={handleMuteAccount}
+          onBlock={handleBlockAccount}
+        />
       )}
 
       {tier !== 'wide' && view === 'notifications' && (
