@@ -14,6 +14,10 @@ export const ESCAPE_PRIORITY = {
   confirm: 300,
   menu: 200,
   dialog: 100,
+  // The inline reply composer embedded in the thread panel — below the
+  // modal dialogs, above the panel itself, so Escape unwinds the reply
+  // before it closes the thread.
+  inlineCompose: 75,
   panel: 50,
 }
 

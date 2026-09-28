@@ -233,11 +233,13 @@ export default function App() {
 
   // Escape closes the topmost surface. Each app-level surface registers
   // into the central escape stack (lib/escapeStack.js) with an explicit
-  // priority — media > confirms > menus > dialogs > panels — so close
-  // order follows intent instead of listener registration order.
-  // Per-row dropdowns, the emoji picker and the lightbox register their
-  // own handlers; presses already consumed (emoji autocomplete inside a
-  // textarea) never reach the stack.
+  // priority — media > confirms > menus > dialogs > inline compose >
+  // panels — so close order follows intent instead of listener
+  // registration order. Per-row dropdowns, the emoji picker and the
+  // lightbox register their own handlers; the thread panel's inline
+  // reply composer registers from ThreadPanelHeader; presses already
+  // consumed (emoji autocomplete inside a textarea) never reach the
+  // stack.
   useEscapeKey(() => {
     setComposing(false)
     setQuoteStatus(null)

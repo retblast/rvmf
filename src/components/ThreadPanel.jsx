@@ -3,7 +3,8 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, LoaderCircle, X } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { PostRow, ThreadReply } from './Post.jsx'
-import { GhostContext } from '../hooks'
+import { GhostContext, useEscapeKey } from '../hooks'
+import { ESCAPE_PRIORITY } from '../lib/escapeStack.js'
 import { ReplyComposerFields } from './ReplyComposer.jsx'
 
 const EASE = [0.32, 0.72, 0, 1]
@@ -44,6 +45,14 @@ export function ThreadPanelHeader({ panel, backLabel, onClose, onCancelCompose }
   const status = panel?.status
   const composingStatusId = panel?.composingStatusId || null
   const composing = Boolean(composingStatusId)
+
+  // While the inline reply composer is open, Escape cancels the reply
+  // instead of closing the panel — the draft survives because
+  // useComposeDraft persists it under the reply target's key — and the
+  // NEXT press closes the panel. Registered above 'panel' so the
+  // composer always unwinds first. (Every tier renders this header
+  // while a panel is open, so the registration covers all layouts.)
+  useEscapeKey(onCancelCompose, composing, ESCAPE_PRIORITY.inlineCompose)
 
   if (panel?.mode === 'compose') return null
 
