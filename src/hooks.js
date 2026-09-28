@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 import { blipFavicon } from './lib/favicon-blip.js'
+import { ESCAPE_PRIORITY, registerEscapeHandler } from './lib/escapeStack.js'
 
 export const GhostContext = createContext({ ghostStatusId: null, inPanel: false })
 import { ensureGifConverted } from './lib/gif/convert.js'
@@ -494,21 +495,15 @@ export function useLayoutTier() {
 const PULL_THRESHOLD = 90
 const PULL_MAX_INDICATOR = 48
 
-// Close-on-Escape for popup components (dropdowns, pickers). Child
-// components register before App's global chain, so stopping immediate
-// propagation here keeps the big popups from also reacting.
-export function useEscapeKey(onEscape, active = true) {
+// Close-on-Escape for popup components (dropdowns, pickers). Registers
+// into the central escape stack (lib/escapeStack.js), which dispatches
+// each Escape press to the highest-priority active handler — so
+// ordering follows intent instead of listener registration order.
+export function useEscapeKey(onEscape, active = true, priority = ESCAPE_PRIORITY.menu) {
   useEffect(() => {
     if (!active) return undefined
-    function onKey(e) {
-      if (e.key !== 'Escape') return
-      e.preventDefault()
-      e.stopImmediatePropagation()
-      onEscape()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onEscape, active])
+    return registerEscapeHandler(priority, () => onEscape())
+  }, [onEscape, active, priority])
 }
 
 // Scroll-down-to-refresh on a scrollable element: when already at the

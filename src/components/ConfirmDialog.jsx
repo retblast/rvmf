@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import { ESCAPE_PRIORITY } from '../lib/escapeStack.js'
 import { useEscapeKey } from '../hooks'
 
 // A small, reusable confirmation modal that reuses the existing dialog
@@ -7,8 +8,9 @@ import { useEscapeKey } from '../hooks'
 // e.g. turning on on-device translation, which downloads a multi-GB model.
 export function ConfirmDialog({ title, confirmLabel, cancelLabel = 'Cancel', onConfirm, onCancel, children }) {
   // Escape cancels; clicking the backdrop cancels too. The card stops
-  // propagation so an inner click never closes it.
-  useEscapeKey(onCancel, true)
+  // propagation so an inner click never closes it. Registers at
+  // 'confirm' priority so it outranks the menu that opened it.
+  useEscapeKey(onCancel, true, ESCAPE_PRIORITY.confirm)
   return (
     <div className="dialog-overlay" onClick={onCancel}>
       <div

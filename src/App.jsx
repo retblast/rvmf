@@ -21,7 +21,8 @@ import { useNotifications, NOTIF_FILTERS } from './useNotifications'
 import { useTimeline } from './useTimeline'
 import { useThreadPanel } from './useThreadPanel'
 import * as mitra from './lib/mitra'
-import { AppSettingsContext, PickerContext, GhostContext, useLayoutTier, usePullToRefresh, useSwipeBack, useInstanceFavicon } from './hooks'
+import { AppSettingsContext, PickerContext, GhostContext, useEscapeKey, useLayoutTier, usePullToRefresh, useSwipeBack, useInstanceFavicon } from './hooks'
+import { ESCAPE_PRIORITY } from './lib/escapeStack.js'
 
 import LoginView from './LoginView'
 import { Avatar, MediaLightbox } from './components/Media.jsx'
@@ -230,38 +231,26 @@ export default function App() {
   const { pull, refreshing } = usePullToRefresh(scrollEl, () => refreshRef.current())
   const showPullIndicator = refreshing || pull > 10
 
-  // Escape closes the topmost popup. Per-row dropdowns and the lightbox
-  // register their own handlers (and consume the event); this chain
-  // covers the app-level surfaces, innermost first. defaultPrevented
-  // events are left alone so text-area affordances (emoji autocomplete)
-  // can consume Escape without tearing down the whole dialog.
-  useEffect(() => {
-    function onKey(e) {
-      if (e.key !== 'Escape' || e.defaultPrevented) return
-      if (composing) {
-        e.preventDefault()
-        setComposing(false)
-        setQuoteStatus(null)
-        setReplyContext(null)
-      } else if (editing) {
-        e.preventDefault()
-        setEditing(null)
-      } else if (openPickerId) {
-        e.preventDefault()
-        setOpenPickerId(null)
-      } else if (settingsOpen && !appSettings.confirmingTranslation) {
-        // While the translation confirm dialog is up, Escape is owned by the
-        // dialog (it cancels it and keeps the settings menu open).
-        e.preventDefault()
-        setSettingsOpen(false)
-      } else if (sidePanel) {
-        e.preventDefault()
-        threadPanel.closeSidePanel()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [composing, editing, openPickerId, settingsOpen, appSettings.confirmingTranslation, sidePanel])
+  // Escape closes the topmost surface. Each app-level surface registers
+  // into the central escape stack (lib/escapeStack.js) with an explicit
+  // priority — media > confirms > menus > dialogs > panels — so close
+  // order follows intent instead of listener registration order.
+  // Per-row dropdowns, the emoji picker and the lightbox register their
+  // own handlers; presses already consumed (emoji autocomplete inside a
+  // textarea) never reach the stack.
+  useEscapeKey(() => {
+    setComposing(false)
+    setQuoteStatus(null)
+    setReplyContext(null)
+  }, composing, ESCAPE_PRIORITY.dialog)
+  useEscapeKey(() => setEditing(null), editing, ESCAPE_PRIORITY.dialog)
+  useEscapeKey(() => setOpenPickerId(null), openPickerId, ESCAPE_PRIORITY.menu)
+  // While the translation confirm dialog is up, its own 'confirm'
+  // registration outranks this one and owns Escape (cancel keeps the
+  // settings menu open) — no special case needed here.
+  useEscapeKey(() => setSettingsOpen(false), settingsOpen, ESCAPE_PRIORITY.menu)
+  useEscapeKey(() => setServerInfoOpen(false), serverInfoOpen, ESCAPE_PRIORITY.menu)
+  useEscapeKey(() => threadPanel.closeSidePanel(), sidePanel, ESCAPE_PRIORITY.panel)
 
   function handleEditStatus(status) {
     setEditing(status)

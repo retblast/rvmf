@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, waitFor } from '@testing-library/react'
+import { render, fireEvent, waitFor } from '@testing-library/react'
 import { AppSettingsContext } from '../hooks'
+import { ESCAPE_PRIORITY, registerEscapeHandler } from '../lib/escapeStack.js'
 import { ensureGifConverted } from '../lib/gif/convert.js'
-import { Avatar } from './Media.jsx'
+import { Avatar, MediaLightbox } from './Media.jsx'
 
 vi.mock('../lib/gif/convert.js', () => ({
   ensureGifConverted: vi.fn(),
@@ -113,5 +114,70 @@ describe('Avatar', () => {
     expect(container.querySelector('img')).toBeNull()
     expect(container.querySelector('video')).toBeNull()
     expect(container.textContent).toContain('R') // initials overlay
+  })
+})
+
+describe('MediaLightbox', () => {
+  const ATTACHMENT = { id: 'a1', type: 'image', url: 'https://x.example/a.png', preview_url: 'https://x.example/a.png' }
+
+  function renderLightbox(onClose) {
+    return render(
+      <AppSettingsContext.Provider value={{ fetchClientMedia: false, instanceUrl: 'https://x.example', token: null }}>
+        <MediaLightbox
+          lightboxState={{ attachment: ATTACHMENT, attachments: [ATTACHMENT], onNavigate: () => {} }}
+          onClose={onClose}
+        />
+      </AppSettingsContext.Provider>
+    )
+  }
+
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  it('owns Escape over lower-priority surfaces (e.g. the thread panel)', () => {
+    const onClose = vi.fn()
+    const panelClose = vi.fn()
+    const unregister = registerEscapeHandler(ESCAPE_PRIORITY.panel, panelClose)
+    try {
+      const { rerender } = renderLightbox(onClose)
+
+      // First press closes only the lightbox — not the panel beneath it.
+      fireEvent.keyDown(window, { key: 'Escape' })
+      expect(onClose).toHaveBeenCalledTimes(1)
+      expect(panelClose).not.toHaveBeenCalled()
+
+      // Once the lightbox is gone (parent clears state), the next press
+      // falls through to the panel.
+      rerender(
+        <AppSettingsContext.Provider value={{ fetchClientMedia: false, instanceUrl: 'https://x.example', token: null }}>
+          <MediaLightbox lightboxState={null} onClose={onClose} />
+        </AppSettingsContext.Provider>
+      )
+      fireEvent.keyDown(window, { key: 'Escape' })
+      expect(panelClose).toHaveBeenCalledTimes(1)
+    } finally {
+      unregister()
+    }
+  })
+
+  it('navigates the gallery with the arrow keys', () => {
+    const onNavigate = vi.fn()
+    const first = { id: 'a1', type: 'image', url: 'https://x.example/a.png', preview_url: 'https://x.example/a.png' }
+    const second = { id: 'a2', type: 'image', url: 'https://x.example/b.png', preview_url: 'https://x.example/b.png' }
+    render(
+      <AppSettingsContext.Provider value={{ fetchClientMedia: false, instanceUrl: 'https://x.example', token: null }}>
+        <MediaLightbox
+          lightboxState={{ attachment: first, attachments: [first, second], onNavigate }}
+          onClose={() => {}}
+        />
+      </AppSettingsContext.Provider>
+    )
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(onNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({ attachment: second, index: 1 })
+    )
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(onNavigate).toHaveBeenCalledTimes(1) // no prev from the first image
   })
 })

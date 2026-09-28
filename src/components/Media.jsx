@@ -15,11 +15,13 @@ import {
   safeProxyUrl,
   useCursorPreview,
   useClientMedia,
+  useEscapeKey,
   useGifVideo,
   isUrlKnownFailed,
   markUrlFailed,
   downloadAttachment,
 } from '../hooks'
+import { ESCAPE_PRIORITY } from '../lib/escapeStack.js'
 import { lookupEmojiUrl } from '../lib/emojiRegistry.js'
 import { isGifUrl } from '../lib/gif/core.js'
 import { GifVideo } from './GifVideo.jsx'
@@ -657,10 +659,14 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
     setTimeout(() => setDlState('idle'), 1200)
   }
 
+  // Escape closes via the central escape stack at 'media' priority, so
+  // nothing underneath (thread panel, settings, dialogs) reacts to the
+  // same press. Arrows keep their own listener for gallery navigation.
+  useEscapeKey(onClose, true, ESCAPE_PRIORITY.media)
+
   useEffect(() => {
     function handleKey(e) {
-      if (e.key === 'Escape') onClose()
-      else if (e.key === 'ArrowLeft') goPrev()
+      if (e.key === 'ArrowLeft') goPrev()
       else if (e.key === 'ArrowRight') goNext()
     }
     window.addEventListener('keydown', handleKey)
