@@ -649,6 +649,30 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
     if (hasNext) onNavigate({ attachment: imageAttachments[currentIdx + 1], attachments, index: currentIdx + 1, onNavigate })
   }
 
+  // Touch swipe navigation (mirrors the arrow keys). Only single-finger
+  // horizontal swipes count; a second finger (pinch) cancels the gesture.
+  // The overlay's tap-to-close stays intact: taps don't travel far enough
+  // to cross the threshold, and swiped guards the synthetic click that some
+  // browsers still emit.
+  const swipeStart = useRef(null)
+  const swiped = useRef(false)
+  function onTouchStart(e) {
+    swipeStart.current = e.touches.length === 1 ? e.touches[0].clientX : null
+  }
+  function onTouchMove(e) {
+    if (e.touches.length > 1) swipeStart.current = null
+  }
+  function onTouchEnd(e) {
+    const startX = swipeStart.current
+    swipeStart.current = null
+    if (startX == null) return
+    const dx = e.changedTouches[0].clientX - startX
+    if (Math.abs(dx) < 48) return
+    swiped.current = true
+    if (dx < 0) goNext()
+    else goPrev()
+  }
+
   const [dlState, setDlState] = useState('idle') // 'idle' | 'busy' | 'done'
   async function handleDownload() {
     if (dlState === 'busy') return
@@ -674,7 +698,13 @@ function LightboxContent({ attachment, attachments, onNavigate, onClose }) {
   })
 
   return (
-    <div className="dialog-overlay lightbox-overlay" onClick={onClose}>
+    <div
+      className="dialog-overlay lightbox-overlay"
+      onClick={() => { if (swiped.current) { swiped.current = false; return } onClose() }}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
       <button className="icon-btn lightbox-close" onClick={onClose} aria-label="Close">
         <X size={18} />
       </button>

@@ -3936,3 +3936,10 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
     padding: 6px 8px;
   }
 }
+
+/* Lightbox gestures: horizontal swipes drive the gallery (JS), pinch-zoom
+   stays native; vertical drags must not rubber-band the page behind the
+   fixed overlay. */
+.lightbox-overlay {
+  touch-action: pan-x pinch-zoom;
+}

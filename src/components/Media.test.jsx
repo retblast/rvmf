@@ -180,4 +180,31 @@ describe('MediaLightbox', () => {
     fireEvent.keyDown(window, { key: 'ArrowLeft' })
     expect(onNavigate).toHaveBeenCalledTimes(1) // no prev from the first image
   })
+
+  it('navigates the gallery with horizontal swipes, but not with taps', () => {
+    const onNavigate = vi.fn()
+    const first = { id: 'a1', type: 'image', url: 'https://x.example/a.png', preview_url: 'https://x.example/a.png' }
+    const second = { id: 'a2', type: 'image', url: 'https://x.example/b.png', preview_url: 'https://x.example/b.png' }
+    const { container } = render(
+      <AppSettingsContext.Provider value={{ fetchClientMedia: false, instanceUrl: 'https://x.example', token: null }}>
+        <MediaLightbox
+          lightboxState={{ attachment: first, attachments: [first, second], onNavigate }}
+          onClose={() => {}}
+        />
+      </AppSettingsContext.Provider>
+    )
+    const overlay = container.querySelector('.lightbox-overlay')
+
+    // Leftward swipe past the 48px threshold → next image
+    fireEvent.touchStart(overlay, { touches: [{ clientX: 300 }] })
+    fireEvent.touchEnd(overlay, { changedTouches: [{ clientX: 100 }] })
+    expect(onNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({ attachment: second, index: 1 })
+    )
+
+    // A short drag (tap-ish) must not navigate
+    fireEvent.touchStart(overlay, { touches: [{ clientX: 300 }] })
+    fireEvent.touchEnd(overlay, { changedTouches: [{ clientX: 285 }] })
+    expect(onNavigate).toHaveBeenCalledTimes(1)
+  })
 })
