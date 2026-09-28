@@ -745,7 +745,7 @@ export default function App() {
             onClick={() => setServerInfoOpen((v) => !v)}
           >
             <InstanceIcon instanceUrl={session.instanceUrl} />
-            <div>
+            <div className="headerbar-brand-text">
               rvmf
               <div className="headerbar-subtitle">
                 {session.instanceUrl.replace(/^https?:\/\//, '')}
@@ -765,62 +765,70 @@ export default function App() {
         <div className="view-switcher">
           <button
             className={`view-switcher-btn${view === 'home' ? ' active' : ''}`}
+            aria-label="Home"
             onClick={() => setView('home')}
           >
             <Home size={14} />
-            Home
+            <span className="view-label">Home</span>
           </button>
           {tier !== 'wide' && (
             <button
               className={`view-switcher-btn${view === 'notifications' ? ' active' : ''}`}
+              aria-label="Notifications"
               onClick={() => setView('notifications')}
             >
               <Bell size={14} />
-              Notifications
+              <span className="view-label">Notifications</span>
               {notifs.notifUnread > 0 && <span className="notif-badge">{notifs.notifUnread > 99 ? '99+' : notifs.notifUnread}</span>}
             </button>
           )}
           <button
             className={`view-switcher-btn${view === 'explore' ? ' active' : ''}`}
+            aria-label="Explore"
             onClick={() => setView('explore')}
           >
             <Compass size={14} />
-            Explore
+            <span className="view-label">Explore</span>
           </button>
           <button
             className={`view-switcher-btn${view === 'messages' ? ' active' : ''}`}
+            aria-label="Messages"
             onClick={() => setView('messages')}
           >
             <MessageCircle size={14} />
-            Messages
+            <span className="view-label">Messages</span>
           </button>
           <button
             className={`view-switcher-btn${view === 'lists' ? ' active' : ''}`}
+            aria-label="Lists"
             onClick={() => setView('lists')}
           >
             <List size={14} />
-            Lists
+            <span className="view-label">Lists</span>
           </button>
           <button
             className={`view-switcher-btn${view === 'groups' ? ' active' : ''}`}
+            aria-label="Groups"
             onClick={() => setView('groups')}
           >
             <Users size={14} />
-            Groups
+            <span className="view-label">Groups</span>
           </button>
           <button
             className={`view-switcher-btn${view === 'bookmarks' ? ' active' : ''}`}
+            aria-label="Bookmarks"
             onClick={() => setView('bookmarks')}
           >
             <Bookmark size={14} />
-            Bookmarks
+            <span className="view-label">Bookmarks</span>
           </button>
           <button
             className={`view-switcher-btn${view === 'search' ? ' active' : ''}`}
+            aria-label="Search"
             onClick={() => setView('search')}
           >
             <Search size={14} />
-            Search
+            <span className="view-label">Search</span>
           </button>
         </div>
 
@@ -854,17 +862,19 @@ export default function App() {
               <Settings size={16} />
             </button>
           </div>
-          <button className="suggested-btn" onClick={() => setComposing(true)}>
+          <button className="suggested-btn" aria-label="New post" onClick={() => setComposing(true)}>
             <Plus size={15} />
-            New post
+            <span className="view-label">New post</span>
           </button>
           <button className="icon-btn" aria-label="Log out" title="Log out" onClick={logout}>
             <LogOut size={16} />
           </button>
-          <Avatar
-            name={session.account.display_name || session.account.username}
-            src={session.account.avatar}
-          />
+          <div className="headerbar-avatar">
+            <Avatar
+              name={session.account.display_name || session.account.username}
+              src={session.account.avatar}
+            />
+          </div>
         </div>
       </header>
       )}

@@ -3904,3 +3904,35 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
     justify-content: center;
   }
 }
+
+/* Phone header: the labeled switcher plus brand/account chrome cannot fit
+   under ~400px, so labels collapse to icons. aria-labels (App.jsx) keep the
+   buttons' accessible names intact for screen readers and e2e selectors. */
+@media (max-width: 600px) {
+  .headerbar {
+    gap: 2px;
+    padding-left: max(6px, env(safe-area-inset-left));
+    padding-right: max(6px, env(safe-area-inset-right));
+    height: calc(47px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+  }
+  .headerbar-brand-text,
+  .view-label,
+  .headerbar-avatar {
+    display: none;
+  }
+  .view-switcher {
+    margin: 0 auto;
+    gap: 0;
+    padding: 2px;
+    min-width: 0;
+    flex-shrink: 1;
+  }
+  .view-switcher-btn {
+    padding: 5px 6px;
+    flex-shrink: 1;
+  }
+  .suggested-btn {
+    padding: 6px 8px;
+  }
+}
