@@ -345,6 +345,13 @@ export default function App() {
     setComposing(true)
   }
 
+  // Swipe-from-left-edge to close thread on narrow tier. This call must
+  // stay ABOVE the login early-return below: when the password-grant
+  // signup lands a session, App re-renders in place (no page reload),
+  // and React throws "rendered more hooks than during the previous
+  // render" if the authenticated render suddenly owns extra hooks.
+  useSwipeBack(narrowThreadRef, threadPanel.closeSidePanel, { active: tier === 'narrow' && !!sidePanel })
+
   if (!session) {
     return (
       <LoginView
@@ -702,9 +709,6 @@ export default function App() {
     maxCharacters: session.maxCharacters || 500,
     focusedReplyId,
   }
-
-  // Swipe-from-left-edge to close thread on narrow tier.
-  useSwipeBack(narrowThreadRef, threadPanel.closeSidePanel, { active: tier === 'narrow' && !!sidePanel })
 
   // Active skin's structural overrides (Tier 3). Adwaita has none and
   // keeps the inline GNOME header bar below.
