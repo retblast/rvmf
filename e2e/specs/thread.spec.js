@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { loginAs, SEED } from '../helpers.js'
+import { loginAs, SEED, isNarrowTier } from '../helpers.js'
 
 // Wide tier: thread lives in a permanent third column. Open the seeded
 // root's thread, reply inline, and see the reply land in the tree.
@@ -16,7 +16,7 @@ test('open a thread and post an inline reply', async ({ page }, testInfo) => {
   // narrow tier replaces the timeline with the thread view entirely.
   // (Assert by label text, not by the row: the collapsed ghost strips the
   // post's own text, so filtering the row by it finds nothing.)
-  if (testInfo.project.name !== 'narrow') {
+  if (!isNarrowTier(testInfo)) {
     await expect(page.getByText('Viewing in thread').first()).toBeVisible()
   }
 
@@ -90,7 +90,7 @@ test('opening a thread from a reply focuses that reply', async ({ page }) => {
 // flicker, no 300ms timer gap.  (Wide tier only: narrow replaces the
 // timeline.)
 test('switching between timeline posts moves the ghost immediately', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'narrow', 'narrow tier replaces the timeline')
+  test.skip(isNarrowTier(testInfo), 'narrow tier replaces the timeline')
 
   await loginAs(page, 'bob')
   await page.goto('/')

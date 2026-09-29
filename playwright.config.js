@@ -24,5 +24,11 @@ export default defineConfig({
     // The app has three layout tiers; exercise the two that differ most.
     { name: 'wide', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } },
     { name: 'narrow', use: { ...devices['Desktop Chrome'], viewport: { width: 780, height: 900 } } },
+    // Real phone profiles (viewport, DPR, touch, mobile UA). Caveat: only a
+    // Chromium-family binary is usable on this system (CHROMIUM_PATH →
+    // nixpkgs build), so the iPhone project emulates Safari's device
+    // characteristics on the Chromium engine, not WebKit itself.
+    { name: 'iphone', use: { ...devices['iPhone 13'], browserName: 'chromium' } },
+    { name: 'android', use: { ...devices['Pixel 5'] } },
   ],
 })

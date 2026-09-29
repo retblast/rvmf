@@ -6,7 +6,15 @@ import { test, expect } from '@playwright/test'
 
 const INSTANCE = process.env.E2E_INSTANCE || 'http://127.0.0.1:8383'
 
-test('signup creates an account and lands in the timeline', async ({ page }) => {
+// One real signup per run: the instance rate-limits /api/v1/accounts and
+// /oauth/token to a handful of requests per 5 minutes, and the seed already
+// spends token grants logging in its three users. The signup flow itself is
+// tier-independent (a centered form), so it runs on the wide project only —
+// the form stays exercised on every project by the client-side validation
+// test below, which never reaches the network.
+test('signup creates an account and lands in the timeline', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'wide', 'one signup per run: instance registration is rate-limited (2/5min) and the seed consumes part of that budget')
+
   const username = `e2e-${Date.now().toString(36)}`
   await page.goto('/')
 

@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test'
-import { loginAs, SEED } from '../helpers.js'
+import { loginAs, SEED, isNarrowTier } from '../helpers.js'
 
 // Notification filter chips hide categories client-side. Runs on the
 // narrow tier only, where Notifications is a header tab.
 test('filter chips hide notification categories', async ({ page }) => {
-  test.skip(test.info().project.name !== 'narrow', 'notifications tab is narrow-tier UI')
+  test.skip(!isNarrowTier(test.info()), 'notifications tab is narrow-tier UI')
 
   await loginAs(page, 'alice')
   await page.goto('/')

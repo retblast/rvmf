@@ -14,6 +14,15 @@ export function loginAs(page, username) {
   )
 }
 
+// The app picks its layout tier by viewport width (wide > 1400px, else
+// narrow). Playwright project names are arbitrary — phones and the
+// 'narrow' desktop project are all narrow-tier — so specs that behave
+// differently per tier must check the viewport, not the project name.
+export function isNarrowTier(testInfo) {
+  const vw = testInfo.project.use.viewport?.width
+  return vw !== undefined && vw <= 900
+}
+
 // Post text asserted across specs — keep in sync with scripts/seed.mjs.
 export const SEED = {
   rootText: 'Seeded root post from alice',
