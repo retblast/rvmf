@@ -124,7 +124,7 @@ export default function App() {
     extraSynced: { 'notif-excluded': [notifs.notifExcluded, notifs.setNotifExcluded] },
   })
 
-  useInstanceFavicon(session, notifs.notifUnread)
+  useInstanceFavicon(session, notifs.notifUnread, appSettings.privacyMode)
 
   const [online, setOnline] = useState(() => navigator.onLine)
 
@@ -714,6 +714,7 @@ export default function App() {
   // keeps the inline GNOME header bar below.
   const SkinHeaderBar = appSettings.skin?.components?.HeaderBar || null
   const headerMe = appSettings.mask(session.account)
+  const privacyMode = appSettings.privacyMode
   const headerProps = {
     session, tier, view, setView, notifUnread: notifs.notifUnread,
     handleRefresh, setComposing, logout, openSettingsFrom,
@@ -749,12 +750,14 @@ export default function App() {
             aria-label="Server details"
             onClick={() => setServerInfoOpen((v) => !v)}
           >
-            <InstanceIcon instanceUrl={session.instanceUrl} />
+            <InstanceIcon instanceUrl={privacyMode ? null : session.instanceUrl} />
             <div className="headerbar-brand-text">
               rvmf
-              <div className="headerbar-subtitle">
-                {session.instanceUrl.replace(/^https?:\/\//, '')}
-              </div>
+              {!privacyMode && (
+                <div className="headerbar-subtitle">
+                  {session.instanceUrl.replace(/^https?:\/\//, '')}
+                </div>
+              )}
             </div>
           </button>
           {serverInfoOpen && (

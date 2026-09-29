@@ -623,7 +623,7 @@ export function usePullToRefresh(el, onRefresh) {
 // Browser tab follows the instance: favicon and a "rvmf on <host>"
 // title; both restored to plain "rvmf" when logged out.
 // When `unread` > 0, a small red dot is overlaid on the favicon.
-export function useInstanceFavicon(session, unread) {
+export function useInstanceFavicon(session, unread, privacyMode = false) {
   const defaultFaviconRef = useRef(null)
   useEffect(() => {
     let link = document.querySelector("link[rel~='icon']")
@@ -633,7 +633,11 @@ export function useInstanceFavicon(session, unread) {
       document.head.appendChild(link)
     }
     if (!defaultFaviconRef.current) defaultFaviconRef.current = link.href
-    const baseUrl = session
+    // Privacy mode: the tab strip is onlooker-visible surface. The
+    // instance's favicon and the "rvmf on <host>" title both name the
+    // user's server, so the tab falls back to the app's own icon and a
+    // plain title. The unread blip stays — it reveals nothing.
+    const baseUrl = session && !privacyMode
       ? `${session.instanceUrl}/favicon.ico`
       : defaultFaviconRef.current
     link.href = baseUrl
@@ -643,11 +647,11 @@ export function useInstanceFavicon(session, unread) {
         .then((dataUrl) => { if (!cancelled) link.href = dataUrl })
         .catch(() => {})
     }
-    document.title = session
+    document.title = session && !privacyMode
       ? `rvmf on ${session.instanceUrl.replace(/^https?:\/\//, '')}`
       : 'rvmf'
     return () => { cancelled = true }
-  }, [session, unread])
+  }, [session, unread, privacyMode])
 }
 
 // Composer draft persistence. Each draft is keyed by its context
