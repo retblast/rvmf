@@ -18,6 +18,15 @@ export const AppSettingsContext = createContext({
 })
 export const PickerContext = createContext({ openPickerId: null, setOpenPickerId: () => {} })
 
+// Identity mask for privacy mode (see lib/privacy.js). Components that
+// display account details pass them through this before rendering.
+// Falls back to a passthrough so partial context providers (tests) keep
+// working.
+export function useMaskIdentity() {
+  const { mask } = useContext(AppSettingsContext)
+  return mask || ((account) => account)
+}
+
 // Transient confirmation toast. Fire-and-forget from anywhere via a
 // window event — avoids prop-drilling a dispatcher through every row.
 export function showToast(message) {

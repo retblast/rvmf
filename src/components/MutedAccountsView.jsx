@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useMaskIdentity } from '../hooks'
 import { Volume2 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { Avatar } from './Media.jsx'
@@ -6,6 +7,7 @@ import { Avatar } from './Media.jsx'
 // List of accounts you've muted, with one-click unmute. Mitra exposes
 // GET /v1/mutes (paginated) and POST /accounts/:id/unmute.
 export function MutedAccountsView({ instanceUrl, token, onOpenProfile }) {
+  const mask = useMaskIdentity()
   const [accounts, setAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -71,7 +73,9 @@ export function MutedAccountsView({ instanceUrl, token, onOpenProfile }) {
         <div className="empty-state">You haven&apos;t muted anyone.</div>
       ) : (
         <div className="timeline-list">
-          {accounts.map((account) => (
+          {accounts.map((rawAccount) => {
+            const account = mask(rawAccount)
+            return (
             <div key={account.id} className="search-account-row">
               <Avatar name={account.display_name || account.username} src={account.avatar} onClick={() => onOpenProfile?.(account)} />
               <button
@@ -93,7 +97,8 @@ export function MutedAccountsView({ instanceUrl, token, onOpenProfile }) {
                 {unmutingId === account.id ? '…' : 'Unmute'}
               </button>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
       {hasMore && accounts.length > 0 && <div ref={sentinelRef} className="scroll-sentinel" />}

@@ -713,6 +713,7 @@ export default function App() {
   // Active skin's structural overrides (Tier 3). Adwaita has none and
   // keeps the inline GNOME header bar below.
   const SkinHeaderBar = appSettings.skin?.components?.HeaderBar || null
+  const headerMe = appSettings.mask(session.account)
   const headerProps = {
     session, tier, view, setView, notifUnread: notifs.notifUnread,
     handleRefresh, setComposing, logout, openSettingsFrom,
@@ -875,8 +876,8 @@ export default function App() {
           </button>
           <div className="headerbar-avatar">
             <Avatar
-              name={session.account.display_name || session.account.username}
-              src={session.account.avatar}
+              name={headerMe.display_name || headerMe.username}
+              src={headerMe.avatar}
             />
           </div>
         </div>

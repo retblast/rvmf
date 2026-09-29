@@ -13,7 +13,7 @@ import * as mitra from '../lib/mitra'
 import { processStatusContent, renderEmojiText } from '../lib/render.jsx'
 import { QuoteCard } from './Post.jsx'
 import { ProxiedImg } from './Media.jsx'
-import { AppSettingsContext, useComposeDraft, useKeyboardShift, getDraftKey } from '../hooks'
+import { AppSettingsContext, useComposeDraft, useKeyboardShift, useMaskIdentity, getDraftKey } from '../hooks'
 import { insertAtCaret,
   useEmojiAutocomplete,
   EmojiDropdown,
@@ -604,6 +604,8 @@ export function PollEditorFields({ poll }) {
 
 export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStatus, replyToStatus, maxCharacters = 500, groupId = null, groupName = null, currentAccountId }) {
   const { defaultVisibility } = useContext(AppSettingsContext)
+  const mask = useMaskIdentity()
+  const replyToShown = replyToStatus ? mask(replyToStatus.account || {}) : null
 
   // Draft key from context: same key means same text-composer slot.
   const draftKey = getDraftKey({
@@ -813,8 +815,8 @@ export function ComposeDialog({ instanceUrl, token, onClose, onPosted, quoteStat
           <div className="thread-panel-preview compose-reply-preview">
             <div className="compose-reply-context">Replying to</div>
             <div className="post-meta">
-              <span className="post-name">{renderEmojiText(replyToStatus.account?.display_name || replyToStatus.account?.username || 'Unknown', replyToStatus.account?.emojis)}</span>
-              <span className="post-handle">@{replyToStatus.account?.acct || replyToStatus.account?.username}</span>
+              <span className="post-name">{renderEmojiText(replyToShown?.display_name || replyToShown?.username || 'Unknown', replyToShown?.emojis)}</span>
+              <span className="post-handle">@{replyToShown?.acct || replyToShown?.username}</span>
             </div>
             <p className="post-text">{processStatusContent(replyToStatus, instanceUrl).textNodes}</p>
             <ParentPreviewMedia status={replyToStatus} instanceUrl={instanceUrl} />

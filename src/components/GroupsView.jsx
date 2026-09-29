@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMaskIdentity } from '../hooks'
 import { ArrowLeft, Plus, Settings2, Trash2, Users } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { htmlToPlainText } from '../lib/render.jsx'
@@ -107,6 +108,7 @@ function GroupFeed({ group, instanceUrl, token, onClose, onPostToGroup, onManage
 // Deletion is type-to-confirm and orphans the group's posts server-side;
 // there is no undo.
 function GroupManagePanel({ group, instanceUrl, token, onOpenProfile, onDeleted, onClose }) {
+  const mask = useMaskIdentity()
   const [description, setDescription] = useState(null) // null until source loads
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState(null)
@@ -197,7 +199,9 @@ function GroupManagePanel({ group, instanceUrl, token, onOpenProfile, onDeleted,
           <div className="poll-meta">No members yet.</div>
         ) : (
           <div className="session-list">
-            {members.map(({ account, affiliation }) => (
+            {members.map(({ account: rawAccount, affiliation }) => {
+              const account = mask(rawAccount)
+              return (
               <button
                 type="button"
                 key={account.id}
@@ -211,7 +215,8 @@ function GroupManagePanel({ group, instanceUrl, token, onOpenProfile, onDeleted,
                 </div>
                 {affiliation === 'admin' && <span className="profile-badge mutual">admin</span>}
               </button>
-            ))}
+              )
+            })}
           </div>
         )}
         <div className="poll-meta">

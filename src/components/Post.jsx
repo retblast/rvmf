@@ -23,7 +23,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
-import { PickerContext, AppSettingsContext, GhostContext, useEscapeKey, showToast, downloadAllMedia } from '../hooks'
+import { PickerContext, AppSettingsContext, GhostContext, useEscapeKey, useMaskIdentity, showToast, downloadAllMedia } from '../hooks'
 import { formatRelativeTime, htmlToPlainText, processStatusContent, processStatusContentForDisplay, renderEmojiText, renderPlainText } from '../lib/render.jsx'
 import { translateText, translationPressureNotice } from '../lib/translate'
 import { canonicalizeLanguage, canonicalLangName } from '../lib/languages'
@@ -85,6 +85,7 @@ function mentionLabel(m) {
 // Renders the "In reply to" context line with all mentioned accounts,
 // truncated to a few handles with hover-to-expand for long lists.
 function ReplyContextLine({ mentions, onOpenProfile }) {
+  const mask = useMaskIdentity()
   if (!mentions || mentions.length === 0) return null
   const MAX_VISIBLE = 2
   const visible = mentions.slice(0, MAX_VISIBLE)
@@ -97,7 +98,7 @@ function ReplyContextLine({ mentions, onOpenProfile }) {
         className="post-reply-link clickable"
         onClick={(e) => { e.stopPropagation(); onOpenProfile?.(m) }}
       >
-        {mentionLabel(m)}
+        {mentionLabel(mask(m))}
         {i < all.length - 1 ? ', ' : ''}
       </span>
     ))
@@ -533,7 +534,8 @@ export function ThreadReply({
   const showPicker = openPickerId === node.status.id
   const setShowPicker = (open) => setOpenPickerId(open ? node.status.id : null)
   const status = node.status
-  const account = status.account || {}
+  const mask = useMaskIdentity()
+  const account = mask(status.account || {})
   const rawName = account.display_name || account.username || 'Unknown'
   const name = renderEmojiText(rawName, account.emojis)
   const content = processStatusContentForDisplay(status, instanceUrl)
@@ -779,6 +781,7 @@ function ReactionPicker({ status, instanceUrl, onReact, onClose }) {
 function AccountsPopover({ kind, statusId, instanceUrl, token, onClose, onOpenProfile }) {
   const [accounts, setAccounts] = useState(null)
   const [error, setError] = useState('')
+  const mask = useMaskIdentity()
   useEscapeKey(onClose)
 
   const fetchPage = useCallback(() => (
@@ -805,7 +808,9 @@ function AccountsPopover({ kind, statusId, instanceUrl, token, onClose, onOpenPr
         <span className="poll-meta">Nobody yet.</span>
       ) : (
         <div className="accounts-popover-list">
-          {(accounts || []).map((account) => (
+          {(accounts || []).map((rawAccount) => {
+            const account = mask(rawAccount)
+            return (
             <button
               type="button"
               key={account.id}
@@ -818,7 +823,8 @@ function AccountsPopover({ kind, statusId, instanceUrl, token, onClose, onOpenPr
                 <span className="post-handle">@{account.acct || account.username}</span>
               </div>
             </button>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
@@ -897,12 +903,15 @@ function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote, onShow
 }
 
 export function QuoteCard({ status, instanceUrl, onOpenThread }) {
-  if (!status) return null
+  // All hooks before the early return: a quote can flip null -> loaded
+  // while this card stays mounted, and the hook count must not change.
   const { alwaysSensitive } = useContext(AppSettingsContext)
-  const effectiveSensitive = Boolean(status.sensitive) || Boolean(alwaysSensitive)
+  const mask = useMaskIdentity()
+  const effectiveSensitive = Boolean(status?.sensitive) || Boolean(alwaysSensitive)
   const [revealed, setRevealed] = useState(!effectiveSensitive)
   useEffect(() => { setRevealed(!effectiveSensitive) }, [effectiveSensitive])
-  const account = status.account || {}
+  if (!status) return null
+  const account = mask(status.account || {})
   const rawName = account.display_name || account.username || 'Unknown'
   const name = renderEmojiText(rawName, account.emojis)
   const content = processStatusContent(status, instanceUrl)
@@ -1250,14 +1259,15 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   // null | { kind: 'favourited_by' | 'reblogged_by' } — who-did-this popover
   const [accountsView, setAccountsView] = useState(null)
   const { openPickerId, setOpenPickerId } = useContext(PickerContext)
+  const mask = useMaskIdentity()
   const isBoost = Boolean(post.reblog)
   const status = unwrapStatus(post)
   const showPicker = openPickerId === status.id
   const setShowPicker = (open) => setOpenPickerId(open ? status.id : null)
-  const account = status.account || {}
+  const account = mask(status.account || {})
   const displayNameRaw = account.display_name || account.username || 'Unknown'
   const displayName = renderEmojiText(displayNameRaw, account.emojis)
-  const booster = isBoost ? post.account : null
+  const booster = isBoost ? mask(post.account) : null
   const content = processStatusContentForDisplay(status, instanceUrl)
   const translation = useTranslation(status)
   // Build the sorted mention list: reply target first, then other body mentions.
@@ -1465,7 +1475,8 @@ export const NotificationRow = memo(function NotificationRow({
   onMute,
   onBlock,
 }) {
-  const account = notification.account || {}
+  const mask = useMaskIdentity()
+  const account = mask(notification.account || {})
   const rawName = account.display_name || account.username || 'Unknown'
   const name = renderEmojiText(rawName, account.emojis)
   const Icon = notificationIcon(notification.type)

@@ -6,6 +6,7 @@ import { PROVIDER_IDS, DEFAULT_PROVIDER, unloadProvider } from './lib/translate.
 import { gifCacheClear, gifCacheSweep } from './lib/gif/cache.js'
 import { installGifHoverAnimator } from './lib/gif/hoverAnimator.js'
 import { SKINS, applySkin } from './lib/skins.js'
+import { maskAccount } from './lib/privacy.js'
 
 // All user-adjustable app settings in one hook: persisted to localStorage,
 // synced to the account's client_config (local wins on conflict), and
@@ -20,6 +21,22 @@ export function useAppSettings(session, { onClientNameChange, extraSynced = {} }
   const [alwaysSensitive, setAlwaysSensitive] = useState(() => {
     return storageGet('always-sensitive') === 'true'
   })
+
+  // Privacy mode: masks the user's own display name/handle/avatar/bio at
+  // every identity surface. Deliberately NOT part of the client_config
+  // sync — stealth state is per-device and shouldn't be announced to the
+  // server on login.
+  const [privacyMode, setPrivacyMode] = useState(() => {
+    return storageGet('privacy-mode') === 'true'
+  })
+
+  function togglePrivacyMode() {
+    setPrivacyMode((prev) => {
+      const next = !prev
+      storageSet('privacy-mode', String(next))
+      return next
+    })
+  }
 
   const [useOsAccent, setUseOsAccent] = useState(() => {
     return storageGet('use-os-accent') !== 'false'
@@ -296,6 +313,9 @@ export function useAppSettings(session, { onClientNameChange, extraSynced = {} }
   }, [session, themeMode, skinId, useOsAccent, alwaysSensitive, peekSpoilerMedia, fetchClientMedia, configSyncReady,
     ...Object.values(extraSynced).map(([v]) => v)])
 
+  const selfId = session?.account?.id
+  const mask = (account) => maskAccount(account, selfId, privacyMode)
+
   return {
     // Bundled for AppSettingsContext.Provider; re-created per render, same
     // as the previous inline object.
@@ -303,8 +323,10 @@ export function useAppSettings(session, { onClientNameChange, extraSynced = {} }
       fetchClientMedia, alwaysSensitive, peekSpoilerMedia,
       translationEnabled, translationProvider, defaultVisibility,
       gifConversionEnabled, gifIncludeLarge, gifHoverAnimate,
+      privacyMode, mask,
       instanceUrl: session?.instanceUrl, token: session?.token,
     },
+    privacyMode, togglePrivacyMode, mask,
     skin: SKINS[skinId] || null, skinId, setSkinId,
     themeMode, setThemeMode,
     useOsAccent, toggleUseOsAccent,

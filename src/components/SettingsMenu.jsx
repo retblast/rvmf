@@ -100,6 +100,14 @@ export function SettingsMenu({ open, anchor, settings, onClose, onNavigate }) {
             </div>
 
             <div className="settings-group">
+              <span className="settings-menu-heading">Privacy</span>
+              <label className="settings-menu-row">
+                <span>Hide My Identity</span>
+                <Switch checked={settings.privacyMode} onChange={settings.togglePrivacyMode} label="Hide My Identity" />
+              </label>
+            </div>
+
+            <div className="settings-group">
               <span className="settings-menu-heading">GIF Power Saver</span>
               <label className="settings-menu-row">
                 <span>Convert GIFs to AV1</span>

@@ -2,7 +2,7 @@ import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, ListPlus, LoaderCircle, RefreshCw, Settings2 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { formatRelativeTime, processStatusContent } from '../lib/render.jsx'
-import { AppSettingsContext } from '../hooks'
+import { AppSettingsContext, useMaskIdentity } from '../hooks'
 import { isGifUrl } from '../lib/gif/core.js'
 import { forgetGifConversion } from '../lib/gif/convert.js'
 import { Avatar } from './Media.jsx'
@@ -165,6 +165,7 @@ const PEOPLE_PAGE_SIZE = 40
 // stats row. Subscribers rows carry an expiry instead of a bio; your own
 // followers can be removed.
 function PeopleListPanel({ kind, account, isOwn, instanceUrl, token, onOpenProfile, onClose }) {
+  const mask = useMaskIdentity()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -256,7 +257,7 @@ function PeopleListPanel({ kind, account, isOwn, instanceUrl, token, onOpenProfi
       ) : (
         <div className="timeline-list">
           {items.map((item) => {
-            const person = kind === 'subscribers' ? (item.sender || {}) : item
+            const person = mask(kind === 'subscribers' ? (item.sender || {}) : item)
             return (
               <div key={item.id} className="search-account-row">
                 <Avatar name={person.display_name || person.username} src={person.avatar} staticSrc={person.avatar_static} onClick={() => onOpenProfile?.(person)} />
@@ -308,6 +309,7 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
   const [avatarRetryNonce, setAvatarRetryNonce] = useState(0)
   const [avatarRetrying, setAvatarRetrying] = useState(false)
   const { gifConversionEnabled } = useContext(AppSettingsContext)
+  const mask = useMaskIdentity()
   const statusById = useMemo(() => {
     const m = new Map()
     for (const p of statuses) { m.set(p.id, p); if (p.reblog) m.set(p.reblog.id, p.reblog) }
@@ -468,9 +470,10 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
 
   if (!account) return null
 
-  const displayName = account.display_name || account.username || 'Unknown'
-  const bio = account.note ? processStatusContent({ content: account.note }, instanceUrl).textNodes : null
-  const isRemote = Boolean(account.acct?.includes('@'))
+  const shown = mask(account)
+  const displayName = shown.display_name || shown.username || 'Unknown'
+  const bio = shown.note ? processStatusContent({ content: shown.note }, instanceUrl).textNodes : null
+  const isRemote = Boolean(shown.acct?.includes('@'))
 
   return (
     <div className="timeline-wrap">
@@ -486,8 +489,8 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
             <Avatar
               key={`avatar-${account.id}-${avatarRetryNonce}`}
               name={displayName}
-              src={account.avatar}
-              staticSrc={account.avatar_static}
+              src={shown.avatar}
+              staticSrc={shown.avatar_static}
               large
             />
             {gifConversionEnabled && isGifUrl(account.avatar) && (
@@ -505,7 +508,7 @@ export function ProfileView({ accountId, instanceUrl, token, onOpenThread, onCom
           </div>
           <div className="profile-names">
             <span className="profile-display-name">{displayName}</span>
-            <span className="profile-handle">@{account.acct || account.username}</span>
+            <span className="profile-handle">@{shown.acct || shown.username}</span>
             {!isOwn && relationship?.following && relationship?.followed_by && (
               <span className="profile-badge mutual">Mutual</span>
             )}

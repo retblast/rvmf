@@ -15,7 +15,7 @@ import {
   usePollDraft, PollEditorFields, ParentPreviewMedia, useStatusPreview, StatusPreviewPane,
   replyVisibilityOptions, defaultReplyVisibility, friendlyPostError,
 } from './Compose.jsx'
-import { AppSettingsContext, useComposeDraft, getDraftKey } from '../hooks'
+import { AppSettingsContext, useComposeDraft, useMaskIdentity, getDraftKey } from '../hooks'
 import {
   insertAtCaret,
   useEmojiAutocomplete,
@@ -27,6 +27,7 @@ import { useMentionAutocomplete, MentionDropdown } from './Mention.jsx'
 export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPosted, maxCharacters = 500, currentAccountId }) {
   const draftKey = getDraftKey({ replyToStatusId: status?.id })
   const { defaultVisibility } = useContext(AppSettingsContext)
+  const mask = useMaskIdentity()
 
   const parentVisibility = status?.visibility
   const isSameAuthor = currentAccountId && status?.account?.id === currentAccountId
@@ -71,7 +72,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
   const idempotencyKeyRef = useRef(
     typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `draft-${Date.now()}-${Math.random()}`
   )
-  const account = status?.account || {}
+  const account = mask(status?.account || {})
   const name = account.display_name || account.username || 'Unknown'
   const preview = useStatusPreview(showPreview, text, instanceUrl, token)
   const { query: acQuery, suggestions: acSuggestions, selectedIndex: acIndex, handleKeyDown: acKeyDown } = useEmojiAutocomplete(text, setText, textareaRef, customEmojis)

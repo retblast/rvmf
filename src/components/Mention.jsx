@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useMaskIdentity } from '../hooks'
 import * as mitra from '../lib/mitra'
 import { Avatar } from './Media.jsx'
 
@@ -119,10 +120,13 @@ export function useMentionAutocomplete(text, setText, textareaRef, instanceUrl, 
 }
 
 export function MentionDropdown({ query, suggestions, selectedIndex, onSelect }) {
+  const mask = useMaskIdentity()
   if (!query || suggestions.length === 0) return null
   return (
     <div className="emoji-dropdown mention-dropdown">
-      {suggestions.map((account, i) => (
+      {suggestions.map((rawAccount, i) => {
+        const account = mask(rawAccount)
+        return (
         <button
           key={account.id}
           className={`emoji-dropdown-item mention-dropdown-item${i === selectedIndex ? ' selected' : ''}`}
@@ -134,7 +138,8 @@ export function MentionDropdown({ query, suggestions, selectedIndex, onSelect })
             <span className="post-handle">@{account.acct || account.username}</span>
           </span>
         </button>
-      ))}
+        )
+      })}
     </div>
   )
 }
