@@ -15,7 +15,7 @@ import {
   usePollDraft, PollEditorFields, ParentPreviewMedia, useStatusPreview, StatusPreviewPane,
   replyVisibilityOptions, defaultReplyVisibility, friendlyPostError,
 } from './Compose.jsx'
-import { AppSettingsContext, useComposeDraft, useMaskIdentity, getDraftKey } from '../hooks'
+import { AppSettingsContext, useComposeDraft, useMaskIdentity, useMentionMaskId, getDraftKey } from '../hooks'
 import {
   insertAtCaret,
   useEmojiAutocomplete,
@@ -28,6 +28,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
   const draftKey = getDraftKey({ replyToStatusId: status?.id })
   const { defaultVisibility } = useContext(AppSettingsContext)
   const mask = useMaskIdentity()
+  const mentionMaskId = useMentionMaskId()
 
   const parentVisibility = status?.visibility
   const isSameAuthor = currentAccountId && status?.account?.id === currentAccountId
@@ -163,7 +164,7 @@ export function ReplyComposerFields({ status, instanceUrl, token, onClose, onPos
             <span className="post-name">{name}</span>
             <span className="post-handle">@{account.acct || account.username}</span>
           </div>
-          <p className="post-text">{processStatusContent(status, instanceUrl).textNodes}</p>
+          <p className="post-text">{processStatusContent(status, instanceUrl, mentionMaskId).textNodes}</p>
           <ParentPreviewMedia status={status} instanceUrl={instanceUrl} />
         </div>
       )}

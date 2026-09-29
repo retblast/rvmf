@@ -23,7 +23,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
-import { PickerContext, AppSettingsContext, GhostContext, useEscapeKey, useMaskIdentity, showToast, downloadAllMedia } from '../hooks'
+import { PickerContext, AppSettingsContext, GhostContext, useEscapeKey, useMaskIdentity, useMentionMaskId, showToast, downloadAllMedia } from '../hooks'
 import { formatRelativeTime, htmlToPlainText, processStatusContent, processStatusContentForDisplay, renderEmojiText, renderPlainText } from '../lib/render.jsx'
 import { translateText, translationPressureNotice } from '../lib/translate'
 import { canonicalizeLanguage, canonicalLangName } from '../lib/languages'
@@ -251,6 +251,7 @@ function TranslateToggleButton({ active, disabled, onClick }) {
 // the translated text, the progress bar while the model downloads/runs, or an
 // inline error.
 function TranslatedBody({ status, t }) {
+  const mentionMaskId = useMentionMaskId()
   const { sourceCode, sourceLangName, phase, progress, translated, error, toggle } = t
 
   if (phase === 'loading') {
@@ -305,7 +306,7 @@ function TranslatedBody({ status, t }) {
             </button>
           </div>
           <p className="post-text post-translation-text">
-            {renderPlainText(translated, status.mentions, status.emojis)}
+            {renderPlainText(translated, status.mentions, status.emojis, mentionMaskId)}
           </p>
         </>
       )}
@@ -535,10 +536,11 @@ export function ThreadReply({
   const setShowPicker = (open) => setOpenPickerId(open ? node.status.id : null)
   const status = node.status
   const mask = useMaskIdentity()
+  const mentionMaskId = useMentionMaskId()
   const account = mask(status.account || {})
   const rawName = account.display_name || account.username || 'Unknown'
   const name = renderEmojiText(rawName, account.emojis)
-  const content = processStatusContentForDisplay(status, instanceUrl)
+  const content = processStatusContentForDisplay(status, instanceUrl, mentionMaskId)
   const translation = useTranslation(status)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
   // Build the sorted mention list: reply target first, then other body mentions.
@@ -907,6 +909,7 @@ export function QuoteCard({ status, instanceUrl, onOpenThread }) {
   // while this card stays mounted, and the hook count must not change.
   const { alwaysSensitive } = useContext(AppSettingsContext)
   const mask = useMaskIdentity()
+  const mentionMaskId = useMentionMaskId()
   const effectiveSensitive = Boolean(status?.sensitive) || Boolean(alwaysSensitive)
   const [revealed, setRevealed] = useState(!effectiveSensitive)
   useEffect(() => { setRevealed(!effectiveSensitive) }, [effectiveSensitive])
@@ -914,7 +917,7 @@ export function QuoteCard({ status, instanceUrl, onOpenThread }) {
   const account = mask(status.account || {})
   const rawName = account.display_name || account.username || 'Unknown'
   const name = renderEmojiText(rawName, account.emojis)
-  const content = processStatusContent(status, instanceUrl)
+  const content = processStatusContent(status, instanceUrl, mentionMaskId)
   return (
     <div className="quote-card" onClick={(e) => { e.stopPropagation(); onOpenThread(status) }}>
       <div className="quote-card-meta">
@@ -1260,6 +1263,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   const [accountsView, setAccountsView] = useState(null)
   const { openPickerId, setOpenPickerId } = useContext(PickerContext)
   const mask = useMaskIdentity()
+  const mentionMaskId = useMentionMaskId()
   const isBoost = Boolean(post.reblog)
   const status = unwrapStatus(post)
   const showPicker = openPickerId === status.id
@@ -1268,7 +1272,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   const displayNameRaw = account.display_name || account.username || 'Unknown'
   const displayName = renderEmojiText(displayNameRaw, account.emojis)
   const booster = isBoost ? mask(post.account) : null
-  const content = processStatusContentForDisplay(status, instanceUrl)
+  const content = processStatusContentForDisplay(status, instanceUrl, mentionMaskId)
   const translation = useTranslation(status)
   // Build the sorted mention list: reply target first, then other body mentions.
   const replyMentions = buildReplyMentions(status)

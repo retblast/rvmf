@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { renderToStaticMarkup } from 'react-dom/server'
 import {
   htmlToPlainText,
   buildReplyTree,
@@ -196,5 +197,57 @@ describe('processStatusContent quarantined-image recovery', () => {
       account: { acct: 'someone' },
     }, instanceUrl)
     expect(out.attachments).toHaveLength(0)
+  })
+})
+
+
+describe('privacy: self-mention masking in content', () => {
+  const status = {
+    id: 'st-1',
+    content: '<p>hey <a href="https://inst.example/@alice" class="mention">@alice</a> look, and <a href="https://inst.example/@bob" class="mention">@bob</a> too</p>',
+    account: { acct: 'carol' },
+    mentions: [
+      { id: 'u1', acct: 'alice', username: 'alice', url: 'https://inst.example/@alice' },
+      { id: 'u2', acct: 'bob', username: 'bob', url: 'https://inst.example/@bob' },
+    ],
+    emojis: [],
+  }
+
+  function textOf(result) {
+    return renderToStaticMarkup(<>{result.textNodes}</>)
+  }
+
+  it('renders a self-mention as @you while others pass through', () => {
+    const html = textOf(processStatusContent(status, 'https://inst.example', 'u1'))
+    expect(html).toContain('@you')
+    expect(html).not.toContain('@alice')
+    expect(html).toContain('@bob')
+  })
+
+  it('keeps the real handle in data-acct so profile routing still works', () => {
+    const html = textOf(processStatusContent(status, 'https://inst.example', 'u1'))
+    expect(html).toContain('data-acct="alice"')
+  })
+
+  it('renders real handles when no mask id is given', () => {
+    const html = textOf(processStatusContent(status, 'https://inst.example'))
+    expect(html).toContain('@alice')
+    expect(html).toContain('@bob')
+    expect(html).not.toContain('@you')
+  })
+
+  it('does not serve a cached masked variant to an unmasked call (and vice versa)', () => {
+    const fresh = { ...status, id: 'st-2' }
+    const masked = textOf(processStatusContent(fresh, 'https://inst.example', 'u1'))
+    const unmasked = textOf(processStatusContent(fresh, 'https://inst.example'))
+    expect(masked).toContain('@you')
+    expect(unmasked).toContain('@alice')
+  })
+
+  it('applies the same masking through the display variant used by rows', () => {
+    const reply = { ...status, id: 'st-3', in_reply_to_id: 'st-0' }
+    const html = textOf(processStatusContentForDisplay(reply, 'https://inst.example', 'u1'))
+    expect(html).toContain('@you')
+    expect(html).not.toContain('@alice</')
   })
 })

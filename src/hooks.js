@@ -27,6 +27,16 @@ export function useMaskIdentity() {
   return mask || ((account) => account)
 }
 
+// Self-mention masking for the content pipeline: the render lib caches
+// processed content per status object, so it needs a stable cache key,
+// not a per-render closure. This yields the account id while privacy
+// mode is on and null otherwise — exactly the variance the cache must
+// distinguish.
+export function useMentionMaskId() {
+  const { privacyMode, selfId } = useContext(AppSettingsContext)
+  return privacyMode && selfId ? selfId : null
+}
+
 // Transient confirmation toast. Fire-and-forget from anywhere via a
 // window event — avoids prop-drilling a dispatcher through every row.
 export function showToast(message) {

@@ -323,7 +323,7 @@ export function useAppSettings(session, { onClientNameChange, extraSynced = {} }
       fetchClientMedia, alwaysSensitive, peekSpoilerMedia,
       translationEnabled, translationProvider, defaultVisibility,
       gifConversionEnabled, gifIncludeLarge, gifHoverAnimate,
-      privacyMode, mask,
+      privacyMode, mask, selfId,
       instanceUrl: session?.instanceUrl, token: session?.token,
     },
     privacyMode, togglePrivacyMode, mask,
