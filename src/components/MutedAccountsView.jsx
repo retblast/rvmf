@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMaskIdentity } from '../hooks'
+import { AccountNames } from './AccountNames.jsx'
 import { Volume2 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { Avatar } from './Media.jsx'
@@ -84,8 +85,7 @@ export function MutedAccountsView({ instanceUrl, token, onOpenProfile }) {
                 style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', font: 'inherit' }}
                 onClick={() => onOpenProfile?.(account)}
               >
-                <span className="post-name clickable">{account.display_name || account.username}</span>
-                <span className="post-handle">@{account.acct || account.username}</span>
+                <AccountNames account={account} clickable />
               </button>
               <button
                 type="button"

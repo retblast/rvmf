@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMaskIdentity } from '../hooks'
+import { AccountNames } from './AccountNames.jsx'
 import { Globe, Home, Users } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { mergeStatusIntoRow, htmlToPlainText as noteToPlainText } from '../lib/render.jsx'
@@ -210,8 +211,7 @@ export function ExploreView({
                 >
                   <Avatar name={account.display_name || account.username} src={account.avatar} />
                   <div className="search-account-names">
-                    <span className="post-name">{account.display_name || account.username}</span>
-                    <span className="post-handle">@{account.acct || account.username}</span>
+                    <AccountNames account={account} />
                   </div>
                   <span className="directory-bio">{account.note ? noteToPlainText(account.note) : ''}</span>
                 </button>

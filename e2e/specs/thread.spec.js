@@ -1,13 +1,29 @@
 import { test, expect } from '@playwright/test'
 import { loginAs, SEED, isNarrowTier } from '../helpers.js'
 
+// The specs share one seeded instance across projects, and every
+// project's inline-reply spec adds a row to alice's (and carol's) home
+// feed — by the later projects a seeded row can sit past the home
+// feed's first 10-row page. Drive the infinite scroll until the target
+// row renders before clicking it, mirroring timeline.spec.
+async function rowAfterInfiniteScroll(page, row) {
+  await expect(async () => {
+    if (!(await row.isVisible().catch(() => false))) {
+      await page.mouse.move(200, 300)
+      await page.mouse.wheel(0, 4000)
+      throw new Error('target row not loaded yet')
+    }
+  }).toPass({ timeout: 15_000 })
+  return row
+}
+
 // Wide tier: thread lives in a permanent third column. Open the seeded
 // root's thread, reply inline, and see the reply land in the tree.
 test('open a thread and post an inline reply', async ({ page }, testInfo) => {
   await loginAs(page, 'bob')
   await page.goto('/')
 
-  const row = page.locator('.post-row', { hasText: SEED.rootText }).first()
+  const row = await rowAfterInfiniteScroll(page, page.locator('.post-row', { hasText: SEED.rootText }).first())
   await row.locator('.post-text').click()
 
   // Timeline post collapses to a ghost placeholder ("Viewing in thread")
@@ -42,7 +58,7 @@ test('clicking a mid-thread reply keeps the full thread visible', async ({ page 
   await loginAs(page, 'carol')
   await page.goto('/')
 
-  const row = page.locator('.post-row', { hasText: SEED.rootText }).first()
+  const row = await rowAfterInfiniteScroll(page, page.locator('.post-row', { hasText: SEED.rootText }).first())
   await row.locator('.post-text').click()
 
   const panel = page.getByTestId('thread-root')
@@ -69,7 +85,7 @@ test('opening a thread from a reply focuses that reply', async ({ page }) => {
   await page.goto('/')
 
   // Bob's reply to alice's root sits in alice's home timeline (b->a follow).
-  const row = page.locator('.post-row', { hasText: SEED.replyText }).first()
+  const row = await rowAfterInfiniteScroll(page, page.locator('.post-row', { hasText: SEED.replyText }).first())
   await row.locator('.post-text').click()
 
   const panel = page.getByTestId('thread-root')

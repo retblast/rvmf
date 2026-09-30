@@ -1,0 +1,1073 @@
+// Shared internals of the post surfaces — extraction home for the
+// machinery both PostRow (Post.jsx) and ThreadReply (ThreadReply.jsx)
+// render through: translation hook/body, the action row + its menus,
+// reactions, quotes, polls, and the accounts popover. Split out of
+// Post.jsx so none of the three post files import each other.
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
+import {
+  MessageCircle, Repeat2, Star, Bookmark, MoreHorizontal, X, EyeOff, Eye,
+  UserPlus, Smile, Link, Edit3, Pin, PinOff, Box, Download, Languages, RefreshCw,
+} from 'lucide-react'
+import * as mitra from '../lib/mitra'
+import { AppSettingsContext, useEscapeKey, useMaskIdentity, useMentionMaskId, showToast, downloadAllMedia } from '../hooks'
+import { AccountNames } from './AccountNames.jsx'
+import { htmlToPlainText, processStatusContent, renderEmojiText, renderPlainText } from '../lib/render.jsx'
+import { translateText, translationPressureNotice } from '../lib/translate'
+import { canonicalizeLanguage, canonicalLangName } from '../lib/languages'
+import { Avatar, ProxiedImg } from './Media.jsx'
+import { GifVideo } from './GifVideo.jsx'
+import { COMMON_EMOJI } from './Emoji.jsx'
+// A status as returned by the timeline can itself be a boost: in that case
+// `post.account` is whoever boosted it, and the actual post — content,
+// author, counts, your favourite/reblog state — lives in `post.reblog`.
+// Everything that isn't the "so-and-so boosted" line should read from here.
+export function unwrapStatus(post) {
+  return post.reblog || post
+}
+
+// Builds the sorted list of accounts to show in the "In reply to" line:
+// the direct reply target (in_reply_to_account_id) first, then any other
+// mentions from the post body. Deduplicates by id. The list is truncated
+// to a small number of handles for display; the full list is visible on
+// hover. Only actual replies get the line — a top-level post that merely
+// tags people has nothing to be "in reply to".
+// Builds the sorted list of accounts to show in the "In reply to" line:
+// the direct reply target (in_reply_to_account_id) first, then any other
+// mentions from the post body. Deduplicates by id. The list is truncated
+// to a small number of handles for display; the full list is visible on
+// hover. Only actual replies get the line — a top-level post that merely
+// tags people has nothing to be "in reply to".
+export function buildReplyMentions(status) {
+  if (!status?.in_reply_to_account_id) return []
+  const seen = new Set()
+  const result = []
+  // Reply target first
+  if (status.in_reply_to_account_id) {
+    const target = (status.mentions || []).find((m) => m.id === status.in_reply_to_account_id)
+    if (target) {
+      result.push(target)
+      seen.add(target.id)
+    } else if (status.account?.id === status.in_reply_to_account_id) {
+      // Self-reply: the server doesn't include the author in `mentions`,
+      // so fall back to the status author's own account object.
+      result.push(status.account)
+      seen.add(status.account.id)
+    } else {
+      // Target account not in mentions (e.g. deleted or remote) — minimal placeholder
+      result.push({ id: status.in_reply_to_account_id })
+      seen.add(status.in_reply_to_account_id)
+    }
+  }
+  // Then other mentions from the body
+  for (const m of (status.mentions || [])) {
+    if (!seen.has(m.id)) {
+      result.push(m)
+      seen.add(m.id)
+    }
+  }
+  return result
+}
+
+// Formats a single mention as "@handle"
+// Formats a single mention as "@handle"
+function mentionLabel(m) {
+  return `@${m.acct || m.username || 'someone'}`
+}
+
+// Renders the "In reply to" context line with all mentioned accounts,
+// truncated to a few handles with hover-to-expand for long lists.
+// Renders the "In reply to" context line with all mentioned accounts,
+// truncated to a few handles with hover-to-expand for long lists.
+export function ReplyContextLine({ mentions, onOpenProfile }) {
+  const mask = useMaskIdentity()
+  if (!mentions || mentions.length === 0) return null
+  const MAX_VISIBLE = 2
+  const visible = mentions.slice(0, MAX_VISIBLE)
+  const extra = mentions.length - MAX_VISIBLE
+
+  function renderHandles(all) {
+    return all.map((m, i) => (
+      <span
+        key={m.id}
+        className="post-reply-link clickable"
+        onClick={(e) => { e.stopPropagation(); onOpenProfile?.(m) }}
+      >
+        {mentionLabel(mask(m))}
+        {i < all.length - 1 ? ', ' : ''}
+      </span>
+    ))
+  }
+
+  return (
+    <div className="post-reply-context">
+      In reply to{' '}
+      {extra > 0 ? (
+        <span className="post-reply-expanded">
+          {renderHandles(visible)}
+          <span className="post-reply-truncated">
+            {', '}
+            <span className="post-reply-more" title={`Also mentions ${extra} other${extra !== 1 ? 's' : ''}`}>
+              +{extra} more
+            </span>
+            <span className="post-reply-full">{renderHandles(mentions.slice(MAX_VISIBLE))}</span>
+          </span>
+        </span>
+      ) : (
+        renderHandles(mentions)
+      )}
+    </div>
+  )
+}
+
+// Only public and unlisted posts can be reposted — servers reject boosts
+// of followers-only/direct/subscribers content, so don't offer the button.
+// Only public and unlisted posts can be reposted — servers reject boosts
+// of followers-only/direct/subscribers content, so don't offer the button.
+export function canBoostStatus(status) {
+  return ['public', 'unlisted'].includes(status?.visibility)
+}
+
+// Browser language (BCP-47, e.g. "en-US"), cached once at module load so the
+// translate control is stable across re-renders. Lazy so it never runs in
+// non-browser environments (tests).
+let cachedLang = null
+function userLanguage() {
+  if (cachedLang == null && typeof navigator !== 'undefined') {
+    cachedLang = navigator.language || 'en'
+  }
+  return cachedLang || 'en'
+}
+
+// On-device translation state for one post. Fediverse language tags are often
+// missing or wrong, so the translation *button* is always available (once the
+// feature is enabled) rather than gated on a language-mismatch heuristic — the
+// user decides what to translate. Translation targets the user's browser
+// language and needs NO source language: both on-device translators are
+// instruction models that read the source from the text itself, so a missing
+// or wrong language tag can't corrupt the output. The model is downloaded and
+// the request runs fully client-side on first use — post text never leaves
+// the device.
+// Exported so unit tests can exercise the toggle behavior directly.
+// On-device translation state for one post. Fediverse language tags are often
+// missing or wrong, so the translation *button* is always available (once the
+// feature is enabled) rather than gated on a language-mismatch heuristic — the
+// user decides what to translate. Translation targets the user's browser
+// language and needs NO source language: both on-device translators are
+// instruction models that read the source from the text itself, so a missing
+// or wrong language tag can't corrupt the output. The model is downloaded and
+// the request runs fully client-side on first use — post text never leaves
+// the device.
+// Exported so unit tests can exercise the toggle behavior directly.
+export function useTranslation(status) {
+  // The feature is opt-in via a settings toggle (default off). Fail closed:
+  // if the setting isn't explicitly enabled (or the context isn't provided,
+  // e.g. in isolation tests), no toggle is offered.
+  const { translationEnabled, translationProvider } = useContext(AppSettingsContext)
+  const browserLang = userLanguage()
+  const targetCode = canonicalizeLanguage(browserLang) || 'en'
+
+  // phase: 'idle' | 'loading' | 'done' | 'error'
+  const [phase, setPhase] = useState('idle')
+  const [progress, setProgress] = useState(null) // null | { overall, file, ready }
+  const [translated, setTranslated] = useState(null)
+  const [error, setError] = useState(null)
+  const [shown, setShown] = useState(false)
+
+  // Guard against setState calls after unmount during async translation.
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  // The status language tag is only ever a cosmetic label ("Translated from
+  // Japanese"); it is not fed to the translator.
+  const sourceCode = canonicalizeLanguage(status?.language)
+  const sourceLangName = canonicalLangName(sourceCode)
+
+  // Actually run the translation, reporting download/inference progress.
+  async function runTranslate() {
+    setPhase('loading')
+    setProgress(null)
+    setError(null)
+    try {
+      const source = htmlToPlainText(status.content)
+      const result = await translateText(source, sourceCode, targetCode, setProgress, translationProvider)
+      if (!mountedRef.current) return
+      setTranslated(result)
+      setPhase('done')
+      // The model's heap stays reserved while the page is open; when the
+      // page is genuinely heavy, tell the user a reload hands it back.
+      // Best-effort — the notice must never fail a translation.
+      try {
+        const msg = await translationPressureNotice()
+        if (msg && mountedRef.current) showToast(msg)
+      } catch { /* notice is optional */ }
+    } catch (err) {
+      if (!mountedRef.current) return
+      console.error(err)
+      setError(String(err?.message || err))
+      setPhase('error')
+    }
+  }
+
+  // Kick off translation if needed, then reveal the translated view.
+  async function toggle() {
+    if (shown) {
+      setShown(false)
+      return
+    }
+    setShown(true)
+    if (phase === 'loading') return
+    if (phase === 'done') return
+    await runTranslate()
+  }
+
+  return {
+    translationEnabled,
+    sourceCode,
+    sourceLangName,
+    shown,
+    phase,
+    progress,
+    translated,
+    error,
+    toggle,
+  }
+}
+
+// Small action-row button that toggles a post between its original and its
+// on-device translation. Active (highlighted) while the translated view is up.
+// Small action-row button that toggles a post between its original and its
+// on-device translation. Active (highlighted) while the translated view is up.
+function TranslateToggleButton({ active, disabled, onClick }) {
+  return (
+    <button
+      className={`action-btn${active ? ' translated' : ''}`}
+      aria-label={active ? 'Show original' : 'Translate'}
+      title={active ? 'Show original post' : 'Translate this post on-device'}
+      onClick={(e) => { e.stopPropagation(); onClick() }}
+      disabled={disabled}
+    >
+      <Languages size={15} />
+    </button>
+  )
+}
+
+// The translated view shown in place of the original text: a "Translated from
+// X" heading (when the post carries a language tag) with a show-original ✕,
+// the translated text, the progress bar while the model downloads/runs, or an
+// inline error.
+// The translated view shown in place of the original text: a "Translated from
+// X" heading (when the post carries a language tag) with a show-original ✕,
+// the translated text, the progress bar while the model downloads/runs, or an
+// inline error.
+export function TranslatedBody({ status, t }) {
+  const mentionMaskId = useMentionMaskId()
+  const { sourceCode, sourceLangName, phase, progress, translated, error, toggle } = t
+
+  if (phase === 'loading') {
+    // A real progress bar: determinate while the weights download, then an
+    // indeterminate "Translating…" bar once the model is loaded and inference
+    // (which has no byte-level progress) is running.
+    const overall = typeof progress?.overall === 'number' ? progress.overall : null
+    const ready = progress?.ready === true
+    const indeterminate = ready || overall == null
+    const label = ready
+      ? 'Translating…'
+      : overall != null
+        ? `Downloading translation model… ${Math.round(overall)}%`
+        : 'Preparing translator…'
+    const pct = Math.max(0, Math.min(100, overall))
+    return (
+      <div className="post-translation post-translation-loading">
+        <span className="post-translation-label">{label}</span>
+        <div
+          className={`post-translation-progress${indeterminate ? ' is-indeterminate' : ''}`}
+          role="progressbar"
+          aria-label="Translation model progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={indeterminate ? undefined : Math.round(pct)}
+        >
+          <div
+            className="post-translation-progress-fill"
+            style={indeterminate ? undefined : { width: `${pct}%` }}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="post-translation">
+      {phase === 'done' && translated && (
+        <>
+          <div className="post-translation-head">
+            <span className="post-translation-label">
+              <Languages size={13} />
+              {sourceCode ? `Translated from ${sourceLangName}` : 'Translated'}
+            </span>
+            <button
+              className="post-translation-close"
+              aria-label="Show original"
+              title="Show original"
+              onClick={(e) => { e.stopPropagation(); toggle() }}
+            >
+              <X size={13} />
+            </button>
+          </div>
+          <p className="post-text post-translation-text">
+            {renderPlainText(translated, status.mentions, status.emojis, mentionMaskId)}
+          </p>
+        </>
+      )}
+      {phase === 'error' && (
+        <div className="banner banner-error">{error}</div>
+      )}
+    </div>
+  )
+}
+
+// Shared hook for post interaction state and toggle functions.
+// `wrapUpdate` lets callers adjust the payload before it reaches onUpdate —
+// PostRow uses it to handle boost wrappers; ThreadReply passes through.
+// Shared hook for post interaction state and toggle functions.
+// `wrapUpdate` lets callers adjust the payload before it reaches onUpdate —
+// PostRow uses it to handle boost wrappers; ThreadReply passes through.
+export function usePostActions({ status, instanceUrl, token, onUpdate }) {
+  const [busy, setBusy] = useState(false)
+
+  async function toggleBookmark() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const updated = await mitra.setBookmarked(instanceUrl, token, status.id, status.bookmarked)
+      onUpdate(updated)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function toggleReaction(statusId, emoji, alreadyReacted) {
+    try {
+      const updated = alreadyReacted
+        ? await mitra.removeReaction(instanceUrl, token, statusId, emoji)
+        : await mitra.addReaction(instanceUrl, token, statusId, emoji)
+      onUpdate(updated)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  async function toggleFavourite() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const updated = await mitra.setFavourited(instanceUrl, token, status.id, status.favourited)
+      onUpdate(updated)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function toggleReblog() {
+    if (busy) return
+    setBusy(true)
+    try {
+      const updated = await mitra.setReblogged(instanceUrl, token, status.id, status.reblogged)
+      // Mitra serializes the freshly-created repost wrapper on reblog,
+      // whose own `reblogged` is always false — the real flag lives on
+      // the wrapped original. Unreblog returns the original directly.
+      const inner = updated.reblog
+        ? { ...updated.reblog, reblogged: Boolean(updated.reblog.reblogged) }
+        : { ...updated, reblogged: Boolean(updated.reblogged) }
+      onUpdate(inner)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return { busy, toggleBookmark, toggleReaction, toggleFavourite, toggleReblog }
+}
+
+// Shared action-row component used by both ThreadReply and PostRow.
+// Renders reply, boost, favourite, bookmark, react, media-toggle, translate,
+// and options-menu buttons.
+// Shared action-row component used by both ThreadReply and PostRow.
+// Renders reply, boost, favourite, bookmark, react, media-toggle, translate,
+// and options-menu buttons.
+export function PostActions({
+  status, instanceUrl, token, compact, content, currentAccountId,
+  busy, toggleBookmark, toggleReaction, toggleFavourite, toggleReblog,
+  onComposeReply, onQuote, onOpenProfile, onDelete, onMute, onBlock, onEdit, onUpdate,
+  mediaHidden, setMediaHidden, translation, showPicker, setShowPicker,
+  accountsView, setAccountsView,
+}) {
+  return (
+    <div className="post-actions" onClick={(e) => e.stopPropagation()}>
+      <button className="action-btn" aria-label="Reply" onClick={() => onComposeReply(status)}>
+        <MessageCircle size={15} />
+        {!compact && status.replies_count > 0 && <span>{status.replies_count}</span>}
+      </button>
+      {canBoostStatus(status) && (
+        <BoostDropdown
+          reblogged={status.reblogged}
+          reblogsCount={compact ? 0 : status.reblogs_count}
+          busy={busy}
+          onBoost={toggleReblog}
+          onQuote={() => onQuote(status)}
+          onShowReblogs={compact ? undefined : () => setAccountsView({ kind: 'reblogged_by' })}
+        />
+      )}
+      {/* Buttons can't nest — the "who favourited" count is a sibling */}
+      <div className="action-btn-group">
+        <button
+          className={`action-btn${status.favourited ? ' favorited' : ''}`}
+          data-favourited={status.favourited ? 'true' : 'false'}
+          aria-label="Favorite"
+          onClick={toggleFavourite}
+          disabled={busy}
+        >
+          <Star size={15} fill={status.favourited ? 'currentColor' : 'none'} />
+        </button>
+        {!compact && (
+          <CountButton
+            count={status.favourites_count}
+            title="Who favourited"
+            onClick={() => setAccountsView({ kind: 'favourited_by' })}
+          />
+        )}
+      </div>
+      <button
+        className={`action-btn${status.bookmarked ? ' bookmarked' : ''}`}
+        aria-label="Bookmark"
+        onClick={toggleBookmark}
+        disabled={busy}
+      >
+        <Bookmark size={15} fill={status.bookmarked ? 'currentColor' : 'none'} />
+      </button>
+      <button
+        className="action-btn"
+        aria-label="React"
+        onClick={() => setShowPicker(!showPicker)}
+      >
+        <Smile size={15} />
+      </button>
+      {showPicker && (
+        <ReactionPicker
+          status={status}
+          instanceUrl={instanceUrl}
+          onReact={toggleReaction}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
+      {content.attachments.length > 0 && (
+        <button
+          className="action-btn"
+          aria-label={mediaHidden ? 'Show media' : 'Hide media'}
+          onClick={() => setMediaHidden((v) => !v)}
+        >
+          {mediaHidden ? <EyeOff size={15} /> : <Eye size={15} />}
+        </button>
+      )}
+      {translation.translationEnabled && (
+        <TranslateToggleButton
+          active={translation.shown}
+          disabled={translation.phase === 'loading'}
+          onClick={translation.toggle}
+        />
+      )}
+      <PostOptionsMenu
+        status={status}
+        instanceUrl={instanceUrl}
+        token={token}
+        mediaAttachments={content.attachments}
+        isOwn={status.account?.id === currentAccountId}
+        onDelete={onDelete}
+        onMute={onMute}
+        onBlock={onBlock}
+        onEdit={onEdit}
+        onUpdate={onUpdate}
+      />
+      {accountsView && (
+        <>
+          <div className="boost-dropdown-backdrop" onClick={(e) => { e.stopPropagation(); setAccountsView(null) }} />
+          <AccountsPopover
+            kind={accountsView.kind}
+            statusId={status.id}
+            instanceUrl={instanceUrl}
+            token={token}
+            onClose={() => setAccountsView(null)}
+            onOpenProfile={onOpenProfile}
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
+// One reply, at any depth, with the exact same action row and interactivity
+// as a normal post row (reply/boost/favourite/monero/more, all functional)
+// — not a stripped-down version. Its own already-loaded children render
+// directly beneath it — no per-node fetch or click-to-expand, since the
+// whole subtree came from one /context call at the moment the thread was
+// opened. Clicking a reply's body re-opens the panel focused on it
+// specifically (fresh ancestors, in case there's more context above what's
+// already showing), same handler as everywhere else in the app.
+export function ReactionChips({ reactions, statusId, onReact }) {
+  if (!reactions || reactions.length === 0) return null
+  return (
+    <div className="reaction-chips">
+      {reactions.map((r) => (
+        <button
+          key={r.name}
+          className={`reaction-chip${r.me ? ' reacted' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onReact(statusId, r.name, r.me)
+          }}
+        >
+          {r.url ? (
+            <GifVideo direct className="reaction-emoji-img" src={r.url} alt={r.name} fallbackText={r.name.replaceAll(':', '')} />
+          ) : String(r.name).startsWith(':') ? (
+            <ProxiedImg direct className="reaction-emoji-img" alt={r.name} fallbackText={r.name.replaceAll(':', '')} />
+          ) : (
+            <span className="reaction-emoji-text">{r.name}</span>
+          )}
+          <span className="reaction-count">{r.count}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+export function ReactionPicker({ status, instanceUrl, onReact, onClose }) {
+  const [instanceEmoji, setInstanceEmoji] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    mitra.fetchCustomEmojis(instanceUrl).then((emojis) => {
+      if (!cancelled) setInstanceEmoji(emojis || [])
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [instanceUrl])
+  const seen = new Set()
+  const customEmoji = []
+  ;(status.emojis || []).forEach((e) => {
+    if (!seen.has(e.shortcode)) { seen.add(e.shortcode); customEmoji.push(e) }
+  })
+  instanceEmoji.forEach((e) => {
+    if (!seen.has(e.shortcode)) { seen.add(e.shortcode); customEmoji.push(e) }
+  })
+  return (
+    <div className="reaction-picker" onClick={(e) => e.stopPropagation()}>
+      <div className="reaction-picker-section">
+        {COMMON_EMOJI.map((emoji) => (
+          <button key={emoji} className="reaction-picker-item" onClick={() => { onReact(status.id, emoji, false); onClose() }}>
+            {emoji}
+          </button>
+        ))}
+      </div>
+      {customEmoji.length > 0 && (
+        <>
+          <div className="reaction-picker-divider" />
+          <div className="reaction-picker-section">
+            {customEmoji.map((e) => (
+              <button key={e.shortcode} className="reaction-picker-item" onClick={() => { onReact(status.id, `:${e.shortcode}:`, false); onClose() }}>
+                <ProxiedImg direct src={e.url} alt={e.shortcode} className="reaction-picker-custom-emoji" />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// Popover listing the accounts behind a favourite/boost count. Fetches
+// once per open; rows open profiles via onOpenProfile.
+// Popover listing the accounts behind a favourite/boost count. Fetches
+// once per open; rows open profiles via onOpenProfile.
+export function AccountsPopover({ kind, statusId, instanceUrl, token, onClose, onOpenProfile }) {
+  const [accounts, setAccounts] = useState(null)
+  const [error, setError] = useState('')
+  const mask = useMaskIdentity()
+  useEscapeKey(onClose)
+
+  const fetchPage = useCallback(() => (
+    kind === 'favourited_by'
+      ? mitra.fetchFavouritedBy(instanceUrl, token, statusId)
+      : mitra.fetchRebloggedBy(instanceUrl, token, statusId)
+  ), [kind, instanceUrl, token, statusId])
+
+  useEffect(() => {
+    let cancelled = false
+    fetchPage()
+      .then((list) => { if (!cancelled) setAccounts(list || []) })
+      .catch((err) => { if (!cancelled) setError(err.message || 'Failed to load.') })
+    return () => { cancelled = true }
+  }, [fetchPage])
+
+  return (
+    <div className="boost-dropdown accounts-popover" onClick={(e) => e.stopPropagation()}>
+      <div className="accounts-popover-heading">{kind === 'favourited_by' ? 'Favourited by' : 'Boosted by'}</div>
+      {error && <div className="banner banner-error">{error}</div>}
+      {!accounts && !error ? (
+        <span className="poll-meta">Loading…</span>
+      ) : accounts?.length === 0 ? (
+        <span className="poll-meta">Nobody yet.</span>
+      ) : (
+        <div className="accounts-popover-list">
+          {(accounts || []).map((rawAccount) => {
+            const account = mask(rawAccount)
+            return (
+            <button
+              type="button"
+              key={account.id}
+              className="search-account-row"
+              onClick={() => { onClose(); onOpenProfile?.(account) }}
+            >
+              <Avatar name={account.display_name || account.username} src={account.avatar} staticSrc={account.avatar_static} />
+              <div className="search-account-names">
+                <AccountNames account={account} />
+              </div>
+            </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Count span that doubles as a "who did this" button; hidden when the
+// count is zero (or in compact mode).
+// Count span that doubles as a "who did this" button; hidden when the
+// count is zero (or in compact mode).
+export function CountButton({ count, title, onClick }) {
+  if (!(count > 0)) return null
+  return (
+    <button
+      type="button"
+      className="action-count-btn"
+      title={title}
+      onClick={(e) => { e.stopPropagation(); onClick() }}
+    >
+      {count}
+    </button>
+  )
+}
+
+export function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote, onShowReblogs }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEscapeKey(() => setOpen(false), open)
+
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  return (
+    <div className="boost-dropdown-wrap" ref={ref}>
+      <button
+        className={`action-btn boost-trigger${reblogged ? ' boosted' : ''}`}
+        aria-label="Boost or quote"
+        data-reblogged={reblogged ? 'true' : 'false'}
+        onClick={() => setOpen(!open)}
+        disabled={busy}
+      >
+        <Repeat2 size={15} />
+      </button>
+      {/* Sibling, not child: buttons can't nest. Rendered after the icon
+          so the row still reads icon-then-count like every other action. */}
+      {onShowReblogs && !open && (
+        <CountButton count={reblogsCount} title="Who boosted" onClick={onShowReblogs} />
+      )}
+      {open && (
+        <>
+          <div className="boost-dropdown-backdrop" onClick={() => setOpen(false)} />
+          <div className="boost-dropdown">
+            <button
+              className={`boost-dropdown-item${reblogged ? ' boosted' : ''}`}
+              onClick={() => { onBoost(); setOpen(false) }}
+            >
+              <Repeat2 size={15} />
+              {reblogged ? 'Unboost' : 'Boost'}
+            </button>
+            <button
+              className="boost-dropdown-item"
+              onClick={() => { onQuote(); setOpen(false) }}
+            >
+              <MessageCircle size={15} />
+              Quote
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+export function QuoteCard({ status, instanceUrl, onOpenThread }) {
+  // All hooks before the early return: a quote can flip null -> loaded
+  // while this card stays mounted, and the hook count must not change.
+  const { alwaysSensitive } = useContext(AppSettingsContext)
+  const mask = useMaskIdentity()
+  const mentionMaskId = useMentionMaskId()
+  const effectiveSensitive = Boolean(status?.sensitive) || Boolean(alwaysSensitive)
+  const [revealed, setRevealed] = useState(!effectiveSensitive)
+  useEffect(() => { setRevealed(!effectiveSensitive) }, [effectiveSensitive])
+  if (!status) return null
+  const account = mask(status.account || {})
+  const rawName = account.display_name || account.username || 'Unknown'
+  const name = renderEmojiText(rawName, account.emojis)
+  const content = processStatusContent(status, instanceUrl, mentionMaskId)
+  return (
+    <div className="quote-card" onClick={(e) => { e.stopPropagation(); onOpenThread(status) }}>
+      <div className="quote-card-meta">
+        <Avatar name={rawName} src={account.avatar} staticSrc={account.avatar_static} size={16} />
+        <span className="quote-card-name">{name}</span>
+        <span className="quote-card-handle">@{account.acct || account.username}</span>
+      </div>
+      <p className="quote-card-text">{content.textNodes}</p>
+      {content.attachments.length > 0 && content.attachments[0].type === 'image' && (
+        <div className={`quote-card-image-wrap${effectiveSensitive && !revealed ? ' blurred' : ''}`}>
+          <ProxiedImg className="quote-card-image" src={content.attachments[0].preview_url || content.attachments[0].url} alt="" />
+          {effectiveSensitive && !revealed && (
+            <button
+              type="button"
+              className="media-cw-overlay"
+              onClick={(e) => { e.stopPropagation(); setRevealed(true) }}
+            >
+              <Eye size={16} />
+              <span>Sensitive content — click to view</span>
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function PollCard({ poll, instanceUrl, token, onUpdated, statusId }) {
+  const [selected, setSelected] = useState([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [refreshing, setRefreshing] = useState(false)
+
+  if (!poll) return null
+
+  const { id, options, expired, multiple, votes_count, voters_count, voted, own_votes, expires_at } = poll
+  const showResults = expired || voted
+  const hasVoted = voted || (own_votes && own_votes.length > 0)
+
+  function toggleOption(idx) {
+    if (showResults || busy) return
+    if (multiple) {
+      setSelected((prev) =>
+        prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
+      )
+    } else {
+      setSelected([idx])
+    }
+  }
+
+  async function submitVote() {
+    if (selected.length === 0) return
+    setBusy(true)
+    setError('')
+    try {
+      const updated = await mitra.votePoll(instanceUrl, token, id, selected)
+      onUpdated(updated)
+    } catch (err) {
+      setError(err.message || 'Vote failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleRefresh() {
+    if (refreshing || expired || !statusId) return
+    setRefreshing(true)
+    setError('')
+    try {
+      const freshStatus = await mitra.fetchStatus(instanceUrl, token, statusId)
+      if (freshStatus?.poll) onUpdated(freshStatus.poll)
+    } catch (err) {
+      setError(err.message || 'Refresh failed.')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  function timeLeft() {
+    if (!expires_at || expired) return null
+    const ms = new Date(expires_at) - Date.now()
+    if (ms <= 0) return null
+    const mins = Math.floor(ms / 60000)
+    if (mins < 60) return `${mins}m left`
+    const hrs = Math.floor(mins / 60)
+    if (hrs < 24) return `${hrs}h ${mins % 60}m left`
+    const days = Math.floor(hrs / 24)
+    return `${days}d left`
+  }
+
+  return (
+    <div className="poll-card">
+      {showResults ? (
+        options.map((opt, i) => {
+          const pct = votes_count > 0 ? Math.round((opt.votes_count / votes_count) * 100) : 0
+          const chosen = own_votes?.includes(i)
+          return (
+            <div key={i} className={`poll-option${chosen ? ' chosen' : ''}`}>
+              <div className="poll-option-header">
+                <span className="poll-option-text">{htmlToPlainText(opt.title)}</span>
+                <span className="poll-option-pct">{pct}%</span>
+              </div>
+              <div className="poll-option-bar">
+                <div className="poll-option-fill" style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+          )
+        })
+      ) : (
+        options.map((opt, i) => (
+          <label
+            key={i}
+            className={`poll-option-pick${selected.includes(i) ? ' selected' : ''}`}
+            onClick={() => toggleOption(i)}
+          >
+            <span className={`poll-radio${multiple ? ' checkbox' : ''}`}>
+              {selected.includes(i) && <span className="poll-radio-dot" />}
+            </span>
+            <span className="poll-option-text">{htmlToPlainText(opt.title)}</span>
+          </label>
+        ))
+      )}
+      {error && <div className="banner banner-error">{error}</div>}
+      {!showResults && (
+        <div className="poll-vote-row">
+          <button
+            className="pill-btn suggested"
+            onClick={submitVote}
+            disabled={busy || selected.length === 0}
+          >
+            {busy ? 'Voting…' : 'Vote'}
+          </button>
+        </div>
+      )}
+      <div className="poll-footer">
+        <span className="poll-meta">
+          {votes_count} vote{votes_count !== 1 ? 's' : ''}
+          {voters_count != null && voters_count !== votes_count && ` · ${voters_count} voter${voters_count !== 1 ? 's' : ''}`}
+          {timeLeft() && <> · {timeLeft()}</>}
+          {expired && <span className="poll-expired"> · Ended</span>}
+        </span>
+        {!expired && (
+          <button
+            className="icon-btn poll-refresh-btn"
+            onClick={(e) => { e.stopPropagation(); handleRefresh() }}
+            disabled={refreshing}
+            aria-label={hasVoted ? 'Refresh poll results' : 'Refresh poll'}
+            title={hasVoted ? 'Refresh poll results' : 'Refresh poll'}
+          >
+            {refreshing ? (
+              <span className="spinner" aria-hidden="true" />
+            ) : (
+              <RefreshCw size={14} />
+            )}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function PostOptionsMenu({ status, instanceUrl, token, mediaAttachments, isOwn, onDelete, onMute, onBlock, onEdit, onUpdate }) {
+  const [open, setOpen] = useState(false)
+  const [pinBusy, setPinBusy] = useState(false)
+  const [pinError, setPinError] = useState('')
+  const [dlState, setDlState] = useState('idle') // 'idle' | 'busy' | 'done' | 'error'
+  const mediaCount = Array.isArray(mediaAttachments) ? mediaAttachments.length : 0
+  // IPFS pin state: 'idle' | 'busy' | 'copied'
+  const [ipfsState, setIpfsState] = useState('idle')
+  const [ipfsError, setIpfsError] = useState('')
+  const ref = useRef(null)
+  useEscapeKey(() => setOpen(false), open)
+
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  function copyLink() {
+    const acct = status.account?.acct || status.account?.username || 'unknown'
+    const url = status.url || `https://${instanceUrl}/@${acct}/${status.id}`
+    navigator.clipboard.writeText(url).then(() => {
+      showToast('Link copied')
+      setOpen(false)
+    }).catch(() => {
+      setOpen(false)
+    })
+  }
+
+  function handleMute() {
+    onMute?.(status.account?.id)
+    setOpen(false)
+  }
+
+  function handleBlock() {
+    onBlock?.(status.account?.id)
+    setOpen(false)
+  }
+
+  function handleDelete() {
+    onDelete?.(status.id)
+    setOpen(false)
+  }
+
+  // Mitra reports pinned state directly on the status payload, so the
+  // menu item can be data-driven. The endpoint returns the updated
+  // status; propagate it so every list stays in sync.
+  async function togglePinned() {
+    if (pinBusy) return
+    setPinBusy(true)
+    setPinError('')
+    try {
+      const updated = await mitra.setPinned(instanceUrl, token, status.id, !status.pinned)
+      onUpdate?.(updated || { ...status, pinned: !status.pinned })
+      setOpen(false)
+    } catch (err) {
+      setPinError(err.message || 'Pin failed.')
+    } finally {
+      setPinBusy(false)
+    }
+  }
+
+  // IPFS pinning is only offered for own public posts — the server
+  // rejects everything else (403), and 418 means the instance has the
+  // integration off, which surfaces as an inline error.
+  const ipfsEligible = isOwn && status.visibility === 'public'
+
+  async function handleIpfsPin() {
+    if (ipfsState === 'busy') return
+    setIpfsState('busy')
+    setIpfsError('')
+    try {
+      const updated = await mitra.pinToIpfs(instanceUrl, token, status.id)
+      onUpdate?.(updated || { ...status, ipfs_cid: 'pinned' })
+      setOpen(false)
+    } catch (err) {
+      setIpfsError(err.message || 'Pin failed.')
+      setIpfsState('idle')
+    }
+  }
+
+  function copyIpfsCid() {
+    navigator.clipboard.writeText(status.ipfs_cid).then(() => {
+      setIpfsState('copied')
+      setTimeout(() => { setIpfsState('idle'); setOpen(false) }, 900)
+    }).catch(() => {
+      setOpen(false)
+    })
+  }
+
+  async function handleDownloadMedia() {
+    if (dlState === 'busy') return
+    setDlState('busy')
+    try {
+      await downloadAllMedia(mediaAttachments, { instanceUrl, token })
+      setDlState('done')
+      showToast('Media saved')
+    } catch {
+      setDlState('error')
+    } finally {
+      setTimeout(() => setDlState('idle'), 1200)
+    }
+  }
+
+  return (
+    <div className="boost-dropdown-wrap" ref={ref}>
+      <button className="action-btn" aria-label="More options" style={{ marginLeft: 'auto' }} onClick={() => setOpen(!open)}>
+        <MoreHorizontal size={15} />
+      </button>
+      {open && (
+        <>
+          <div className="boost-dropdown-backdrop" onClick={() => setOpen(false)} />
+          <div className="boost-dropdown">
+            <button className="boost-dropdown-item" onClick={copyLink}>
+              <Link size={15} />
+              Copy link
+            </button>
+            {mediaCount > 0 && (
+              <button className="boost-dropdown-item" onClick={handleDownloadMedia} disabled={dlState === 'busy'}>
+                <Download size={15} />
+                {dlState === 'busy' ? 'Downloading…' : `Download media (${mediaCount})`}
+              </button>
+            )}
+            {isOwn && onEdit && (
+              <button className="boost-dropdown-item" onClick={() => { setOpen(false); onEdit(status) }}>
+                <Edit3 size={15} />
+                Edit
+              </button>
+            )}
+            {isOwn && (
+              <button className="boost-dropdown-item" onClick={togglePinned} disabled={pinBusy}>
+                {status.pinned ? <PinOff size={15} /> : <Pin size={15} />}
+                {status.pinned ? 'Unpin from profile' : 'Pin to profile'}
+              </button>
+            )}
+            {ipfsEligible && (
+              status.ipfs_cid ? (
+                <button className="boost-dropdown-item" onClick={copyIpfsCid}>
+                  <Box size={15} />
+                  {ipfsState === 'copied' ? 'CID copied!' : 'Copy IPFS CID'}
+                </button>
+              ) : (
+                <button className="boost-dropdown-item" onClick={handleIpfsPin} disabled={ipfsState === 'busy'}>
+                  <Box size={15} />
+                  {ipfsState === 'busy' ? 'Pinning…' : 'Save to IPFS'}
+                </button>
+              )
+            )}
+            {ipfsError && <div className="banner banner-error">{ipfsError}</div>}
+            {isOwn && (
+              <button className="boost-dropdown-item destructive" onClick={handleDelete}>
+                <X size={15} />
+                Delete
+              </button>
+            )}
+            {pinError && <div className="banner banner-error">{pinError}</div>}
+            {!isOwn && (
+              <>
+                <button className="boost-dropdown-item" onClick={handleMute}>
+                  <Eye size={15} />
+                  Mute
+                </button>
+                <button className="boost-dropdown-item" onClick={handleBlock}>
+                  <UserPlus size={15} />
+                  Block
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}

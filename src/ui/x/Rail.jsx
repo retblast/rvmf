@@ -56,7 +56,7 @@ function NavButton({ view, setView, notifUnread, item }) {
   )
 }
 
-export default function StealthRail({ session, tier, view, setView, notifUnread, handleRefresh, setComposing, logout, openSettingsFrom, settingsOpen: _settingsOpen }) {
+export default function StealthRail({ session, tier, view, setView, notifUnread, handleRefresh, setComposing, logout, openSettingsFrom }) {
   const mask = useMaskIdentity()
   const me = mask(session.account)
 

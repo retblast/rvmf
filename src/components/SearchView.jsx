@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMaskIdentity } from '../hooks'
+import { AccountNames } from './AccountNames.jsx'
 import { Search as SearchIcon } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { htmlToPlainText } from '../lib/render.jsx'
@@ -173,8 +174,7 @@ export function SearchView({
                   >
                     <Avatar name={account.display_name || account.username} src={account.avatar} />
                     <div className="search-account-names">
-                      <span className="post-name">{account.display_name || account.username}</span>
-                      <span className="post-handle">@{account.acct || account.username}</span>
+                      <AccountNames account={account} />
                     </div>
                     {account.note && <span className="search-account-note">{htmlToPlainText(account.note)}</span>}
                   </button>

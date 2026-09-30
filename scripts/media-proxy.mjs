@@ -1,6 +1,8 @@
 // Shared media proxy, used by BOTH the Vite dev server (vite.config.js) and
 // the standalone production server (server.mjs), so the two never drift.
 import { Readable } from 'node:stream'
+import { lookup } from 'node:dns/promises'
+import { isIP } from 'node:net'
 //
 // The browser can't fetch arbitrary remote media directly — CORS forbids it,
 // and some instances require the Authorization header. This endpoint accepts
@@ -55,10 +57,107 @@ function parseTarget(reqUrl) {
   return parsed
 }
 
+const UPSTREAM_TIMEOUT_MS = 30_000
+const MAX_REDIRECTS = 5
+
+// Targets the proxy refuses unless the caller explicitly opted into
+// private networks (dev server, or MEDIA_PROXY_ALLOW_PRIVATE for
+// self-hosters whose instance lives on the LAN). These ranges never
+// appear as federated media origins — they're exactly what an SSRF
+// bounce aims at: cloud metadata endpoints, router admin panels, and
+// other loopback services that a deployed proxy can reach but the
+// request's originator cannot.
+function isPrivateIPv4(ip) {
+  const [a, b] = ip.split('.').map(Number)
+  return a === 0 || a === 10 || a === 127 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254) ||
+    (a === 100 && b >= 64 && b <= 127) // CGNAT 100.64/10
+}
+
+function isPrivateIPv6(ip) {
+  const lower = ip.toLowerCase()
+  if (lower === '::' || lower === '::1') return true
+  // IPv4-mapped v6 arrives in either form; WHATWG URL canonicalizes
+  // ::ffff:127.0.0.1 into ::ffff:7f00:1, so decode both.
+  const mappedDotted = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/)
+  if (mappedDotted) return isPrivateIPv4(mappedDotted[1])
+  const mappedHex = lower.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/)
+  if (mappedHex) {
+    const hi = parseInt(mappedHex[1], 16), lo = parseInt(mappedHex[2], 16)
+    return isPrivateIPv4(`${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`)
+  }
+  const firstWord = parseInt(lower.split(':')[0], 16) || 0
+  if ((firstWord & 0xfe00) === 0xfc00) return true // fc00::/7 ULA
+  if ((firstWord & 0xffc0) === 0xfe80) return true // fe80::/10 link-local
+  return false
+}
+
+async function assertPublicTarget(url, allowPrivate) {
+  if (allowPrivate) return
+  const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase()
+  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === '0.0.0.0') {
+    throw Object.assign(new Error('private host'), { code: 'PRIVATE_TARGET' })
+  }
+  const kind = isIP(hostname)
+  if (kind === 4 || kind === 6) {
+    const priv = kind === 4 ? isPrivateIPv4(hostname) : isPrivateIPv6(hostname)
+    if (priv) throw Object.assign(new Error('private host'), { code: 'PRIVATE_TARGET' })
+    return
+  }
+  // A public-looking name can still resolve into private space
+  // (DNS rebind style); validate every address it resolves to.
+  const addrs = await lookup(hostname, { all: true })
+  for (const { address } of addrs) {
+    const priv = isIP(address) === 6 ? isPrivateIPv6(address) : isPrivateIPv4(address)
+    if (priv) throw Object.assign(new Error('private host'), { code: 'PRIVATE_TARGET' })
+  }
+}
+
+// Fetch with SSRF-safe redirect handling: every hop of the redirect
+// chain is re-validated against the private-range rules — a public first
+// hop that bounces to 169.254.169.254 is the classic proxy bypass.
+// Each hop carries a hard timeout so a slow-hostile upstream can't pin
+// sockets open indefinitely.
+async function fetchUpstream(target, headers, fetchImpl, allowPrivate) {
+  let current = target
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    await assertPublicTarget(current, allowPrivate)
+    const res = await fetchImpl(current.toString(), {
+      headers,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    })
+    if ([301, 302, 303, 307, 308].includes(res.status)) {
+      const loc = res.headers.get('location')
+      if (!loc || hop === MAX_REDIRECTS) throw new Error('bad redirect chain')
+      current = new URL(loc, current)
+      continue
+    }
+    return { res, url: current }
+  }
+  throw new Error('too many redirects')
+}
+
+// Inline-safe content types: the media the app actually renders in
+// <img>/<video>/<audio> elements. Everything else — most importantly
+// text/html and image/svg+xml, both of which can carry script — is
+// forced to a download. A proxied response renders on the rvmf origin,
+// so an inline HTML/SVG response is stored XSS: one crafted
+// /media-proxy?url=... link in a DM and the attacker's markup runs
+// next to the localStorage session token.
+function isInlineMediaType(ct) {
+  const [type] = String(ct).split(';')
+  const t = type.trim().toLowerCase()
+  if (t === 'image/svg+xml') return false
+  return /^(image|video|audio)\//.test(t)
+}
+
 // Handle one /media-proxy request. Works with both Connect-style middleware
 // (Vite dev) and node:http request/response objects, which share the
 // Surface used here (writeHead/end/headersSent/destroyed/writableEnded).
-export async function handleMediaProxy(req, res, { fetchImpl = fetch } = {}) {
+export async function handleMediaProxy(req, res, { fetchImpl = fetch, allowPrivate = false } = {}) {
   if (res.destroyed || res.writableEnded) return
   const target = parseTarget(req.url || '/')
   if (!target) {
@@ -66,10 +165,9 @@ export async function handleMediaProxy(req, res, { fetchImpl = fetch } = {}) {
     return
   }
   try {
-    const proxyRes = await fetchImpl(target.toString(), {
-      headers: upstreamHeaders(req),
-      redirect: 'follow',
-    })
+    const { res: proxyRes, url: finalUrl } = await fetchUpstream(
+      target, upstreamHeaders(req), fetchImpl, allowPrivate
+    )
     if (res.headersSent || res.destroyed || res.writableEnded) return
     const ct = proxyRes.headers.get('content-type') || 'application/octet-stream'
     try {
@@ -84,11 +182,11 @@ export async function handleMediaProxy(req, res, { fetchImpl = fetch } = {}) {
       // 2. Last path segment for direct file URLs (Pleroma, etc.)
       // 3. Upstream Content-Disposition as fallback (Mitra proxy URLs)
       let filename = null
-      const mOriginal = target.pathname.match(/\/original\/([^/?#]+)/)
+      const mOriginal = finalUrl.pathname.match(/\/original\/([^/?#]+)/)
       if (mOriginal) {
         filename = mOriginal[1]
       } else {
-        const mLast = target.pathname.match(/\/([^/?#]+)$/)
+        const mLast = finalUrl.pathname.match(/\/([^/?#]+)$/)
         if (mLast && /\.\w{2,5}$/.test(mLast[1])) filename = mLast[1]
       }
       if (!filename) {
@@ -109,12 +207,26 @@ export async function handleMediaProxy(req, res, { fetchImpl = fetch } = {}) {
       const cd = safeName
         ? `attachment; filename="${safeName.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(safeName)}`
         : ''
-      res.writeHead(proxyRes.status, {
+      // Belt and braces on every proxied response: nosniff stops content-
+      // type guessing, and a sandboxing CSP renders any sniffed-through
+      // document inert even if a future content-type bug slips past the
+      // safelist below.
+      const headers = {
         'Content-Type': ct,
         'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'public, max-age=86400',
-        ...(cd ? { 'Content-Disposition': cd } : {}),
-      })
+        'X-Content-Type-Options': 'nosniff',
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+      }
+      if (isInlineMediaType(ct)) {
+        // Renderable media keeps the save-as filename when one exists.
+        if (cd) headers['Content-Disposition'] = cd
+      } else {
+        // Anything scriptable (html, svg, xml, text…) downloads instead
+        // of rendering same-origin.
+        headers['Content-Disposition'] = cd || 'attachment'
+      }
+      res.writeHead(proxyRes.status, headers)
     } catch {
       try { res.destroy() } catch { /* already dead */ }
       return
@@ -145,7 +257,11 @@ export async function handleMediaProxy(req, res, { fetchImpl = fetch } = {}) {
     } catch {
       try { res.destroy() } catch { /* already dead */ }
     }
-  } catch {
+  } catch (err) {
+    if (err?.code === 'PRIVATE_TARGET') {
+      respondOnce(res, 400, 'Refusing to proxy private addresses')
+      return
+    }
     respondOnce(res, 502, 'Proxy fetch failed')
   }
 }

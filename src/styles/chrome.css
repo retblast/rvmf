@@ -1,0 +1,388 @@
+.headerbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 47px;
+  padding: 0 8px;
+  background: var(--headerbar-bg);
+  border-bottom: 1px solid var(--headerbar-border);
+  flex-shrink: 0;
+}
+
+.headerbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px;
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.headerbar-brand svg {
+  color: var(--accent);
+}
+
+/* Anchor for the server-details popover */
+.headerbar-brand-wrap {
+  position: relative;
+  display: flex;
+}
+
+.headerbar-instance-icon {
+  border-radius: 4px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.login-icon img {
+  border-radius: var(--radius-popover);
+}
+
+.login-recognized {
+  color: var(--success);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  margin: -10px auto 14px;
+}
+
+.view-switcher {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 auto;
+  background: var(--window-bg);
+  border-radius: var(--radius-control);
+  padding: 2px;
+}
+
+.view-switcher-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 5px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.view-switcher-btn:hover {
+  background: var(--hover-overlay);
+}
+
+.view-switcher-btn.active {
+  background: var(--view-bg);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.headerbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.icon-btn:hover {
+  background: var(--hover-overlay);
+}
+
+.icon-btn:active {
+  background: var(--active-overlay);
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: media-spin 0.7s linear infinite;
+}
+
+.poll-refresh-btn {
+  opacity: 0.6;
+}
+
+.poll-refresh-btn:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.poll-refresh-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.suggested-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.suggested-btn svg {
+  color: var(--accent);
+}
+
+.suggested-btn:hover {
+  background: var(--hover-overlay);
+}
+
+.suggested-btn:active {
+  background: var(--active-overlay);
+}
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-bg-subtle);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Photo overlays the initials placeholder, filling the circle */
+.avatar .avatar-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar.lg {
+  width: 40px;
+  height: 40px;
+  font-size: 0.875rem;
+}
+
+.content-scroll {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--window-bg);
+  min-width: 0;
+}
+
+.timeline-wrap {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 20px 16px calc(60px + env(safe-area-inset-bottom));
+}
+
+.timeline-list {
+  background: var(--view-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.post-row {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+  background-color: rgba(0, 0, 0, min(calc(var(--reply-depth, 0) * 0.025), 0.15));
+}
+
+.post-row.ghost {
+  position: relative;
+  height: 48px;
+  overflow: hidden;
+  background-color: var(--accent-bg-subtle);
+  transition: height 0.2s ease;
+}
+
+/* Shimmer overlay */
+.post-row.ghost::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 40%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.06) 60%,
+    transparent 100%
+  );
+  animation: ghost-shimmer 1.8s ease-in-out infinite;
+}
+
+@keyframes ghost-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.post-row.ghost .post-body,
+.post-row.ghost .post-actions,
+.post-row.ghost .reaction-chips,
+.post-row.ghost .repost-indicator,
+.post-row.ghost .inline-reply-composer {
+  display: none;
+}
+
+.ghost-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  white-space: nowrap;
+  margin-left: auto;
+  padding-right: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .post-row.ghost {
+    transition: none;
+  }
+}
+
+.post-row:last-child {
+  border-bottom: none;
+}
+
+.post-row:hover {
+  background-color: var(--hover-overlay);
+}
+
+.post-row-main {
+  display: flex;
+  gap: 12px;
+}
+
+.post-body {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.post-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.post-name {
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+.post-handle,
+.post-time {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.post-parent-link {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.post-parent-link:hover {
+  color: var(--text-primary);
+}
+
+.post-time::before {
+  content: "·";
+  margin-right: 6px;
+}
+
+.post-reply-context {
+  margin: 2px 0 2px;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.post-reply-link {
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.post-reply-link:hover {
+  text-decoration: underline;
+}
+
+/* Hover-expand for "In reply to" line when many accounts are mentioned.
+   The truncated "+N more" indicator is shown by default; the full list
+   (hanging off the same line) reveals on hover of the container. */
+.post-reply-expanded {
+  position: relative;
+}
+
+.post-reply-truncated {
+  /* No-op wrapper — exists only for the title attribute on the "+N more". */
+}
+
+.post-reply-more {
+  color: var(--text-secondary);
+  font-weight: 500;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.post-reply-full {
+  display: none;
+}
+
+.post-reply-expanded:hover .post-reply-full,
+.post-reply-expanded:focus-within .post-reply-full {
+  display: inline;
+}
+
+.post-reply-expanded:hover .post-reply-more,
+.post-reply-expanded:focus-within .post-reply-more {
+  display: none;
+}
+
+.post-text {
+  margin: 4px 0 8px;
+  /* Post bodies are the primary reading surface — full root size, not
+     the smaller chrome size. */
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+

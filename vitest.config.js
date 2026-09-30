@@ -9,7 +9,7 @@ export default defineConfig({
   test: {
     // Unit/component tests only, and only from src/ — Playwright owns
     // e2e/specs, and .direnv store copies must never be scanned.
-    include: ['src/**/*.{test,spec}.{js,jsx}'],
+    include: ['src/**/*.{test,spec}.{js,jsx}', 'scripts/**/*.{test,spec}.{js,mjs}'],
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/test/setup.js',

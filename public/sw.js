@@ -32,6 +32,16 @@ self.addEventListener('activate', (event) => {
       .then((keys) => Promise.all(
         keys.filter((key) => key !== VERSION).map((key) => caches.delete(key))
       ))
+      // Hashed bundles change names on every deploy; without a purge
+      // the surviving cache grows forever with dead builds. Evicted
+      // entries repopulate on demand — cache-first falls through to the
+      // network and re-caches on the next hit.
+      .then(() => caches.open(VERSION))
+      .then((cache) => cache.keys().then((requests) => Promise.all(
+        requests
+          .filter((request) => new URL(request.url).pathname.startsWith('/assets/'))
+          .map((request) => cache.delete(request))
+      )))
       .then(() => self.clients.claim())
   )
 })

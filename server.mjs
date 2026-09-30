@@ -28,6 +28,34 @@ const DIST_DIR = path.resolve(
   process.env.RVMF_DIST || 'dist'
 )
 
+// Baseline security headers for every document response. rvmf is a
+// multi-instance client: it connects to arbitrary user-chosen servers
+// and renders federated media, so connect/img/media sources stay open —
+// but scripts are same-origin only and everything scriptable is locked
+// down, shrinking the blast radius of any future XSS to "nothing runs".
+// Inline styles are required (React style props + the runtime skin
+// <style> element). The dev server deliberately ships no CSP: Vite's
+// HMR needs eval and inline injection.
+const SECURITY_HEADERS = {
+  'Content-Security-Policy': [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: http: https:",
+    "media-src 'self' blob: http: https:",
+    "connect-src 'self' http: https: ws: wss:",
+    "font-src 'self' data:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join('; '),
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'X-Frame-Options': 'DENY',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+}
+
 // Vite emits fingerprinted assets under /assets/; those can be cached
 // forever. Everything else (notably index.html) is short-lived so clients
 // pick up redeploys quickly.
@@ -91,7 +119,7 @@ async function serveStatic(res, urlPath) {
       res.writeHead(404).end('Not found')
       return
     }
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', ...SECURITY_HEADERS })
     createReadStream(path.join(DIST_DIR, 'index.html')).pipe(res)
     return
   }
@@ -100,7 +128,7 @@ async function serveStatic(res, urlPath) {
     return
   }
   const ext = path.extname(filePath).toLowerCase()
-  const headers = { 'Content-Type': MIME[ext] || 'application/octet-stream' }
+  const headers = { 'Content-Type': MIME[ext] || 'application/octet-stream', ...SECURITY_HEADERS }
   if (urlPath.startsWith('/assets/')) headers['Cache-Control'] = 'public, max-age=31536000, immutable'
   else headers['Cache-Control'] = 'no-cache'
   res.writeHead(200, headers)
@@ -110,7 +138,10 @@ async function serveStatic(res, urlPath) {
 const server = createServer((req, res) => {
   const urlPath = (req.url || '/').split('?')[0]
   if (urlPath === '/media-proxy' || urlPath === '/media-proxy/') {
-    handleMediaProxy(req, res).catch(() => {
+    // A deployed proxy must not bounce into private networks; set
+    // MEDIA_PROXY_ALLOW_PRIVATE=1 when the instance itself lives on the
+    // LAN behind this server.
+    handleMediaProxy(req, res, { allowPrivate: process.env.MEDIA_PROXY_ALLOW_PRIVATE === '1' }).catch(() => {
       try { res.destroy() } catch { /* already dead */ }
     })
     return

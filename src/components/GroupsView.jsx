@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMaskIdentity } from '../hooks'
+import { AccountNames } from './AccountNames.jsx'
 import { ArrowLeft, Plus, Settings2, Trash2, Users } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { htmlToPlainText } from '../lib/render.jsx'
@@ -210,8 +211,7 @@ function GroupManagePanel({ group, instanceUrl, token, onOpenProfile, onDeleted,
               >
                 <Avatar name={account.display_name || account.username} src={account.avatar} />
                 <div className="search-account-names">
-                  <span className="post-name">{account.display_name || account.username}</span>
-                  <span className="post-handle">@{account.acct || account.username}</span>
+                  <AccountNames account={account} />
                 </div>
                 {affiliation === 'admin' && <span className="profile-badge mutual">admin</span>}
               </button>
@@ -387,8 +387,7 @@ export function GroupsView({ instanceUrl, token, onOpenProfile, onPostToGroup, .
             >
               <Avatar name={group.display_name || group.username} src={group.avatar} />
               <div className="search-account-names">
-                <span className="post-name">{group.display_name || group.username}</span>
-                <span className="post-handle">@{group.acct || group.username}</span>
+                <AccountNames account={group} />
               </div>
               {group.note && (
                 <span className="directory-bio">
