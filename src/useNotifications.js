@@ -175,7 +175,10 @@ export function useNotifications(session, { view, tier }) {
   // immediately show Accept/Reject instead of flashing "already handled".
   useEffect(() => {
     if (!notificationsVisible || !session) return
-    const interval = setInterval(() => {
+    let polling = true
+    const tick = () => {
+      if (!polling) return
+      if (document.hidden) return // hidden tab: battery and server load can wait
       if (!navigator.onLine) return // paused while offline; reconnect refreshes
       Promise.all([
         mitra.fetchNotifications(session.instanceUrl, session.token),
@@ -187,8 +190,17 @@ export function useNotifications(session, { view, tier }) {
           if (pending) setPendingFollowIds(pending)
         })
         .catch(() => {})
-    }, 5000)
-    return () => clearInterval(interval)
+    }
+    const interval = setInterval(tick, 5000)
+    // Coming back to the tab refreshes immediately instead of waiting
+    // out the rest of a skipped interval.
+    const onVisible = () => { if (!document.hidden) tick() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      polling = false
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [notificationsVisible, session])
 
   async function clearNotifications() {
