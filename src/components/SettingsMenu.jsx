@@ -2,6 +2,7 @@ import { PROVIDERS, PROVIDER_IDS } from '../lib/translate.js'
 import { GIF_LARGE_BYTES } from '../lib/gif/convert.js'
 import { SKINS } from '../lib/skins.js'
 import { visibilityLabel as mitraVisibilityLabel } from './Compose.jsx'
+import { useLayoutTier } from '../hooks'
 import { Switch } from './Switch.jsx'
 import { ConfirmDialog } from './ConfirmDialog.jsx'
 
@@ -10,7 +11,8 @@ import { ConfirmDialog } from './ConfirmDialog.jsx'
 // useAppSettings (`settings` prop); this is pure presentation plus the
 // translation opt-in confirm dialog. `anchor` positions the panel next to
 // its trigger (null = centered).
-export function SettingsMenu({ open, anchor, settings, onClose, onNavigate }) {
+export function SettingsMenu({ open, anchor, settings, onClose, onNavigate, onLogout }) {
+  const tier = useLayoutTier()
   if (!open && !settings.confirmingTranslation) return null
 
   // Anchor the settings panel to its trigger while capping its height to the
@@ -219,6 +221,26 @@ export function SettingsMenu({ open, anchor, settings, onClose, onNavigate }) {
               <span>Account &amp; Sessions</span>
               <span className="settings-menu-arrow">→</span>
             </button>
+            {tier === 'narrow' && (settings.skin?.menuViews || []).map((v) => (
+              <button
+                key={v}
+                type="button"
+                className="settings-menu-row settings-menu-link"
+                onClick={() => { onClose(); onNavigate(v) }}
+              >
+                <span>{v[0].toUpperCase() + v.slice(1)}</span>
+                <span className="settings-menu-arrow">→</span>
+              </button>
+            ))}
+            {tier === 'narrow' && settings.skin?.menuLogout && onLogout && (
+              <button
+                type="button"
+                className="settings-menu-row settings-menu-link"
+                onClick={onLogout}
+              >
+                <span>Log out</span>
+              </button>
+            )}
           </div>
         </>
       )}

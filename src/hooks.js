@@ -623,7 +623,7 @@ export function usePullToRefresh(el, onRefresh) {
 // Browser tab follows the instance: favicon and a "rvmf on <host>"
 // title; both restored to plain "rvmf" when logged out.
 // When `unread` > 0, a small red dot is overlaid on the favicon.
-export function useInstanceFavicon(session, unread, privacyMode = false) {
+export function useInstanceFavicon(session, unread, privacyMode = false, skin = null) {
   const defaultFaviconRef = useRef(null)
   useEffect(() => {
     let link = document.querySelector("link[rel~='icon']")
@@ -633,13 +633,16 @@ export function useInstanceFavicon(session, unread, privacyMode = false) {
       document.head.appendChild(link)
     }
     if (!defaultFaviconRef.current) defaultFaviconRef.current = link.href
-    // Privacy mode: the tab strip is onlooker-visible surface. The
-    // instance's favicon and the "rvmf on <host>" title both name the
-    // user's server, so the tab falls back to the app's own icon and a
-    // plain title. The unread blip stays — it reveals nothing.
-    const baseUrl = session && !privacyMode
-      ? `${session.instanceUrl}/favicon.ico`
-      : defaultFaviconRef.current
+    // Tab priority: skin override > privacy neutral > instance default.
+    // A skin that declares a tab (e.g. the X-look skin's 𝕏 title +
+    // favicon) is deliberately the strongest disguise — the tab strip
+    // is onlooker-visible surface, and the skin IS the disguise.
+    // The unread blip composes on top of whatever base wins.
+    const skinTab = skin?.tab || null
+    const baseUrl = skinTab?.favicon
+      || (session && !privacyMode
+        ? `${session.instanceUrl}/favicon.ico`
+        : defaultFaviconRef.current)
     link.href = baseUrl
     let cancelled = false
     if (unread > 0 && session) {
@@ -647,11 +650,12 @@ export function useInstanceFavicon(session, unread, privacyMode = false) {
         .then((dataUrl) => { if (!cancelled) link.href = dataUrl })
         .catch(() => {})
     }
-    document.title = session && !privacyMode
-      ? `rvmf on ${session.instanceUrl.replace(/^https?:\/\//, '')}`
-      : 'rvmf'
+    document.title = skinTab?.title
+      || (session && !privacyMode
+        ? `rvmf on ${session.instanceUrl.replace(/^https?:\/\//, '')}`
+        : 'rvmf')
     return () => { cancelled = true }
-  }, [session, unread, privacyMode])
+  }, [session, unread, privacyMode, skin])
 }
 
 // Composer draft persistence. Each draft is keyed by its context

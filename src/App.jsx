@@ -124,7 +124,7 @@ export default function App() {
     extraSynced: { 'notif-excluded': [notifs.notifExcluded, notifs.setNotifExcluded] },
   })
 
-  useInstanceFavicon(session, notifs.notifUnread, appSettings.privacyMode)
+  useInstanceFavicon(session, notifs.notifUnread, appSettings.privacyMode, appSettings.skin)
 
   const [online, setOnline] = useState(() => navigator.onLine)
 
@@ -890,6 +890,7 @@ export default function App() {
         open={settingsOpen}
         anchor={settingsAnchor}
         settings={appSettings}
+        onLogout={logout}
         onClose={() => setSettingsOpen(false)}
         onNavigate={setView}
       />

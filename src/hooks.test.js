@@ -336,7 +336,13 @@ describe('useInstanceFavicon privacy mode', () => {
     return link
   }
 
-  beforeEach(() => { document.title = 'rvmf' })
+  beforeEach(() => {
+    document.title = 'rvmf'
+    // Previous tests' <link rel=icon> elements linger in <head> (suite
+    // cleanup only clears <body>); the hook would mutate the stale link
+    // while assertions read the fresh one.
+    document.head.querySelectorAll("link[rel~='icon']").forEach((el) => el.remove())
+  })
 
   it('names the instance in the tab by default', () => {
     const link = installFaviconLink()
@@ -350,6 +356,20 @@ describe('useInstanceFavicon privacy mode', () => {
     renderHook(() => useInstanceFavicon(SESSION, 0, true))
     expect(document.title).toBe('rvmf')
     expect(link.href).toContain('/icons/icon.svg')
+  })
+
+  it('lets a skin own the tab — title and favicon', () => {
+    const link = installFaviconLink()
+    renderHook(() => useInstanceFavicon(SESSION, 0, false, { tab: { title: '𝕏', favicon: '/icons/x-favicon.svg' } }))
+    expect(document.title).toBe('𝕏')
+    expect(link.href).toContain('/icons/x-favicon.svg')
+  })
+
+  it('the skin tab outranks privacy neutralization', () => {
+    const link = installFaviconLink()
+    renderHook(() => useInstanceFavicon(SESSION, 0, true, { tab: { title: '𝕏', favicon: '/icons/x-favicon.svg' } }))
+    expect(document.title).toBe('𝕏')
+    expect(link.href).toContain('/icons/x-favicon.svg')
   })
 
   it('stays neutral when logged out', () => {
