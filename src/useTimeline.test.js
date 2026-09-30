@@ -21,19 +21,20 @@ beforeEach(() => {
 })
 
 describe('useTimeline pagination dedupe', () => {
-  it('does not append rows already mounted (by id or reblog target)', async () => {
-    // First page: a plain post and a boost wrapper
+  it('does not append rows already mounted, but keeps a post AND its boost copies distinct', async () => {
+    // First page: a plain post and a boost wrapper of another post
     mitra.fetchHomeTimeline.mockResolvedValueOnce([status('p1'), status('b1', 'p9')])
     const { result } = renderHook(() => useTimeline(SESSION, { view: 'home', tier: 'narrow' }))
     await waitFor(() => expect(result.current.timeline).toHaveLength(2))
 
-    // Second page re-serves p1 (shifted back into range) plus a boost of
-    // the already-mounted p9 and one genuinely new post.
+    // Second page re-serves p1 (dropped as the same row), a second
+    // boost of the already-mounted p9 (kept — different wrapper, same
+    // target is two legitimate rows), and a genuinely new post.
     mitra.fetchHomeTimeline.mockResolvedValueOnce([status('p1'), status('b2', 'p9'), status('p2')])
     await act(async () => { await result.current.loadMoreTimeline() })
 
     const ids = result.current.timeline.map((s) => s.id)
-    expect(ids).toEqual(['p1', 'b1', 'p2'])
+    expect(ids).toEqual(['p1', 'b1', 'b2', 'p2'])
   })
 
   it('keeps the pagination cursor on the raw last status even when dedupe drops rows', async () => {
