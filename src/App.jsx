@@ -718,7 +718,6 @@ export default function App() {
   const headerProps = {
     session, tier, view, setView, notifUnread: notifs.notifUnread,
     handleRefresh, setComposing, logout, openSettingsFrom,
-    settingsOpen,
   }
 
   return (
