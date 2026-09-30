@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { AccountNames } from './AccountNames.jsx'
 import * as mitra from '../lib/mitra'
 import { formatRelativeTime } from '../lib/render.jsx'
 import { Avatar } from './Media.jsx'
@@ -225,8 +226,7 @@ function OutgoingRequestsCard({ instanceUrl, token, onOpenProfile }) {
             >
               <Avatar name={account.display_name || account.username} src={account.avatar} />
               <div className="search-account-names">
-                <span className="post-name">{account.display_name || account.username}</span>
-                <span className="post-handle">@{account.acct || account.username}</span>
+                <AccountNames account={account} />
               </div>
               <span className="post-time">{formatRelativeTime(account.created_at)}</span>
             </button>

@@ -3,6 +3,7 @@ import { ArrowLeft, ListPlus, LoaderCircle, RefreshCw, Settings2 } from 'lucide-
 import * as mitra from '../lib/mitra'
 import { formatRelativeTime, processStatusContent } from '../lib/render.jsx'
 import { AppSettingsContext, useMaskIdentity } from '../hooks'
+import { AccountNames } from './AccountNames.jsx'
 import { isGifUrl } from '../lib/gif/core.js'
 import { forgetGifConversion } from '../lib/gif/convert.js'
 import { Avatar } from './Media.jsx'
@@ -267,8 +268,7 @@ function PeopleListPanel({ kind, account, isOwn, instanceUrl, token, onOpenProfi
                   style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', font: 'inherit' }}
                   onClick={() => onOpenProfile?.(person)}
                 >
-                  <span className="post-name clickable">{person.display_name || person.username}</span>
-                  <span className="post-handle">@{person.acct || person.username}</span>
+                  <AccountNames account={person} clickable />
                 </button>
                 {kind === 'subscribers' && item.expires_at && (
                   <span className="post-time">until {formatRelativeTime(item.expires_at)}</span>

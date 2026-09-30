@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMaskIdentity } from '../hooks'
+import { AccountNames } from './AccountNames.jsx'
 import * as mitra from '../lib/mitra'
 import { Avatar } from './Media.jsx'
 
@@ -134,8 +135,7 @@ export function MentionDropdown({ query, suggestions, selectedIndex, onSelect })
         >
           <Avatar name={account.display_name || account.username} src={account.avatar} size={20} />
           <span className="mention-names">
-            <span className="post-name">{account.display_name || account.username}</span>
-            <span className="post-handle">@{account.acct || account.username}</span>
+            <AccountNames account={account} />
           </span>
         </button>
         )

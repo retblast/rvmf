@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { PickerContext, AppSettingsContext, GhostContext, useEscapeKey, useMaskIdentity, useMentionMaskId, showToast, downloadAllMedia } from '../hooks'
+import { AccountNames } from './AccountNames.jsx'
 import { formatRelativeTime, htmlToPlainText, processStatusContent, processStatusContentForDisplay, renderEmojiText, renderPlainText } from '../lib/render.jsx'
 import { translateText, translationPressureNotice } from '../lib/translate'
 import { canonicalizeLanguage, canonicalLangName } from '../lib/languages'
@@ -821,8 +822,7 @@ function AccountsPopover({ kind, statusId, instanceUrl, token, onClose, onOpenPr
             >
               <Avatar name={account.display_name || account.username} src={account.avatar} staticSrc={account.avatar_static} />
               <div className="search-account-names">
-                <span className="post-name">{account.display_name || account.username}</span>
-                <span className="post-handle">@{account.acct || account.username}</span>
+                <AccountNames account={account} />
               </div>
             </button>
             )
