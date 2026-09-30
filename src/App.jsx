@@ -897,7 +897,6 @@ export default function App() {
 
       {tier === 'wide' ? (
         <div className="app-shell">
-          <div className="content-scroll scrollbar-thin" ref={setScrollEl}><ErrorBoundary>{timelineContent}</ErrorBoundary></div>
           <aside className="notif-column scrollbar-thin">
             <div className="section-label-row">
             <div className="section-label">Notifications</div>
@@ -915,6 +914,7 @@ export default function App() {
           </div>
             <ErrorBoundary>{notificationsBody}</ErrorBoundary>
           </aside>
+          <div className="content-scroll scrollbar-thin" ref={setScrollEl}><ErrorBoundary>{timelineContent}</ErrorBoundary></div>
           <aside className="thread-column">
             {sidePanel ? (
               <>

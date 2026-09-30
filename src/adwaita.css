@@ -2879,7 +2879,7 @@ button.mention-link {
 .app-shell {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(480px, 2.2fr) minmax(260px, 1fr) minmax(320px, 1.3fr);
+  grid-template-columns: minmax(260px, 1fr) minmax(480px, 2.2fr) minmax(320px, 1.3fr);
   min-height: 0;
   overflow: hidden;
 }
@@ -2893,7 +2893,7 @@ button.mention-link {
 }
 
 .notif-column {
-  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
   padding: 16px 12px;
 }
 
@@ -4349,4 +4349,26 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
 /* Notifications: X's rows sit on the bare background */
 [data-skin="stealth-x"] .notif-row {
   padding: 10px 12px;
+}
+
+/* Stealth skin only: X's right sidebar. The wide-tier shell re-orders
+   to timeline | notifications | thread under [data-skin="stealth-x"] —
+   the default Adwaita shell keeps its left column and DOM reading
+   order. Grid `order` re-places the columns without touching markup. */
+[data-skin="stealth-x"] .app-shell {
+  grid-template-columns: minmax(480px, 2.2fr) minmax(260px, 1fr) minmax(320px, 1.3fr);
+}
+
+[data-skin="stealth-x"] .app-shell > .content-scroll {
+  order: 1;
+}
+
+[data-skin="stealth-x"] .app-shell > .notif-column {
+  order: 2;
+  border-right: none;
+  border-left: 1px solid var(--border);
+}
+
+[data-skin="stealth-x"] .app-shell > .thread-column {
+  order: 3;
 }
