@@ -2879,7 +2879,7 @@ button.mention-link {
 .app-shell {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(480px, 2.2fr) minmax(320px, 1.3fr);
+  grid-template-columns: minmax(480px, 2.2fr) minmax(260px, 1fr) minmax(320px, 1.3fr);
   min-height: 0;
   overflow: hidden;
 }
@@ -2893,7 +2893,7 @@ button.mention-link {
 }
 
 .notif-column {
-  border-right: 1px solid var(--border);
+  border-left: 1px solid var(--border);
   padding: 16px 12px;
 }
 
