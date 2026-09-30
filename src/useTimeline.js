@@ -57,7 +57,20 @@ export function useTimeline(session, { view, tier }) {
       const lastId = lastStatusIdRef.current
       if (!lastId) return
       const statuses = await mitra.fetchHomeTimeline(session.instanceUrl, session.token, { max_id: lastId })
-      setTimeline((prev) => [...prev, ...statuses].slice(0, TIMELINE_MAX_ROWS))
+      setTimeline((prev) => {
+        // Dedupe against what's mounted: a reblog wrapper or a just-
+        // prepended post can already be on screen when its page arrives,
+        // which would render the same row twice.
+        const seen = new Set()
+        for (const row of prev) {
+          seen.add(row.id)
+          if (row.reblog) seen.add(row.reblog.id)
+        }
+        const fresh = statuses.filter((row) =>
+          !seen.has(row.id) && !(row.reblog && seen.has(row.reblog.id))
+        )
+        return [...prev, ...fresh].slice(0, TIMELINE_MAX_ROWS)
+      })
       if (statuses.length > 0) lastStatusIdRef.current = statuses[statuses.length - 1].id || null
       if (statuses.length < 10) setHasMore(false)
     } catch {
@@ -145,6 +158,6 @@ export function useTimeline(session, { view, tier }) {
   return {
     timeline, loading, error, hasMore, loadingMore, homeSentinelRef,
     statusById: statusByIdMemo,
-    loadTimeline, updatePost, prependPost, removeStatus,
+    loadTimeline, loadMoreTimeline, updatePost, prependPost, removeStatus,
   }
 }
