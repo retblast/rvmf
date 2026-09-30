@@ -11,6 +11,7 @@ import {
 import * as mitra from '../lib/mitra'
 import { AppSettingsContext, useEscapeKey, useMaskIdentity, useMentionMaskId, showToast, downloadAllMedia } from '../hooks'
 import { AccountNames } from './AccountNames.jsx'
+import { AnchoredMenu } from './AnchoredMenu.jsx'
 import { htmlToPlainText, processStatusContent, renderEmojiText, renderPlainText } from '../lib/render.jsx'
 import { translateText, translationPressureNotice } from '../lib/translate'
 import { canonicalizeLanguage, canonicalLangName } from '../lib/languages'
@@ -410,8 +411,10 @@ export function PostActions({
   mediaHidden, setMediaHidden, translation, showPicker, setShowPicker,
   accountsView, setAccountsView,
 }) {
+  const actionsRef = useRef(null)
+
   return (
-    <div className="post-actions" onClick={(e) => e.stopPropagation()}>
+    <div className="post-actions" ref={actionsRef} onClick={(e) => e.stopPropagation()}>
       <button className="action-btn" aria-label="Reply" onClick={() => onComposeReply(status)}>
         <MessageCircle size={15} />
         {!compact && status.replies_count > 0 && <span>{status.replies_count}</span>}
@@ -466,6 +469,7 @@ export function PostActions({
           instanceUrl={instanceUrl}
           onReact={toggleReaction}
           onClose={() => setShowPicker(false)}
+          anchorRef={actionsRef}
         />
       )}
       {content.attachments.length > 0 && (
@@ -497,17 +501,15 @@ export function PostActions({
         onUpdate={onUpdate}
       />
       {accountsView && (
-        <>
-          <div className="boost-dropdown-backdrop" onClick={(e) => { e.stopPropagation(); setAccountsView(null) }} />
-          <AccountsPopover
-            kind={accountsView.kind}
-            statusId={status.id}
-            instanceUrl={instanceUrl}
-            token={token}
-            onClose={() => setAccountsView(null)}
-            onOpenProfile={onOpenProfile}
-          />
-        </>
+        <AccountsPopover
+          kind={accountsView.kind}
+          statusId={status.id}
+          instanceUrl={instanceUrl}
+          token={token}
+          onClose={() => setAccountsView(null)}
+          onOpenProfile={onOpenProfile}
+          anchorRef={actionsRef}
+        />
       )}
     </div>
   )
@@ -548,7 +550,7 @@ export function ReactionChips({ reactions, statusId, onReact }) {
   )
 }
 
-export function ReactionPicker({ status, instanceUrl, onReact, onClose }) {
+export function ReactionPicker({ status, instanceUrl, onReact, onClose, anchorRef }) {
   const [instanceEmoji, setInstanceEmoji] = useState([])
   useEffect(() => {
     let cancelled = false
@@ -566,7 +568,7 @@ export function ReactionPicker({ status, instanceUrl, onReact, onClose }) {
     if (!seen.has(e.shortcode)) { seen.add(e.shortcode); customEmoji.push(e) }
   })
   return (
-    <div className="reaction-picker" onClick={(e) => e.stopPropagation()}>
+    <AnchoredMenu anchorRef={anchorRef} open onClose={onClose} className="reaction-picker">
       <div className="reaction-picker-section">
         {COMMON_EMOJI.map((emoji) => (
           <button key={emoji} className="reaction-picker-item" onClick={() => { onReact(status.id, emoji, false); onClose() }}>
@@ -586,7 +588,7 @@ export function ReactionPicker({ status, instanceUrl, onReact, onClose }) {
           </div>
         </>
       )}
-    </div>
+    </AnchoredMenu>
   )
 }
 
@@ -594,7 +596,7 @@ export function ReactionPicker({ status, instanceUrl, onReact, onClose }) {
 // once per open; rows open profiles via onOpenProfile.
 // Popover listing the accounts behind a favourite/boost count. Fetches
 // once per open; rows open profiles via onOpenProfile.
-export function AccountsPopover({ kind, statusId, instanceUrl, token, onClose, onOpenProfile }) {
+export function AccountsPopover({ kind, statusId, instanceUrl, token, onClose, onOpenProfile, anchorRef }) {
   const [accounts, setAccounts] = useState(null)
   const [error, setError] = useState('')
   const mask = useMaskIdentity()
@@ -615,7 +617,7 @@ export function AccountsPopover({ kind, statusId, instanceUrl, token, onClose, o
   }, [fetchPage])
 
   return (
-    <div className="boost-dropdown accounts-popover" onClick={(e) => e.stopPropagation()}>
+    <AnchoredMenu anchorRef={anchorRef} open onClose={onClose} className="boost-dropdown accounts-popover">
       <div className="accounts-popover-heading">{kind === 'favourited_by' ? 'Favourited by' : 'Boosted by'}</div>
       {error && <div className="banner banner-error">{error}</div>}
       {!accounts && !error ? (
@@ -642,7 +644,7 @@ export function AccountsPopover({ kind, statusId, instanceUrl, token, onClose, o
           })}
         </div>
       )}
-    </div>
+    </AnchoredMenu>
   )
 }
 
@@ -669,15 +671,6 @@ export function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote,
   const ref = useRef(null)
   useEscapeKey(() => setOpen(false), open)
 
-  useEffect(() => {
-    if (!open) return
-    function handleClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [open])
-
   return (
     <div className="boost-dropdown-wrap" ref={ref}>
       <button
@@ -695,25 +688,22 @@ export function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote,
         <CountButton count={reblogsCount} title="Who boosted" onClick={onShowReblogs} />
       )}
       {open && (
-        <>
-          <div className="boost-dropdown-backdrop" onClick={() => setOpen(false)} />
-          <div className="boost-dropdown">
-            <button
-              className={`boost-dropdown-item${reblogged ? ' boosted' : ''}`}
-              onClick={() => { onBoost(); setOpen(false) }}
-            >
-              <Repeat2 size={15} />
-              {reblogged ? 'Unboost' : 'Boost'}
-            </button>
-            <button
-              className="boost-dropdown-item"
-              onClick={() => { onQuote(); setOpen(false) }}
-            >
-              <MessageCircle size={15} />
-              Quote
-            </button>
-          </div>
-        </>
+        <AnchoredMenu anchorRef={ref} open onClose={() => setOpen(false)}>
+          <button
+            className={`boost-dropdown-item${reblogged ? ' boosted' : ''}`}
+            onClick={() => { onBoost(); setOpen(false) }}
+          >
+            <Repeat2 size={15} />
+            {reblogged ? 'Unboost' : 'Boost'}
+          </button>
+          <button
+            className="boost-dropdown-item"
+            onClick={() => { onQuote(); setOpen(false) }}
+          >
+            <MessageCircle size={15} />
+            Quote
+          </button>
+        </AnchoredMenu>
       )}
     </div>
   )
@@ -906,15 +896,6 @@ export function PostOptionsMenu({ status, instanceUrl, token, mediaAttachments, 
   const ref = useRef(null)
   useEscapeKey(() => setOpen(false), open)
 
-  useEffect(() => {
-    if (!open) return
-    function handleClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [open])
-
   function copyLink() {
     const acct = status.account?.acct || status.account?.username || 'unknown'
     const url = status.url || `https://${instanceUrl}/@${acct}/${status.id}`
@@ -1007,13 +988,11 @@ export function PostOptionsMenu({ status, instanceUrl, token, mediaAttachments, 
         <MoreHorizontal size={15} />
       </button>
       {open && (
-        <>
-          <div className="boost-dropdown-backdrop" onClick={() => setOpen(false)} />
-          <div className="boost-dropdown">
-            <button className="boost-dropdown-item" onClick={copyLink}>
-              <Link size={15} />
-              Copy link
-            </button>
+        <AnchoredMenu anchorRef={ref} open onClose={() => setOpen(false)}>
+          <button className="boost-dropdown-item" onClick={copyLink}>
+            <Link size={15} />
+            Copy link
+          </button>
             {mediaCount > 0 && (
               <button className="boost-dropdown-item" onClick={handleDownloadMedia} disabled={dlState === 'busy'}>
                 <Download size={15} />
@@ -1065,8 +1044,7 @@ export function PostOptionsMenu({ status, instanceUrl, token, mediaAttachments, 
                 </button>
               </>
             )}
-          </div>
-        </>
+        </AnchoredMenu>
       )}
     </div>
   )
