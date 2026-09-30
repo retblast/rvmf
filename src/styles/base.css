@@ -1,0 +1,119 @@
+/* Design tokens, light/dark themes, and component styles.
+   Convention: ALL font sizes are in rem (not px) so the UI respects the
+   user's browser/OS default text size — 1rem = 16px at default scale.
+   Icon <svg> sizes are pixel-locked by lucide's numeric props and are
+   intentionally exempt. */
+
+:root {
+  --window-bg: #f6f5f4;
+  --view-bg: #ffffff;
+  --headerbar-bg: #ffffff;
+  --headerbar-border: #d3d1d5;
+  --text-primary: #1e1e1e;
+  --text-secondary: #77767b;
+  --border: #e0dfe3;
+  --border-strong: #c8c6ca;
+  --hover-overlay: rgba(0, 0, 0, 0.05);
+  --active-overlay: rgba(0, 0, 0, 0.08);
+  --accent: #3584e4;
+  --accent-fg: #ffffff;
+  --accent-bg-subtle: #e6f1fb;
+  --destructive: #e01b24;
+  --success: #2ec27e;
+  --radius-window: 12px;
+  --radius-control: 6px;
+  --radius-popover: 10px;
+  --radius-pill: 999px;
+  --control-pad-y: 8px;
+  --control-pad-x: 14px;
+  --font-ui: -apple-system, BlinkMacSystemFont, sans-serif, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --window-bg: #242424;
+    --view-bg: #1e1e1e;
+    --headerbar-bg: #303030;
+    --headerbar-border: #1c1c1c;
+    --text-primary: #ffffff;
+    --text-secondary: #9a9996;
+    --border: rgba(255, 255, 255, 0.09);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --hover-overlay: rgba(255, 255, 255, 0.07);
+    --active-overlay: rgba(255, 255, 255, 0.1);
+    --accent: #78aeed;
+    --accent-fg: #052044;
+    --accent-bg-subtle: #1a2c3f;
+    --destructive: #ff7b63;
+    --success: #8ff0a4;
+  }
+}
+
+/* Explicit dark mode via manual toggle (overrides system) */
+[data-theme="dark"] {
+  --window-bg: #242424;
+  --view-bg: #1e1e1e;
+  --headerbar-bg: #303030;
+  --headerbar-border: #1c1c1c;
+  --text-primary: #ffffff;
+  --text-secondary: #9a9996;
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --hover-overlay: rgba(255, 255, 255, 0.07);
+  --active-overlay: rgba(255, 255, 255, 0.1);
+  --accent: #78aeed;
+  --accent-fg: #052044;
+  --accent-bg-subtle: #1a2c3f;
+  --destructive: #ff7b63;
+  --success: #8ff0a4;
+}
+
+/* Explicit light mode via manual toggle (overrides system dark) */
+[data-theme="light"] {
+  --window-bg: #f6f5f4;
+  --view-bg: #ffffff;
+  --headerbar-bg: #ffffff;
+  --headerbar-border: #d3d1d5;
+  --text-primary: #1e1e1e;
+  --text-secondary: #77767b;
+  --border: #e0dfe3;
+  --border-strong: #c8c6ca;
+  --hover-overlay: rgba(0, 0, 0, 0.05);
+  --active-overlay: rgba(0, 0, 0, 0.08);
+  --accent: #3584e4;
+  --accent-fg: #ffffff;
+  --accent-bg-subtle: #e6f1fb;
+  --destructive: #e01b24;
+  --success: #2ec27e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--window-bg);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  /* No font-size here on purpose: the root (and thus every rem) must
+     follow the user's browser/OS default text size, not our opinion. */
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  font-family: inherit;
+}
+

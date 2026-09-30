@@ -1,0 +1,936 @@
+/* ---- main layout: timeline + thread side panel (medium/narrow tiers) ---- */
+
+.main-layout {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Narrow tier: thread replaces the timeline, header stays pinned at top */
+.main-layout.narrow-thread {
+  flex-direction: column;
+}
+
+.main-layout.narrow-thread > .thread-panel-header {
+  flex-shrink: 0;
+}
+
+.main-layout.narrow-thread > .content-scroll {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---- wide-tier 3-pane shell: notifications | timeline | thread ----
+   Nothing here slides or animates open/closed — all three columns are
+   always present at this width, which is the whole point of having
+   enough room for them. */
+
+.app-shell {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(480px, 2.2fr) minmax(320px, 1.3fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.notif-column,
+.thread-column {
+  width: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.notif-column {
+  border-right: 1px solid var(--border);
+  padding: 16px 12px;
+}
+
+.notif-column .section-label {
+  padding: 0 4px 10px;
+}
+
+.thread-column {
+  border-left: 1px solid var(--border);
+  background: var(--view-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+.thread-column-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px;
+}
+
+.thread-column > .thread-panel-header {
+  flex-shrink: 0;
+}
+
+/* The 640px reading-width cap on .timeline-wrap makes sense in the
+   medium/narrow tiers, where the column itself is already close to that
+   width — but in the 3-pane wide tier it just strands space as blank
+   margin on both sides of the actual content, while the notif/thread
+   columns already use their full width. Let it fill the column here too,
+   with a bit of padding instead of a centered narrow strip. */
+.app-shell .content-scroll .timeline-wrap {
+  max-width: none;
+  padding-left: 28px;
+  padding-right: 28px;
+}
+
+.thread-column-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  padding: 0 24px;
+}
+
+/* ---- narrow-tier "back" affordance, replacing the timeline in place ---- */
+
+.thread-back-btn {
+  margin-right: 4px;
+  width: 28px;
+  height: 28px;
+}
+
+.thread-panel-header .dialog-title {
+  display: flex;
+  align-items: center;
+}
+
+/* ---- repost indicator ---- */
+
+.repost-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding-left: 40px;
+  margin-bottom: 6px;
+}
+
+/* ---- inline replies (small threads): "peek" drawer ----
+   Height/opacity animation is handled by Framer Motion on the wrap itself
+   (see App.jsx) — this just needs to clip during that animation and give
+   the track underneath the recessed, darker-tray look, the same visual
+   language as iOS's long-press quick-action tray unfurling beneath a
+   pressed item: a distinct, slightly darker surface tucked under the row
+   it came from, with a soft inset shadow selling the "underneath" depth. */
+
+.inline-replies-wrap {
+  overflow: hidden;
+}
+
+.inline-replies-track {
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+}
+
+.reply-accordion {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.reply-accordion.open {
+  grid-template-rows: 1fr;
+}
+
+.reply-accordion-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.reply-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.reply-collapse-btn:hover {
+  background: var(--accent-bg-subtle);
+  color: var(--text);
+}
+
+.reply-collapse-btn .accordion-chevron {
+  transition: transform 0.15s;
+}
+
+.reply-collapse-btn:not(.open) .accordion-chevron {
+  transform: rotate(90deg);
+}
+
+.reply-collapse-count {
+  font-size: 0.6875rem;
+  opacity: 0.7;
+}
+
+.reply-row {
+  display: flex;
+  gap: 8px;
+  padding: 8px 8px 0 8px;
+  margin-left: 0;
+  position: relative;
+  background-color: rgba(0, 0, 0, min(calc(var(--reply-depth, 0) * 0.025), 0.15));
+}
+
+.reply-row.highlighted,
+.post-row.highlighted {
+  background-color: rgba(0, 0, 0, min(calc(var(--reply-depth, 0) * 0.025 + 0.06), 0.21));
+}
+
+
+.reply-row + .reply-row {
+  margin-top: 2px;
+}
+
+.reply-body {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 10px;
+  cursor: pointer;
+}
+
+.reply-loading {
+  padding: 10px 0 10px 30px;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.reply-actions {
+  margin-top: 4px;
+  display: flex;
+}
+
+/* ---- thread side panel (big threads) ---- */
+
+.thread-panel {
+  width: 0;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+  background: var(--view-bg);
+  transition: width 240ms ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.thread-panel.open {
+  width: min(460px, 40vw);
+}
+
+.thread-panel-inner {
+  width: min(460px, 40vw);
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+}
+
+.thread-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.thread-panel-focal {
+  margin: 0 -16px 8px;
+}
+
+.thread-panel-focal .post-row {
+  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+}
+
+.inline-reply-composer {
+  padding: 8px 12px 12px 44px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Focal post's composer spans full width (no avatar column to indent) */
+.thread-panel-focal .inline-reply-composer,
+.post-row > .inline-reply-composer {
+  padding-left: 16px;
+}
+
+.inline-reply-composer .thread-panel-header {
+  margin-bottom: 8px;
+}
+
+.inline-reply-composer .compose-textarea {
+  min-height: 60px;
+}
+
+
+.thread-panel-backdrop {
+  display: none;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- profile view ---- */
+
+.avatar.clickable {
+  cursor: pointer;
+}
+
+.post-name.clickable,
+.post-handle.clickable {
+  cursor: pointer;
+}
+
+.post-name.clickable:hover,
+.post-handle.clickable:hover {
+  text-decoration: underline;
+}
+
+.profile-view {
+  background: var(--view-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-window);
+  overflow: hidden;
+}
+
+.profile-header-wrap {
+  position: relative;
+  min-height: 48px;
+  background: var(--border);
+}
+
+.profile-header-img {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  display: block;
+}
+
+.profile-back-btn {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #ffffff;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-radius: 50%;
+}
+
+.profile-back-btn:hover {
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.profile-info {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 0 16px;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 1;
+}
+
+.profile-info .avatar.lg {
+  width: 80px;
+  height: 80px;
+  margin-top: -40px;
+  border: 3px solid var(--view-bg);
+  border-radius: 50%;
+}
+
+/* Retry button for a single avatar whose GIF conversion went wrong:
+   sits on the bottom-right edge of the profile picture. */
+.profile-avatar-wrap {
+  position: relative;
+}
+
+.profile-avatar-retry {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--view-bg);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.profile-avatar-retry:hover {
+  color: var(--accent);
+  background: var(--view-bg);
+}
+
+.profile-avatar-retry:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.profile-names {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 4px;
+}
+
+.profile-display-name {
+  font-weight: 700;
+  font-size: 1.125rem;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.profile-handle {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.profile-info .pill-btn {
+  margin-left: auto;
+  margin-bottom: 4px;
+}
+
+.profile-bio {
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.profile-stats {
+  display: flex;
+  gap: 16px;
+  padding: 4px 16px 12px;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.profile-stats strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+/* Clickable stat (followers/following/subscribers) */
+.profile-stat-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.profile-stat-link:hover {
+  text-decoration: underline;
+}
+
+.profile-stat-link.active {
+  color: var(--accent);
+}
+
+/* "Load older posts from origin" backfill buttons */
+.backfill-btn {
+  margin: 0 16px 10px;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Follow tuning popover on profiles */
+.follow-options-dropdown {
+  min-width: 230px;
+}
+
+.profile-edit-toggles-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+/* Who-favourited / who-boosted popover */
+.accounts-popover {
+  min-width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.accounts-popover-heading {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  padding: 6px 12px 2px;
+}
+
+.accounts-popover-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.accounts-popover-list .search-account-row {
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+
+/* Count that opens the who-did-this popover; sits beside its icon */
+.action-count-btn {
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.action-count-btn:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.action-btn-group {
+  display: flex;
+  align-items: center;
+}
+
+.profile-tabs {
+  display: flex;
+  border-top: 1px solid var(--border);
+}
+
+.profile-tab {
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  background: none;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: center;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.profile-tab:hover {
+  color: var(--text-primary);
+}
+
+.profile-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.profile-view .timeline-list {
+  border: none;
+  border-radius: 0;
+}
+
+.profile-back {
+  margin-bottom: 8px;
+}
+
+.profile-badge {
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--radius-control);
+  vertical-align: middle;
+}
+
+.profile-badge.mutual {
+  background: var(--accent-bg-subtle);
+  color: var(--accent);
+}
+
+.profile-badge.follows-you {
+  background: var(--hover-overlay);
+  color: var(--text-secondary);
+}
+
+.profile-badge.requested {
+  background: var(--hover-overlay);
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.notif-text .post-name.clickable {
+  cursor: pointer;
+}
+
+.notif-text .post-name.clickable:hover {
+  text-decoration: underline;
+}
+
+/* Focused reply: a brief glow on arrival, then a persistent accent bar
+   so the post that opened the thread stays identifiable. box-shadow is
+   inset and paint-only, so it never shifts layout. */
+.focused-reply {
+  animation: focus-glow 2s ease-out;
+  box-shadow: inset 3px 0 0 0 var(--accent);
+}
+
+@keyframes focus-glow {
+  0% { background-color: var(--accent-bg-subtle); }
+  100% { background-color: transparent; }
+}
+
+/* ---- OS/browser accent integration ----
+   main.jsx detects the platform accent (CSS system color 'AccentColor')
+   and sets --os-accent/--os-accent-fg on :root when present. These rules
+   sit last so they win over every theme scope above; derived tones are
+   mixed from the live accent so light/dark backgrounds both work. */
+:root.os-accent {
+  --accent: var(--os-accent);
+  --accent-fg: var(--os-accent-fg);
+  --accent-bg-subtle: color-mix(in srgb, var(--os-accent) 14%, var(--window-bg));
+}
+
+/* Hover peek over spoilered media: accent outline + CW label so it's
+   obvious you're looking at hidden content */
+.media-hover-preview.peek-sensitive {
+  border: 1px solid var(--accent);
+}
+
+
+/* --- Profile edit dialog --- */
+.profile-edit-card {
+  width: 520px;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+}
+
+.profile-edit-images {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.profile-edit-avatar-btn {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  flex-shrink: 0;
+}
+
+.profile-edit-avatar-btn img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-edit-avatar-btn span {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.profile-edit-header-btn {
+  flex: 1;
+  height: 72px;
+  border-radius: var(--radius-control);
+  border: 1px dashed var(--border-strong);
+  background: var(--surface);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-edit-header-btn img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-edit-header-btn span {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.profile-edit-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin: 10px 0 4px;
+}
+
+.profile-edit-input {
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--window-bg);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.875rem;
+  padding: 8px 10px;
+  outline: none;
+}
+
+.profile-edit-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg-subtle);
+}
+
+textarea.profile-edit-input {
+  resize: vertical;
+}
+
+.profile-edit-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.profile-edit-toggles label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.profile-edit-fields-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.profile-edit-field-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.post-edited {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* --- Direct messages --- */
+.dm-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--view-bg);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.dm-row:hover {
+  background: var(--surface);
+}
+
+.dm-avatars {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.dm-avatars > * + * {
+  margin-left: -8px;
+}
+
+.dm-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.dm-topline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dm-name {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dm-snippet {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.section-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.section-label-row .section-label {
+  flex: 1;
+}
+
+/* --- Account settings --- */
+.account-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--view-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.account-card-heading {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.account-card .pill-btn {
+  align-self: flex-start;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.session-row:last-child {
+  border-bottom: none;
+}
+
+.session-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.session-client {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* --- Blurhash placeholder --- */
+.media-blurhash-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.media-blurhash {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(6px);
+  transform: scale(1.1);
+}
+
+.media-blurhash-wrap + img {
+  position: relative;
+}
+
+.portability-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.portability-row .profile-edit-input {
+  flex: 1;
+}
+
+.portability-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.account-card-heading.danger {
+  color: var(--error, #c01c28);
+  margin-top: 6px;
+}
+
