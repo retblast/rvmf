@@ -49,6 +49,15 @@ await patient(() => mitra.followAccount(instanceUrl, bob.token, alice.account.id
 await patient(() => mitra.followAccount(instanceUrl, carol.token, alice.account.id), 'follow c->a')
 await patient(() => mitra.followAccount(instanceUrl, carol.token, bob.account.id), 'follow c->b')
 
+
+// A public mention of alice, for the privacy-mode zero-leak audit: it
+// gives alice a mention notification whose content contains her handle,
+// exercising the content-pipeline masking end to end. Posted FIRST so it
+// lands at the bottom of the home feeds — the thread specs need the
+// seeded rows to stay inside the first 10-row page.
+await patient(() => mitra.postStatus(instanceUrl, carol.token,
+  `Mention ping @${alice.account.acct} from carol`, { visibility: 'public' }), 'post mention')
+
 const root = await patient(() => mitra.postStatus(instanceUrl, alice.token,
   'Seeded root post from alice', { visibility: 'public' }), 'post root')
 const rootReply = await patient(() => mitra.postStatus(instanceUrl, bob.token,
@@ -80,6 +89,7 @@ if (pollPost.poll) {
 await patient(() => mitra.postStatus(instanceUrl, bob.token, `Direct note to @${alice.account.acct}`, {
   visibility: 'direct',
 }), 'post dm')
+
 
 console.log('seed complete')
 const statePath = new URL('../e2e/.state/seed.json', import.meta.url)

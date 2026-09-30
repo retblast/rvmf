@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AppSettingsContext, GhostContext } from '../hooks'
+import { maskAccount } from '../lib/privacy.js'
 import { useTranslation, PostRow } from './Post.jsx'
 
 // The real translate module lazily pulls in Transformers.js (multi-GB model,
@@ -17,9 +18,9 @@ vi.mock('../lib/translate', () => ({
 // to avoid real fetches in jsdom.
 vi.mock('../lib/mitra', () => ({ default: {}, setFavourited: vi.fn(), setReblogged: vi.fn(), addReaction: vi.fn(), removeReaction: vi.fn() }))
 
-function Provider({ children, provider = 'qwen-cpu' }) {
+function Provider({ children, provider = 'qwen-cpu', mask }) {
   return (
-    <AppSettingsContext.Provider value={{ translationEnabled: true, translationProvider: provider }}>
+    <AppSettingsContext.Provider value={{ translationEnabled: true, translationProvider: provider, mask }}>
       {children}
     </AppSettingsContext.Provider>
   )
@@ -288,5 +289,80 @@ describe('PostRow reply context line', () => {
       in_reply_to_account_id: 'u2',
     })
     expect(screen.getByText(/In reply to/)).toBeTruthy()
+  })
+})
+
+describe('PostRow privacy masking', () => {
+  const realMask = (account) => maskAccount(account, 'u1', true)
+
+  function renderPrivacyRow() {
+    return render(
+      <Provider mask={realMask}>
+        <PostRow
+          post={ghostPost}
+          instanceUrl="http://test.example.com"
+          token="tk"
+          onUpdate={() => {}}
+          onOpenThread={() => {}}
+          onComposeReply={() => {}}
+          onOpenLightbox={() => {}}
+          onOpenProfile={() => {}}
+          onQuote={() => {}}
+          currentAccountId="u1"
+        />
+      </Provider>
+    )
+  }
+
+  it('masks the author when the row is the current user', () => {
+    renderPrivacyRow()
+    expect(screen.getByText('You')).toBeTruthy()
+    expect(screen.getByText('@you')).toBeTruthy()
+    expect(screen.queryByText('Alice')).toBeNull()
+    expect(screen.queryByText('@alice')).toBeNull()
+  })
+
+  it('leaves other authors untouched', () => {
+    const bobPost = { ...ghostPost, account: { id: 'u2', display_name: 'Bob', acct: 'bob', avatar: '', emojis: [] } }
+    render(
+      <Provider mask={realMask}>
+        <PostRow
+          post={bobPost}
+          instanceUrl="http://test.example.com"
+          token="tk"
+          onUpdate={() => {}}
+          onOpenThread={() => {}}
+          onComposeReply={() => {}}
+          onOpenLightbox={() => {}}
+          onOpenProfile={() => {}}
+          onQuote={() => {}}
+          currentAccountId="u1"
+        />
+      </Provider>
+    )
+    expect(screen.getByText('Bob')).toBeTruthy()
+    expect(screen.getByText('@bob')).toBeTruthy()
+  })
+
+  it('masks the booster line when you boosted the post', () => {
+    const boost = { id: 'boost-1', reblog: { ...ghostPost, id: 'inner' }, account: { id: 'u1', display_name: 'Alice', acct: 'alice', emojis: [] } }
+    render(
+      <Provider mask={realMask}>
+        <PostRow
+          post={boost}
+          instanceUrl="http://test.example.com"
+          token="tk"
+          onUpdate={() => {}}
+          onOpenThread={() => {}}
+          onComposeReply={() => {}}
+          onOpenLightbox={() => {}}
+          onOpenProfile={() => {}}
+          onQuote={() => {}}
+          currentAccountId="u1"
+        />
+      </Provider>
+    )
+    expect(screen.getByText(/You boosted/)).toBeTruthy()
+    expect(screen.queryByText(/Alice boosted/)).toBeNull()
   })
 })

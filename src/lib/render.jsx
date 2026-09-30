@@ -220,7 +220,7 @@ function stripLeadingMentionRun(text, mentions) {
   return rest
 }
 
-function renderRichText(text, mentions, emojis) {
+function renderRichText(text, mentions, emojis, maskSelfId = null) {
   const needles = []
   ;(mentions || []).forEach((m) => {
     if (m.acct) needles.push(m.acct)
@@ -260,6 +260,11 @@ function renderRichText(text, mentions, emojis) {
       // mention id the profile opens directly, otherwise the acct is
       // resolved via /accounts/lookup. Falls back to an external link
       // only when there's nothing to route by.
+      // Privacy mode: a mention of the logged-in user renders as @you.
+      // The label is the only thing masked — data-acct keeps the real
+      // handle so profile routing keeps working (it's metadata, not
+      // onlooker-visible text).
+      const isSelfMention = maskSelfId != null && mention?.id === maskSelfId
       if (mention?.id) {
         parts.push(
           <button
@@ -269,7 +274,7 @@ function renderRichText(text, mentions, emojis) {
             data-acct={mention.acct || mention.username}
             onClick={(e) => e.stopPropagation()}
           >
-            @{handle}
+            @{isSelfMention ? 'you' : handle}
           </button>
         )
       } else {
@@ -455,11 +460,11 @@ function extractQuarantinedImages(text, instanceUrl, posterAcct) {
 // stays correct across logins by comparing it.
 const contentProcessCache = new WeakMap()
 
-export function processStatusContent(status, instanceUrl) {
+export function processStatusContent(status, instanceUrl, maskSelfId = null) {
   const cached = contentProcessCache.get(status)
-  if (cached && cached.instanceUrl === instanceUrl) return cached.result
-  const result = processStatusContentUncached(status, instanceUrl)
-  contentProcessCache.set(status, { instanceUrl, result })
+  if (cached && cached.instanceUrl === instanceUrl && cached.maskSelfId === maskSelfId) return cached.result
+  const result = processStatusContentUncached(status, instanceUrl, false, maskSelfId)
+  contentProcessCache.set(status, { instanceUrl, maskSelfId, result })
   return result
 }
 
@@ -468,15 +473,15 @@ export function processStatusContent(status, instanceUrl) {
 // context line. Mentions elsewhere in the body are kept. Uses a separate
 // cache entry so it doesn't interfere with the normal cached result.
 const displayContentCache = new WeakMap()
-export function processStatusContentForDisplay(status, instanceUrl) {
+export function processStatusContentForDisplay(status, instanceUrl, maskSelfId = null) {
   const cached = displayContentCache.get(status)
-  if (cached && cached.instanceUrl === instanceUrl) return cached.result
-  const result = processStatusContentUncached(status, instanceUrl, Boolean(status?.in_reply_to_id))
-  displayContentCache.set(status, { instanceUrl, result })
+  if (cached && cached.instanceUrl === instanceUrl && cached.maskSelfId === maskSelfId) return cached.result
+  const result = processStatusContentUncached(status, instanceUrl, Boolean(status?.in_reply_to_id), maskSelfId)
+  displayContentCache.set(status, { instanceUrl, maskSelfId, result })
   return result
 }
 
-function processStatusContentUncached(status, instanceUrl, stripMentions = false) {
+function processStatusContentUncached(status, instanceUrl, stripMentions = false, maskSelfId = null) {
   // Combines mention-linking and quarantined-image extraction into what a
   // post/reply actually needs to render: text nodes plus a merged attachment
   // list (real attachments + any quarantined images recovered from the text).
@@ -489,8 +494,8 @@ function processStatusContentUncached(status, instanceUrl, stripMentions = false
   // duplicates the "In reply to" line) is removed; in-body mentions stay
   // and keep their links, so mentions are passed through either way.
   const textNodes = stripMentions
-    ? renderRichText(stripLeadingMentionRun(cleanedText, status.mentions), status.mentions, status.emojis)
-    : renderRichText(cleanedText, status.mentions, status.emojis)
+    ? renderRichText(stripLeadingMentionRun(cleanedText, status.mentions), status.mentions, status.emojis, maskSelfId)
+    : renderRichText(cleanedText, status.mentions, status.emojis, maskSelfId)
 
   // Both local-instance and poster-domain recovered images are shown behind
   // the CW blur — the admin disabled inline embedding for a reason, and
@@ -543,6 +548,6 @@ function processStatusContentUncached(status, instanceUrl, stripMentions = false
 // normal post text goes through, so URLs stay clickable and line breaks are
 // preserved. Mentions and emoji come from the source status so user/@names
 // and :shortcodes: that survive translation still render consistently.
-export function renderPlainText(text, mentions, emojis) {
-  return renderRichText(String(text || ''), mentions, emojis)
+export function renderPlainText(text, mentions, emojis, maskSelfId = null) {
+  return renderRichText(String(text || ''), mentions, emojis, maskSelfId)
 }

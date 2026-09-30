@@ -3943,3 +3943,410 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
 .lightbox-overlay {
   touch-action: pan-x pinch-zoom;
 }
+
+/* ---- Stealth (X-look) skin: X-style chrome ----
+   Left rail on the wide tier, icon rail on medium, top bar + bottom
+   tab bar on phones. The rail/tabbar are position:fixed; the layout
+   columns indent to make room. Skin-owned classes (.x-*) are unscoped
+   like the Breeze menubar — they only render under this skin — while
+   overrides of shared classes go through [data-skin="stealth-x"]. */
+
+.x-rail {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 275px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px 16px;
+  background: var(--window-bg);
+  z-index: 40;
+}
+
+.x-brand {
+  font-size: 2.4rem;
+  font-weight: 800;
+  line-height: 1;
+  padding: 12px 16px 14px;
+  color: var(--text-primary);
+  user-select: none;
+}
+
+.x-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 1.25rem;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.x-nav-item:hover {
+  background: var(--hover-overlay);
+}
+
+.x-nav-item.active {
+  font-weight: 700;
+}
+
+.x-nav-item.active .x-nav-icon {
+  background: var(--text-primary);
+  color: var(--window-bg);
+}
+
+.x-nav-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.x-badge {
+  position: absolute;
+  top: -2px;
+  right: -6px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 9999px;
+}
+
+.x-post-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 12px 0 4px;
+  height: 50px;
+  padding: 0 60px 0 24px;
+  border: none;
+  border-radius: 9999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.x-post-btn:hover {
+  filter: brightness(1.08);
+}
+
+.x-rail-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.x-account-chip-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.x-account-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px 6px 6px;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  cursor: pointer;
+  min-width: 0;
+  flex: 1;
+}
+
+.x-account-chip:hover {
+  background: var(--hover-overlay);
+}
+
+.x-account-names {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.x-account-name {
+  font-weight: 700;
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.x-account-handle {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Wide tier: content indents past the fixed rail */
+[data-skin="stealth-x"] .app-shell {
+  margin-left: 275px;
+}
+
+/* Medium tier (900–1399): icon-only rail, same breakpoints useLayoutTier uses */
+@media (min-width: 900px) and (max-width: 1399.98px) {
+  .x-rail {
+    width: 74px;
+    padding: 8px 8px 16px;
+    align-items: flex-start;
+  }
+  .x-brand {
+    font-size: 1.8rem;
+    padding: 10px 0 12px;
+    text-align: center;
+    width: 58px;
+  }
+  .x-nav-item {
+    padding: 0;
+    gap: 0;
+  }
+  .x-nav-item .view-label {
+    display: none;
+  }
+  .x-post-btn {
+    padding: 0;
+    width: 50px;
+  }
+  .x-post-btn .view-label {
+    display: none;
+  }
+  .x-account-chip {
+    padding: 4px;
+    justify-content: center;
+  }
+  .x-account-names {
+    display: none;
+  }
+  .x-account-chip-row .icon-btn {
+    display: none;
+  }
+  [data-skin="stealth-x"] .app-shell {
+    margin-left: 74px;
+  }
+}
+
+/* ---- Phone tier: top bar + bottom tab bar ---- */
+.x-topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: calc(52px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) max(10px, env(safe-area-inset-right)) 0 max(10px, env(safe-area-inset-left));
+  background: var(--headerbar-bg);
+  border-bottom: 1px solid var(--border);
+  z-index: 40;
+}
+
+.x-topbar-avatar {
+  display: flex;
+  align-items: center;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  padding: 4px;
+  cursor: pointer;
+}
+
+.x-topbar-title {
+  flex: 1;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.x-tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  height: calc(56px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--headerbar-bg);
+  border-top: 1px solid var(--border);
+  z-index: 40;
+}
+
+.x-tabbar .x-nav-item {
+  flex-direction: column;
+  gap: 0;
+  padding: 0 16px;
+  font-size: 0.6875rem;
+}
+
+.x-tabbar .x-nav-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.x-tabbar .x-badge {
+  top: -3px;
+  right: -10px;
+}
+
+.x-tab-fab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  margin-top: -22px;
+  border: none;
+  border-radius: 9999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.x-tab-fab:active {
+  transform: translateY(-2px);
+}
+
+@media (max-width: 899.98px) {
+  [data-skin="stealth-x"] .main-layout {
+    margin-top: calc(52px + env(safe-area-inset-top));
+    margin-bottom: calc(56px + env(safe-area-inset-bottom));
+  }
+  /* Floating chrome lifts above the tab bar */
+  [data-skin="stealth-x"] .scroll-top-btn {
+    bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+  [data-skin="stealth-x"] .toast-stack {
+    bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+}
+
+/* ---- Stealth (X-look) skin: content restyle ----
+   The chrome section above owns layout; this pass makes the CONTENT
+   read as X: the boxed feed card dissolves into hairline rows on the
+   window background, primary buttons become X's solid inverted pills,
+   and the post action row gets category tints (reply/boost/like).
+   Scoped under [data-skin="stealth-x"]; the palette itself rides in
+   through the skin tokens (accent #1d9bf0, lights-out dark). */
+
+/* Feed: no boxed card — rows float on the window background, X's 600px column */
+[data-skin="stealth-x"] .timeline-list {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+[data-skin="stealth-x"] .timeline-wrap {
+  max-width: 600px;
+}
+
+/* Section titles read as X's heavy feed headings ("Home", "Notifications") */
+[data-skin="stealth-x"] .section-label {
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+/* Primary CTAs (Follow, Accept...): X's solid inverted pill — text on
+   window colors, so light mode gets the black pill and lights-out gets
+   the white one with zero extra rules. */
+[data-skin="stealth-x"] .pill-btn.suggested {
+  background: var(--text-primary);
+  color: var(--window-bg);
+  border-color: transparent;
+  font-weight: 700;
+}
+
+[data-skin="stealth-x"] .pill-btn.suggested:hover {
+  background: var(--text-primary);
+  color: var(--window-bg);
+  opacity: 0.9;
+}
+
+/* Action row: X's category tints — reply blue, boost green, like pink,
+   bookmark blue. Base .action-btn keeps the neutral gray. */
+[data-skin="stealth-x"] .action-btn:hover {
+  background: rgba(29, 155, 240, 0.12);
+  color: #1d9bf0;
+}
+
+[data-skin="stealth-x"] .action-btn.boost-trigger:hover {
+  background: rgba(0, 186, 124, 0.12);
+  color: #00ba7c;
+}
+
+[data-skin="stealth-x"] .action-btn.boosted,
+[data-skin="stealth-x"] .action-btn.boosted:hover {
+  color: #00ba7c;
+}
+
+[data-skin="stealth-x"] .action-btn.favorited,
+[data-skin="stealth-x"] .action-btn.favorited:hover {
+  color: #f91880;
+}
+
+[data-skin="stealth-x"] .action-btn.favorited:hover {
+  background: rgba(249, 24, 128, 0.12);
+}
+
+[data-skin="stealth-x"] .action-btn.bookmarked,
+[data-skin="stealth-x"] .action-btn.bookmarked:hover {
+  color: #1d9bf0;
+}
+
+/* Quote cards stay rectangles — the skin's pill --radius-control would
+   capsule them, but X quotes are 16px rounded. */
+[data-skin="stealth-x"] .quote-card {
+  border-radius: 16px;
+}
+
+/* Composer: X's composer is a bare textarea, no chrome */
+[data-skin="stealth-x"] .compose-textarea {
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  padding: 4px 0;
+}
+
+[data-skin="stealth-x"] .compose-textarea:focus {
+  outline: none;
+}
+
+/* Selects/inputs keep capsule shape (token radius) but X's neutral fill */
+[data-skin="stealth-x"] .compose-visibility-select,
+[data-skin="stealth-x"] .settings-text-input {
+  background: var(--hover-overlay);
+  border-color: transparent;
+}
+
+/* Notifications: X's rows sit on the bare background */
+[data-skin="stealth-x"] .notif-row {
+  padding: 10px 12px;
+}

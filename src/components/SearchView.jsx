@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMaskIdentity } from '../hooks'
 import { Search as SearchIcon } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { htmlToPlainText } from '../lib/render.jsx'
@@ -25,6 +26,7 @@ export function SearchView({
   onEdit,
   onOpenHashtag,
 }) {
+  const mask = useMaskIdentity()
   const [query, setQuery] = useState('')
   // 'all' hits every category in one request; the tabs just filter what's
   // displayed (the API call itself is always untyped).
@@ -160,7 +162,9 @@ export function SearchView({
             <>
               <div className="section-label">People</div>
               <div className="timeline-list">
-                {results.accounts.map((account) => (
+                {results.accounts.map((rawAccount) => {
+                  const account = mask(rawAccount)
+                  return (
                   <button
                     type="button"
                     key={account.id}
@@ -174,7 +178,8 @@ export function SearchView({
                     </div>
                     {account.note && <span className="search-account-note">{htmlToPlainText(account.note)}</span>}
                   </button>
-                ))}
+                  )
+                })}
               </div>
             </>
           )}

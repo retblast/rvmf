@@ -18,6 +18,25 @@ export const AppSettingsContext = createContext({
 })
 export const PickerContext = createContext({ openPickerId: null, setOpenPickerId: () => {} })
 
+// Identity mask for privacy mode (see lib/privacy.js). Components that
+// display account details pass them through this before rendering.
+// Falls back to a passthrough so partial context providers (tests) keep
+// working.
+export function useMaskIdentity() {
+  const { mask } = useContext(AppSettingsContext)
+  return mask || ((account) => account)
+}
+
+// Self-mention masking for the content pipeline: the render lib caches
+// processed content per status object, so it needs a stable cache key,
+// not a per-render closure. This yields the account id while privacy
+// mode is on and null otherwise — exactly the variance the cache must
+// distinguish.
+export function useMentionMaskId() {
+  const { privacyMode, selfId } = useContext(AppSettingsContext)
+  return privacyMode && selfId ? selfId : null
+}
+
 // Transient confirmation toast. Fire-and-forget from anywhere via a
 // window event — avoids prop-drilling a dispatcher through every row.
 export function showToast(message) {
@@ -604,7 +623,7 @@ export function usePullToRefresh(el, onRefresh) {
 // Browser tab follows the instance: favicon and a "rvmf on <host>"
 // title; both restored to plain "rvmf" when logged out.
 // When `unread` > 0, a small red dot is overlaid on the favicon.
-export function useInstanceFavicon(session, unread) {
+export function useInstanceFavicon(session, unread, privacyMode = false, skin = null) {
   const defaultFaviconRef = useRef(null)
   useEffect(() => {
     let link = document.querySelector("link[rel~='icon']")
@@ -614,9 +633,16 @@ export function useInstanceFavicon(session, unread) {
       document.head.appendChild(link)
     }
     if (!defaultFaviconRef.current) defaultFaviconRef.current = link.href
-    const baseUrl = session
-      ? `${session.instanceUrl}/favicon.ico`
-      : defaultFaviconRef.current
+    // Tab priority: skin override > privacy neutral > instance default.
+    // A skin that declares a tab (e.g. the X-look skin's 𝕏 title +
+    // favicon) is deliberately the strongest disguise — the tab strip
+    // is onlooker-visible surface, and the skin IS the disguise.
+    // The unread blip composes on top of whatever base wins.
+    const skinTab = skin?.tab || null
+    const baseUrl = skinTab?.favicon
+      || (session && !privacyMode
+        ? `${session.instanceUrl}/favicon.ico`
+        : defaultFaviconRef.current)
     link.href = baseUrl
     let cancelled = false
     if (unread > 0 && session) {
@@ -624,11 +650,12 @@ export function useInstanceFavicon(session, unread) {
         .then((dataUrl) => { if (!cancelled) link.href = dataUrl })
         .catch(() => {})
     }
-    document.title = session
-      ? `rvmf on ${session.instanceUrl.replace(/^https?:\/\//, '')}`
-      : 'rvmf'
+    document.title = skinTab?.title
+      || (session && !privacyMode
+        ? `rvmf on ${session.instanceUrl.replace(/^https?:\/\//, '')}`
+        : 'rvmf')
     return () => { cancelled = true }
-  }, [session, unread])
+  }, [session, unread, privacyMode, skin])
 }
 
 // Composer draft persistence. Each draft is keyed by its context

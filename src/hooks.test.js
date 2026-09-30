@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { act, renderHook } from '@testing-library/react'
-import { attachmentDownloadUrls, filenameForAttachment, downloadAttachment, useComposeDraft, usePullToRefresh } from './hooks.js'
+import { attachmentDownloadUrls, filenameForAttachment, downloadAttachment, useComposeDraft, usePullToRefresh, useInstanceFavicon } from './hooks.js'
 import { loadDraft, clearDraft } from './lib/drafts.js'
 
 // Media downloads reuse the dev media proxy and the same credential guard
@@ -321,5 +321,61 @@ describe('usePullToRefresh wheel gesture', () => {
     act(() => vi.advanceTimersByTime(FIRE_DELAY + 10))
     expect(onRefresh).not.toHaveBeenCalled()
     vi.useRealTimers()
+  })
+})
+
+
+describe('useInstanceFavicon privacy mode', () => {
+  const SESSION = { instanceUrl: 'https://secret.example', token: 'tk', account: { id: 'u1' } }
+
+  function installFaviconLink() {
+    const link = document.createElement('link')
+    link.rel = 'icon'
+    link.href = '/icons/icon.svg'
+    document.head.appendChild(link)
+    return link
+  }
+
+  beforeEach(() => {
+    document.title = 'rvmf'
+    // Previous tests' <link rel=icon> elements linger in <head> (suite
+    // cleanup only clears <body>); the hook would mutate the stale link
+    // while assertions read the fresh one.
+    document.head.querySelectorAll("link[rel~='icon']").forEach((el) => el.remove())
+  })
+
+  it('names the instance in the tab by default', () => {
+    const link = installFaviconLink()
+    renderHook(() => useInstanceFavicon(SESSION, 0))
+    expect(document.title).toBe('rvmf on secret.example')
+    expect(link.href).toContain('secret.example/favicon.ico')
+  })
+
+  it('neutralizes the tab under privacy mode: plain title, app favicon', () => {
+    const link = installFaviconLink()
+    renderHook(() => useInstanceFavicon(SESSION, 0, true))
+    expect(document.title).toBe('rvmf')
+    expect(link.href).toContain('/icons/icon.svg')
+  })
+
+  it('lets a skin own the tab — title and favicon', () => {
+    const link = installFaviconLink()
+    renderHook(() => useInstanceFavicon(SESSION, 0, false, { tab: { title: '𝕏', favicon: '/icons/x-favicon.svg' } }))
+    expect(document.title).toBe('𝕏')
+    expect(link.href).toContain('/icons/x-favicon.svg')
+  })
+
+  it('the skin tab outranks privacy neutralization', () => {
+    const link = installFaviconLink()
+    renderHook(() => useInstanceFavicon(SESSION, 0, true, { tab: { title: '𝕏', favicon: '/icons/x-favicon.svg' } }))
+    expect(document.title).toBe('𝕏')
+    expect(link.href).toContain('/icons/x-favicon.svg')
+  })
+
+  it('stays neutral when logged out', () => {
+    const link = installFaviconLink()
+    renderHook(() => useInstanceFavicon(null, 0))
+    expect(document.title).toBe('rvmf')
+    expect(link.href).toContain('/icons/icon.svg')
   })
 })

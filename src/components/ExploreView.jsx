@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMaskIdentity } from '../hooks'
 import { Globe, Home, Users } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { mergeStatusIntoRow, htmlToPlainText as noteToPlainText } from '../lib/render.jsx'
@@ -17,6 +18,7 @@ export function ExploreView({
   const [feed, setFeed] = useState('federated') // 'federated' | 'local' | 'people'
   const [timelines, setTimelines] = useState({ federated: null, local: null })
   const [directoryAccounts, setDirectoryAccounts] = useState([])
+  const mask = useMaskIdentity()
   const [directoryLoading, setDirectoryLoading] = useState(false)
   const [directoryHasMore, setDirectoryHasMore] = useState(true)
   const [loading, setLoading] = useState(false)
@@ -197,7 +199,9 @@ export function ExploreView({
         ) : (
           <>
             <div className="timeline-list">
-              {directoryAccounts.map((account) => (
+              {directoryAccounts.map((rawAccount) => {
+                const account = mask(rawAccount)
+                return (
                 <button
                   type="button"
                   key={account.id}
@@ -211,7 +215,8 @@ export function ExploreView({
                   </div>
                   <span className="directory-bio">{account.note ? noteToPlainText(account.note) : ''}</span>
                 </button>
-              ))}
+                )
+              })}
             </div>
             {directoryHasMore && directoryAccounts.length > 0 && (
               <div ref={sentinelRef} className="scroll-sentinel" />

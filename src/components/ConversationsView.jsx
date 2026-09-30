@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MessageCircle } from 'lucide-react'
 import * as mitra from '../lib/mitra'
 import { formatRelativeTime, htmlToPlainText } from '../lib/render.jsx'
+import { useMentionMaskId } from '../hooks'
 import { Avatar } from './Media.jsx'
 import { PostRow } from './Post.jsx'
 
@@ -126,8 +127,21 @@ export function ConversationsView({
     return () => obs.disconnect()
   }, [tab, loadMoreDms, dmPosts.length])
 
+  const mentionMaskId = useMentionMaskId()
+
+  // Plain-text preview of the last message. Mentions of the current user
+  // are masked to @you under privacy mode — the row list has no linkify
+  // pass, so the handle substitution happens here.
   function snippet(conversation) {
-    const text = htmlToPlainText(conversation.last_status.content || '')
+    let text = htmlToPlainText(conversation.last_status.content || '')
+    if (mentionMaskId != null) {
+      for (const m of conversation.last_status.mentions || []) {
+        if (m.id === mentionMaskId) {
+          if (m.acct) text = text.replaceAll(`@${m.acct}`, '@you')
+          if (m.username) text = text.replaceAll(`@${m.username}`, '@you')
+        }
+      }
+    }
     return text.replace(/\s+/g, ' ').trim().slice(0, 120) || '(attachment)'
   }
 

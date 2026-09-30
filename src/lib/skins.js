@@ -36,6 +36,7 @@ export const ADWAITA_TOKENS = {
 }
 
 import BreezeMenubar from '../ui/breeze/Menubar.jsx'
+import StealthRail from '../ui/x/Rail.jsx'
 
 export const SKINS = {
   adwaita: { id: 'adwaita', name: 'Adwaita', respectOsAccent: true },
@@ -94,6 +95,64 @@ export const SKINS = {
       .pill-btn { padding-block: 5px; }
     `,
   },
+  'stealth-x': {
+    id: 'stealth-x',
+    name: 'Stealth (X-look)',
+    respectOsAccent: false,
+    components: { HeaderBar: StealthRail },
+    // Tab camouflage: the browser tab reads as X (title + favicon),
+    // composing with the unread blip. Takes priority over privacy
+    // mode's neutral tab and the instance default.
+    tab: { title: '𝕏', favicon: '/icons/x-favicon.svg' },
+    // Views without a rail slot on the phone tier (the bottom tab bar
+    // holds the primary four) surface in the settings menu, X-style.
+    menuViews: ['bookmarks', 'lists', 'groups'],
+    // Log out lives in the rail account area on wide/medium tiers and
+    // moves into the settings menu on phones.
+    menuLogout: true,
+    tokens: {
+      light: {
+        '--window-bg': '#ffffff',
+        '--view-bg': '#ffffff',
+        '--headerbar-bg': '#ffffff',
+        '--headerbar-border': '#eff3f4',
+        '--text-primary': '#0f1419',
+        '--text-secondary': '#536471',
+        '--border': '#eff3f4',
+        '--border-strong': '#cfd9de',
+        '--hover-overlay': 'rgba(15, 20, 25, 0.03)',
+        '--active-overlay': 'rgba(15, 20, 25, 0.06)',
+        '--accent': '#1d9bf0',
+        '--accent-fg': '#ffffff',
+        '--accent-bg-subtle': 'rgba(29, 155, 240, 0.1)',
+        '--radius-window': '16px',
+        '--radius-popover': '12px',
+        '--radius-control': '9999px',
+        '--control-pad-y': '9px',
+        '--control-pad-x': '16px',
+      },
+      dark: {
+        '--window-bg': '#000000',
+        '--view-bg': '#000000',
+        '--headerbar-bg': '#000000',
+        '--headerbar-border': '#2f3336',
+        '--text-primary': '#e7e9ea',
+        '--text-secondary': '#71767b',
+        '--border': '#2f3336',
+        '--border-strong': '#536471',
+        '--hover-overlay': 'rgba(231, 233, 234, 0.03)',
+        '--active-overlay': 'rgba(231, 233, 234, 0.06)',
+        '--accent': '#1d9bf0',
+        '--accent-fg': '#ffffff',
+        '--accent-bg-subtle': 'rgba(29, 155, 240, 0.15)',
+        '--radius-window': '16px',
+        '--radius-popover': '12px',
+        '--radius-control': '9999px',
+        '--control-pad-y': '9px',
+        '--control-pad-x': '16px',
+      },
+    },
+  },
 }
 
 // Validate an untrusted manifest (custom imports). Returns { ok, errors,
@@ -125,6 +184,18 @@ export function validateSkin(manifest) {
     }
   }
 
+  // Tab override: imported manifests can claim the tab title + favicon.
+  // Favicon must be a same-origin path — protocols would let a manifest
+  // point the tab (and requests) anywhere.
+  let tab = null
+  if (manifest.tab && typeof manifest.tab === 'object') {
+    const title = typeof manifest.tab.title === 'string' ? manifest.tab.title.slice(0, 40) : null
+    const favicon = typeof manifest.tab.favicon === 'string' && /^\/[\w\-./]*$/.test(manifest.tab.favicon)
+      ? manifest.tab.favicon
+      : null
+    if (title || favicon) tab = { title, favicon }
+  }
+
   let css = ''
   if (typeof manifest.css === 'string') {
     // Strip url()-based rules outright: CSS can't execute, but remote
@@ -143,6 +214,7 @@ export function validateSkin(manifest) {
       respectOsAccent: Boolean(manifest.respectOsAccent),
       tokens,
       css,
+      tab,
     },
   }
 }
