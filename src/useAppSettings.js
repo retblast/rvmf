@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as mitra from './lib/mitra'
 import { storageGet, storageSet } from './lib/storage.js'
 import { applyOsAccent } from './lib/osAccent'
@@ -13,30 +13,29 @@ import { maskAccount } from './lib/privacy.js'
 // bundled into the value handed to AppSettingsContext.Provider. Settings
 // owned elsewhere (e.g. the notification filter list) can join the
 // client_config sync via `extraSynced: { key: [value, setter] }`.
-export function useAppSettings(session, { onClientNameChange, extraSynced = {} } = {}) {
-  const [fetchClientMedia, setFetchClientMedia] = useState(() => {
-    return storageGet('fetch-client-media') !== 'false'
-  })
+// A boolean setting persisted to localStorage as 'true'/'false' — the
+// plain persist-and-flip pattern that used to repeat once per setting.
+// Toggles with side effects (accent application, GIF cache clearing)
+// stay handwritten next to their state.
+function usePersistedFlag(storageKey, initial) {
+  const [value, setValue] = useState(initial)
+  const toggle = useCallback(() => {
+    setValue((prev) => {
+      const next = !prev
+      storageSet(storageKey, String(next))
+      return next
+    })
+  }, [storageKey])
+  return [value, toggle, setValue]
+}
 
-  const [alwaysSensitive, setAlwaysSensitive] = useState(() => {
-    return storageGet('always-sensitive') === 'true'
-  })
+export function useAppSettings(session, { onClientNameChange, extraSynced = {} } = {}) {
 
   // Privacy mode: masks the user's own display name/handle/avatar/bio at
   // every identity surface. Deliberately NOT part of the client_config
   // sync — stealth state is per-device and shouldn't be announced to the
   // server on login.
-  const [privacyMode, setPrivacyMode] = useState(() => {
-    return storageGet('privacy-mode') === 'true'
-  })
-
-  function togglePrivacyMode() {
-    setPrivacyMode((prev) => {
-      const next = !prev
-      storageSet('privacy-mode', String(next))
-      return next
-    })
-  }
+  const [privacyMode, togglePrivacyMode] = usePersistedFlag('privacy-mode', storageGet('privacy-mode') === 'true')
 
   const [useOsAccent, setUseOsAccent] = useState(() => {
     return storageGet('use-os-accent') !== 'false'
@@ -51,35 +50,13 @@ export function useAppSettings(session, { onClientNameChange, extraSynced = {} }
     })
   }
 
-  function toggleAlwaysSensitive() {
-    setAlwaysSensitive((prev) => {
-      const next = !prev
-      storageSet('always-sensitive', String(next))
-      return next
-    })
-  }
+  const [alwaysSensitive, toggleAlwaysSensitive, setAlwaysSensitive] = usePersistedFlag('always-sensitive', storageGet('always-sensitive') === 'true')
 
   // Only meaningful when strict sensitive mode hides everything: allow
   // hover previews to peek at unrevealed media.
-  const [peekSpoilerMedia, setPeekSpoilerMedia] = useState(() => {
-    return storageGet('peek-spoiler') === 'true'
-  })
+  const [peekSpoilerMedia, togglePeekSpoilerMedia, setPeekSpoilerMedia] = usePersistedFlag('peek-spoiler', storageGet('peek-spoiler') === 'true')
 
-  function togglePeekSpoilerMedia() {
-    setPeekSpoilerMedia((prev) => {
-      const next = !prev
-      storageSet('peek-spoiler', String(next))
-      return next
-    })
-  }
-
-  function toggleFetchClientMedia() {
-    setFetchClientMedia((prev) => {
-      const next = !prev
-      storageSet('fetch-client-media', String(next))
-      return next
-    })
-  }
+  const [fetchClientMedia, toggleFetchClientMedia, setFetchClientMedia] = usePersistedFlag('fetch-client-media', storageGet('fetch-client-media') !== 'false')
 
   // On-device translation is off by default and opt-in behind a confirm:
   // the first use downloads a ~3 GB model, so we want the user's explicit
@@ -128,13 +105,6 @@ export function useAppSettings(session, { onClientNameChange, extraSynced = {} }
   const [gifConversionEnabled, setGifConversionEnabled] = useState(() => {
     return storageGet('gif-conversion-enabled') === 'true'
   })
-  const [gifIncludeLarge, setGifIncludeLarge] = useState(() => {
-    return storageGet('gif-conversion-large') === 'true'
-  })
-  const [gifHoverAnimate, setGifHoverAnimate] = useState(() => {
-    return storageGet('gif-hover-animate') === 'true'
-  })
-
   function toggleGifConversion() {
     setGifConversionEnabled((prev) => {
       const next = !prev
@@ -146,21 +116,8 @@ export function useAppSettings(session, { onClientNameChange, extraSynced = {} }
     })
   }
 
-  function toggleGifIncludeLarge() {
-    setGifIncludeLarge((prev) => {
-      const next = !prev
-      storageSet('gif-conversion-large', String(next))
-      return next
-    })
-  }
-
-  function toggleGifHoverAnimate() {
-    setGifHoverAnimate((prev) => {
-      const next = !prev
-      storageSet('gif-hover-animate', String(next))
-      return next
-    })
-  }
+  const [gifIncludeLarge, toggleGifIncludeLarge] = usePersistedFlag('gif-conversion-large', storageGet('gif-conversion-large') === 'true')
+  const [gifHoverAnimate, toggleGifHoverAnimate] = usePersistedFlag('gif-hover-animate', storageGet('gif-hover-animate') === 'true')
 
   // Cache housekeeping + the hover animator's document listeners. Installed
   // once; the animator only acts on videos that opted in via the
