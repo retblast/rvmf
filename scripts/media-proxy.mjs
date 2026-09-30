@@ -55,6 +55,20 @@ function parseTarget(reqUrl) {
   return parsed
 }
 
+// Inline-safe content types: the media the app actually renders in
+// <img>/<video>/<audio> elements. Everything else — most importantly
+// text/html and image/svg+xml, both of which can carry script — is
+// forced to a download. A proxied response renders on the rvmf origin,
+// so an inline HTML/SVG response is stored XSS: one crafted
+// /media-proxy?url=... link in a DM and the attacker's markup runs
+// next to the localStorage session token.
+function isInlineMediaType(ct) {
+  const [type] = String(ct).split(';')
+  const t = type.trim().toLowerCase()
+  if (t === 'image/svg+xml') return false
+  return /^(image|video|audio)\//.test(t)
+}
+
 // Handle one /media-proxy request. Works with both Connect-style middleware
 // (Vite dev) and node:http request/response objects, which share the
 // Surface used here (writeHead/end/headersSent/destroyed/writableEnded).
@@ -109,12 +123,26 @@ export async function handleMediaProxy(req, res, { fetchImpl = fetch } = {}) {
       const cd = safeName
         ? `attachment; filename="${safeName.replace(/[^\x20-\x7e]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(safeName)}`
         : ''
-      res.writeHead(proxyRes.status, {
+      // Belt and braces on every proxied response: nosniff stops content-
+      // type guessing, and a sandboxing CSP renders any sniffed-through
+      // document inert even if a future content-type bug slips past the
+      // safelist below.
+      const headers = {
         'Content-Type': ct,
         'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'public, max-age=86400',
-        ...(cd ? { 'Content-Disposition': cd } : {}),
-      })
+        'X-Content-Type-Options': 'nosniff',
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+      }
+      if (isInlineMediaType(ct)) {
+        // Renderable media keeps the save-as filename when one exists.
+        if (cd) headers['Content-Disposition'] = cd
+      } else {
+        // Anything scriptable (html, svg, xml, text…) downloads instead
+        // of rendering same-origin.
+        headers['Content-Disposition'] = cd || 'attachment'
+      }
+      res.writeHead(proxyRes.status, headers)
     } catch {
       try { res.destroy() } catch { /* already dead */ }
       return
