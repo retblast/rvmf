@@ -75,3 +75,91 @@ describe('media proxy response hardening', () => {
     expect(res.headers['Content-Security-Policy']).toContain("default-src 'none'")
   })
 })
+
+describe('media proxy SSRF guards', () => {
+  it('refuses loopback and private IPv4 targets without fetching', async () => {
+    for (const target of [
+      'http://127.0.0.1/media/x.png',
+      'http://10.0.0.1/',
+      'http://192.168.1.1/',
+      'http://169.254.169.254/latest/meta-data/',
+      'http://172.16.0.1/',
+      'http://100.64.0.1/',
+      'http://0.0.0.1/',
+    ]) {
+      let fetched = false
+      const res = await proxyHeaders(target, async () => { fetched = true; throw new Error('should not fetch') })
+      expect(res.status, target).toBe(400)
+      expect(fetched, target).toBe(false)
+    }
+  })
+
+  it('refuses private IPv6 targets including v4-mapped', async () => {
+    for (const target of ['http://[::1]/x', 'http://[::ffff:127.0.0.1]/x', 'http://[fe80::1]/x', 'http://[fd12::1]/x']) {
+      const res = await proxyHeaders(target, async () => { throw new Error('should not fetch') })
+      expect(res.status, target).toBe(400)
+    }
+  })
+
+  it('refuses .localhost names', async () => {
+    const res = await proxyHeaders('http://instance.localhost/media/x.png', async () => { throw new Error('should not fetch') })
+    expect(res.status).toBe(400)
+  })
+
+  it('still proxies public literal IPs', async () => {
+    const res = await proxyHeaders('http://93.184.216.34/avatar', fetchReturning(200, 'image/png'))
+    expect(res.status).toBe(200)
+    expect(res.headers['Content-Type']).toBe('image/png')
+  })
+
+  it('allows private targets when the caller opts in (dev server)', async () => {
+    const res = mockRes()
+    await handleMediaProxy(mockReq('http://127.0.0.1:8383/media/a.png'), res, {
+      fetchImpl: fetchReturning(200, 'image/png'),
+      allowPrivate: true,
+    })
+    expect(res.status).toBe(200)
+  })
+
+  it('re-validates every redirect hop — a public first hop cannot bounce to a private host', async () => {
+    let calls = 0
+    const res = await proxyHeaders('http://93.184.216.34/hop', async () => {
+      calls++
+      if (calls === 1) {
+        return {
+          status: 302,
+          headers: new Map(Object.entries({ location: 'http://169.254.169.254/latest/' })),
+        }
+      }
+      throw new Error('should not fetch the private hop')
+    })
+    expect(res.status).toBe(400)
+    expect(calls).toBe(1)
+  })
+
+  it('follows safe redirects and derives the filename from the final URL', async () => {
+    let calls = 0
+    const res = await proxyHeaders('http://93.184.216.34/hop', async () => {
+      calls++
+      if (calls === 1) {
+        return {
+          status: 302,
+          headers: new Map(Object.entries({ location: 'http://93.184.216.34/original/cat.png' })),
+        }
+      }
+      return (await fetchReturning(200, 'image/png'))()
+    })
+    expect(res.status).toBe(200)
+    expect(res.headers['Content-Disposition']).toContain('cat.png')
+  })
+
+  it('gives up on redirect chains longer than five hops', async () => {
+    let calls = 0
+    const res = await proxyHeaders('http://93.184.216.34/hop', async () => {
+      calls++
+      return { status: 302, headers: new Map(Object.entries({ location: 'http://93.184.216.34/hop' })) }
+    })
+    expect(res.status).toBe(502)
+    expect(calls).toBe(6)
+  })
+})

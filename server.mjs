@@ -110,7 +110,10 @@ async function serveStatic(res, urlPath) {
 const server = createServer((req, res) => {
   const urlPath = (req.url || '/').split('?')[0]
   if (urlPath === '/media-proxy' || urlPath === '/media-proxy/') {
-    handleMediaProxy(req, res).catch(() => {
+    // A deployed proxy must not bounce into private networks; set
+    // MEDIA_PROXY_ALLOW_PRIVATE=1 when the instance itself lives on the
+    // LAN behind this server.
+    handleMediaProxy(req, res, { allowPrivate: process.env.MEDIA_PROXY_ALLOW_PRIVATE === '1' }).catch(() => {
       try { res.destroy() } catch { /* already dead */ }
     })
     return

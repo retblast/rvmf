@@ -9,7 +9,9 @@ function mediaProxyPlugin() {
     name: 'media-proxy',
     configureServer(server) {
       server.middlewares.use('/media-proxy', (req, res) => {
-        handleMediaProxy(req, res).catch(() => {
+        // Dev runs localhost-to-localhost (a local Mitra under test is
+        // the norm here), so the private-range guard stays off.
+        handleMediaProxy(req, res, { allowPrivate: true }).catch(() => {
           // handleMediaProxy never throws out of its own paths, but guard
           // anyway so a stray rejection can't take the dev server down.
         })
