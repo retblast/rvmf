@@ -48,6 +48,11 @@ export function AnchoredMenu({ anchorRef, open, onClose, className = 'boost-drop
       position: 'fixed',
       top,
       left,
+      // The menu classes still carry a legacy "bottom" rule from their
+      // pre-portal absolute-anchor layout; under position:fixed an
+      // active bottom next to "top" stretches the box to its
+      // max-height. Reset it so the menu hugs its content.
+      bottom: 'auto',
       maxHeight: Math.max(120, Math.min(480, space)),
       zIndex: 95,
     })

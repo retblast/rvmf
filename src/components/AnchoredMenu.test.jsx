@@ -70,6 +70,14 @@ describe('AnchoredMenu placement', () => {
     expect(menuEl().style.zIndex).toBe('95')
   })
 
+  it('neutralizes the class bottom rule so the box hugs its content', () => {
+    // The menu classes still carry a legacy bottom rule; under
+    // position:fixed an active bottom next to top stretches the menu
+    // to its max-height — a giant empty box under two items.
+    renderOpenMenuWithRect({ top: 20, bottom: 44 })
+    expect(menuEl().style.bottom).toBe('auto')
+  })
+
   it('follows its anchor through scrolls instead of detaching', async () => {
     let rect = { top: 500, bottom: 524, left: 100 }
     Element.prototype.getBoundingClientRect = vi.fn(() => ({

@@ -55,6 +55,10 @@ test('the boost dropdown and reaction picker follow the same rules', async ({ pa
   await expect(boostMenu).toBeVisible()
   expect(await boostMenu.evaluate((el) => el.closest('.timeline-list'))).toBeNull()
   expect(await boostMenu.evaluate((el) => el.getBoundingClientRect().top)).toBeGreaterThanOrEqual(0)
+  // Two items — the menu must hug its content, not stretch toward its
+  // max-height (the legacy absolute bottom rule did exactly that under
+  // position:fixed).
+  expect(await boostMenu.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(140)
   await page.keyboard.press('Escape')
 
   await row.locator('button[aria-label="React"]').click()
