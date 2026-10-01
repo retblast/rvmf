@@ -87,19 +87,22 @@ test('stealth skin shows the thread pane only while a thread is open', async ({ 
   await page.getByLabel('Style').selectOption('stealth-x')
   await page.keyboard.press('Escape')
 
-  // No thread open: no third column — the feed centers between the
-  // rail and the notifications sidebar
+  // Idle: the right slot holds notifications; no thread pane exists
+  await expect(page.locator('.notif-column')).toHaveCount(1)
   await expect(page.locator('.thread-column')).toHaveCount(0)
 
-  // Opening a thread brings the pane in as a new column
+  // Opening a thread REPLACES the notifications column — the pane takes
+  // over the same slot, so the grid never changes and the centered
+  // feed never reflows
   await page.locator('.post-row', { hasText: 'Seeded root post from alice' }).first().locator('.post-text').click()
   const pane = page.getByTestId('thread-root')
   await expect(pane).toBeVisible()
   await expect(page.locator('.thread-column')).toHaveCount(1)
+  await expect(page.locator('.notif-column')).toHaveCount(0)
 
-  // The pane's left-side back button closes it — back to the centered
-  // two-column layout
+  // The pane's left-side back button swaps notifications back in
   await page.getByRole('button', { name: 'Back to notifications' }).click()
+  await expect(page.locator('.notif-column')).toHaveCount(1)
   await expect(page.locator('.thread-column')).toHaveCount(0)
   await expect(pane).toHaveCount(0)
 })

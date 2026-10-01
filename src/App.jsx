@@ -898,7 +898,8 @@ export default function App() {
       />
 
       {tier === 'wide' ? (
-        <div className={`app-shell${xSkin && !sidePanel ? ' no-thread' : ''}`}>
+        <div className="app-shell">
+          {(!xSkin || !sidePanel) && (
           <aside className="notif-column scrollbar-thin">
             <div className="section-label-row">
             <div className="section-label">Notifications</div>
@@ -916,9 +917,13 @@ export default function App() {
           </div>
             <ErrorBoundary>{notificationsBody}</ErrorBoundary>
           </aside>
+          )}
           <div className="content-scroll scrollbar-thin" ref={setScrollEl}><ErrorBoundary>{timelineContent}</ErrorBoundary></div>
           {(!xSkin || sidePanel) && (
             <aside className="thread-column">
+              {/* The pane takes the notifications column's slot under
+                  this skin, so the grid stays two columns wide and the
+                  feed never reflows. */}
               {sidePanel ? (
                 <>
                   <ThreadPanelHeader {...threadPanelProps} backLabel={xSkin ? 'Back to notifications' : undefined} />

@@ -570,13 +570,16 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
    the default Adwaita shell keeps its left column and DOM reading
    order. Grid `order` re-places the columns without touching markup. */
 [data-skin="stealth-x"] .app-shell {
-  grid-template-columns: minmax(480px, 2.2fr) minmax(260px, 1fr) minmax(320px, 1.3fr);
+  grid-template-columns: minmax(480px, 2.2fr) minmax(320px, 1.3fr);
 }
 
 [data-skin="stealth-x"] .app-shell > .content-scroll {
   order: 1;
 }
 
+/* The side slot holds either column — notifications while idle, the
+   thread pane while a thread is open — so opening a thread swaps the
+   slot's content without the grid (or the centered feed) moving. */
 [data-skin="stealth-x"] .app-shell > .notif-column {
   order: 2;
   border-right: none;
@@ -584,7 +587,7 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
 }
 
 [data-skin="stealth-x"] .app-shell > .thread-column {
-  order: 3;
+  order: 2;
 }
 
 /* Stealth skin only: not everything is a pill. The skin's pill
@@ -627,12 +630,4 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
 [data-skin="stealth-x"] .banner,
 [data-skin="stealth-x"] .feed-toggle {
   border-radius: 8px;
-}
-
-/* Stealth skin wide tier: with no thread open there are only two
-   columns — the feed centers between the rail and the notifications
-   sidebar, X-style; the thread pane appears as a new column only while
-   a thread is open. */
-[data-skin="stealth-x"] .app-shell.no-thread {
-  grid-template-columns: minmax(480px, 2.2fr) minmax(260px, 1fr);
 }
