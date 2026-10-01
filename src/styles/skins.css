@@ -586,3 +586,45 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
 [data-skin="stealth-x"] .app-shell > .thread-column {
   order: 3;
 }
+
+/* Stealth skin only: not everything is a pill. The skin's pill
+   --radius-control token is right for buttons, the search field, menu
+   rows, and hover circles — X pills exactly those — but inputs, selects,
+   preview panes, and media are rectangles in X. The blanket token was
+   turning text fields into capsules and photos into ovals. */
+
+/* Text inputs and selects: X's ~8px rectangles */
+[data-skin="stealth-x"] .compose-visibility-select,
+[data-skin="stealth-x"] .settings-text-input,
+[data-skin="stealth-x"] .compose-cw-input,
+[data-skin="stealth-x"] .poll-editor-input,
+[data-skin="stealth-x"] .lists-create-input,
+[data-skin="stealth-x"] .profile-edit-input {
+  border-radius: 8px;
+}
+
+/* Media and image containers: X rounds media ~16px, never to an oval */
+[data-skin="stealth-x"] .lightbox-image,
+[data-skin="stealth-x"] .quote-card-image,
+[data-skin="stealth-x"] .parent-preview-thumb,
+[data-skin="stealth-x"] .parent-preview-media.blurred,
+[data-skin="stealth-x"] .upload-thumb-media,
+[data-skin="stealth-x"] .media-unknown {
+  border-radius: 16px;
+}
+
+/* Panels and preview panes: rectangles like X's quote/compose surfaces */
+[data-skin="stealth-x"] .emoji-dropdown,
+[data-skin="stealth-x"] .emoji-picker,
+[data-skin="stealth-x"] .compose-quote-preview,
+[data-skin="stealth-x"] .compose-reply-preview,
+[data-skin="stealth-x"] .compose-preview,
+[data-skin="stealth-x"] .group-create {
+  border-radius: 16px;
+}
+
+/* Banners and the feed tab toggle: modest rectangles, not stadium pills */
+[data-skin="stealth-x"] .banner,
+[data-skin="stealth-x"] .feed-toggle {
+  border-radius: 8px;
+}
