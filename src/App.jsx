@@ -715,6 +715,9 @@ export default function App() {
   const SkinHeaderBar = appSettings.skin?.components?.HeaderBar || null
   const headerMe = appSettings.mask(session.account)
   const privacyMode = appSettings.privacyMode
+  // X-look: the wide tier's third column exists only while a thread is
+  // open — the default skin keeps its permanent placeholder pane.
+  const xSkin = appSettings.skinId === 'stealth-x'
   const headerProps = {
     session, tier, view, setView, notifUnread: notifs.notifUnread,
     handleRefresh, setComposing, logout, openSettingsFrom,
@@ -895,7 +898,7 @@ export default function App() {
       />
 
       {tier === 'wide' ? (
-        <div className="app-shell">
+        <div className={`app-shell${xSkin && !sidePanel ? ' no-thread' : ''}`}>
           <aside className="notif-column scrollbar-thin">
             <div className="section-label-row">
             <div className="section-label">Notifications</div>
@@ -914,24 +917,26 @@ export default function App() {
             <ErrorBoundary>{notificationsBody}</ErrorBoundary>
           </aside>
           <div className="content-scroll scrollbar-thin" ref={setScrollEl}><ErrorBoundary>{timelineContent}</ErrorBoundary></div>
-          <aside className="thread-column">
-            {sidePanel ? (
-              <>
-                <ThreadPanelHeader {...threadPanelProps} />
-                <div className="thread-column-scroll scrollbar-thin">
-                  <ErrorBoundary><ThreadPanelContent {...threadPanelProps} /></ErrorBoundary>
+          {(!xSkin || sidePanel) && (
+            <aside className="thread-column">
+              {sidePanel ? (
+                <>
+                  <ThreadPanelHeader {...threadPanelProps} backLabel={xSkin ? 'Back to notifications' : undefined} />
+                  <div className="thread-column-scroll scrollbar-thin">
+                    <ErrorBoundary><ThreadPanelContent {...threadPanelProps} /></ErrorBoundary>
+                  </div>
+                </>
+              ) : (
+                  <div className="thread-column-empty">
+                  <StatusPage
+                    icon={MessageCircle}
+                    heading="No thread open"
+                    description="Select a post to view its replies."
+                  />
                 </div>
-              </>
-            ) : (
-                <div className="thread-column-empty">
-                <StatusPage
-                  icon={MessageCircle}
-                  heading="No thread open"
-                  description="Select a post to view its replies."
-                />
-              </div>
-            )}
-          </aside>
+              )}
+            </aside>
+          )}
         </div>
       ) : tier === 'medium' ? (
         <div className={`main-layout${sidePanel ? ' panel-open' : ''}`}>

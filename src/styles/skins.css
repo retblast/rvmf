@@ -628,3 +628,11 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
 [data-skin="stealth-x"] .feed-toggle {
   border-radius: 8px;
 }
+
+/* Stealth skin wide tier: with no thread open there are only two
+   columns — the feed centers between the rail and the notifications
+   sidebar, X-style; the thread pane appears as a new column only while
+   a thread is open. */
+[data-skin="stealth-x"] .app-shell.no-thread {
+  grid-template-columns: minmax(480px, 2.2fr) minmax(260px, 1fr);
+}

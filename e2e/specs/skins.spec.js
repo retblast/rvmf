@@ -75,3 +75,31 @@ test('privacy masking survives the skin', async ({ page }, testInfo) => {
     await expect(page.locator('.x-account-chip')).toContainText('@you')
   }
 })
+
+test('stealth skin shows the thread pane only while a thread is open', async ({ page }) => {
+  test.skip(!(test.info().project.use.viewport?.width >= 1400), 'wide tier only — medium/narrow already collapse the pane')
+
+  await loginAs(page, 'bob')
+  await page.goto('/')
+
+  // Switch to the skin
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByLabel('Style').selectOption('stealth-x')
+  await page.keyboard.press('Escape')
+
+  // No thread open: no third column — the feed centers between the
+  // rail and the notifications sidebar
+  await expect(page.locator('.thread-column')).toHaveCount(0)
+
+  // Opening a thread brings the pane in as a new column
+  await page.locator('.post-row', { hasText: 'Seeded root post from alice' }).first().locator('.post-text').click()
+  const pane = page.getByTestId('thread-root')
+  await expect(pane).toBeVisible()
+  await expect(page.locator('.thread-column')).toHaveCount(1)
+
+  // The pane's left-side back button closes it — back to the centered
+  // two-column layout
+  await page.getByRole('button', { name: 'Back to notifications' }).click()
+  await expect(page.locator('.thread-column')).toHaveCount(0)
+  await expect(pane).toHaveCount(0)
+})
