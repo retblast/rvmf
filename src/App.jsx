@@ -901,6 +901,12 @@ export default function App() {
         <div className="app-shell">
           {(!xSkin || !sidePanel) && (
           <aside className="notif-column scrollbar-thin">
+            {xSkin && (
+              <button type="button" className="x-side-search" aria-label="Search" onClick={() => setView('search')}>
+                <Search size={16} />
+                <span>Search</span>
+              </button>
+            )}
             <div className="section-label-row">
             <div className="section-label">Notifications</div>
             {notifs.notifications.length > 0 && (

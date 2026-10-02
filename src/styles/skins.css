@@ -684,3 +684,27 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
 [data-skin="stealth-x"] .notif-row[data-type="status"] .notif-icon { color: #1d9bf0; }
 [data-skin="stealth-x"] .notif-row[data-type="poll"] .notif-icon { color: #1d9bf0; }
 [data-skin="stealth-x"] .notif-row[data-type="update"] .notif-icon { color: #1d9bf0; }
+
+/* Stealth skin: the right sidebar leads with X's search capsule. It
+   jumps to the real search view — the styling is the silhouette, the
+   full query field lives where it always has. */
+.x-side-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 40px;
+  padding: 0 16px;
+  margin: 4px 0 12px;
+  border: none;
+  border-radius: 9999px;
+  background: var(--hover-overlay);
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.x-side-search:hover {
+  background: var(--active-overlay);
+  color: var(--text-primary);
+}
