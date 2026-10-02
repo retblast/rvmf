@@ -101,7 +101,7 @@ export const NotificationRow = memo(function NotificationRow({
   }
 
   return (
-    <div className="notif-row">
+    <div className="notif-row" data-type={notification.type}>
       <div className="notif-icon">
         <Icon size={14} />
       </div>
