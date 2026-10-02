@@ -708,3 +708,69 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
   background: var(--active-overlay);
   color: var(--text-primary);
 }
+
+/* Stealth skin: the logged-out page. The default login is a GNOME card
+   with the app's own favicon and branding — a double leak for a stealth
+   skin: the name shows and the layout doesn't read as X. Under this
+   skin the page becomes X's logged-out look: the giant glyph instead of
+   the logo, a heavy headline, left-hairline form rows (already
+   borderless via the feed restyle), and the inverted CTA the skin's
+   pill token already provides. */
+[data-skin="stealth-x"] .login-screen .headerbar-brand {
+  font-size: 0;
+}
+
+[data-skin="stealth-x"] .login-screen .headerbar-brand svg,
+[data-skin="stealth-x"] .login-icon svg {
+  display: none;
+}
+
+[data-skin="stealth-x"] .login-screen .headerbar-brand::before {
+  content: 'X';
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+[data-skin="stealth-x"] .login-icon {
+  width: auto;
+  height: auto;
+  background: transparent;
+  margin: 0 auto 24px;
+}
+
+[data-skin="stealth-x"] .login-icon::before {
+  content: 'X';
+  display: block;
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+[data-skin="stealth-x"] .login-title {
+  font-size: 2.25rem;
+  font-weight: 800;
+  line-height: 1.15;
+  margin-bottom: 16px;
+}
+
+[data-skin="stealth-x"] .login-subtitle {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+[data-skin="stealth-x"] .login-wrap {
+  max-width: 440px;
+}
+
+[data-skin="stealth-x"] .login-recognized {
+  display: inline-block;
+  border-radius: 9999px;
+  padding: 4px 12px;
+  margin-bottom: 8px;
+}
+
+[data-skin="stealth-x"] .login-hint {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
