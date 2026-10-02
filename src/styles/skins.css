@@ -631,3 +631,18 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
 [data-skin="stealth-x"] .feed-toggle {
   border-radius: 8px;
 }
+
+/* Stealth skin: threads are flat. Adwaita shades reply rows by depth —
+   a GNOME tree affordance X doesn't have; under this skin rows sit on
+   the bare background like X's, with the highlighted reply getting a
+   subtle active wash instead of a deeper tint. Ghost rows keep their
+   accent wash — they're a placeholder, not a depth cue. */
+[data-skin="stealth-x"] .reply-row,
+[data-skin="stealth-x"] .post-row {
+  background-color: transparent;
+}
+
+[data-skin="stealth-x"] .reply-row.highlighted,
+[data-skin="stealth-x"] .post-row.highlighted {
+  background-color: var(--active-overlay);
+}
