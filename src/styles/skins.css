@@ -646,3 +646,8 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
 [data-skin="stealth-x"] .post-row.highlighted {
   background-color: var(--active-overlay);
 }
+
+/* Feed media rounds to X's 16px, not the popover token's 12px */
+[data-skin="stealth-x"] .media-grid {
+  border-radius: 16px;
+}
