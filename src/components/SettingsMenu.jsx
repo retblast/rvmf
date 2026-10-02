@@ -232,7 +232,10 @@ export function SettingsMenu({ open, anchor, settings, onClose, onNavigate, onLo
                 <span className="settings-menu-arrow">→</span>
               </button>
             ))}
-            {tier === 'narrow' && settings.skin?.menuLogout && onLogout && (
+            {/* Wide keeps its in-chrome logout (the rail account area);
+                medium shows the icon rail without one and phones use the
+                menu — every tier the menu opens on needs a path out. */}
+            {tier !== 'wide' && settings.skin?.menuLogout && onLogout && (
               <button
                 type="button"
                 className="settings-menu-row settings-menu-link"
