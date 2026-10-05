@@ -201,6 +201,42 @@ describe('processStatusContent quarantined-image recovery', () => {
 })
 
 
+describe('processStatusContent content-warning detection', () => {
+  const instanceUrl = 'https://inst.example'
+  const base = { account: { acct: 'someone' }, content: '<p>body text</p>' }
+
+  it('treats spoiler_text as a CW even when the sensitive flag is unset', () => {
+    const out = processStatusContent({ ...base, spoiler_text: 'cw label', sensitive: false }, instanceUrl)
+    expect(out.hasCw).toBe(true)
+    expect(out.sensitive).toBe(true)
+    expect(out.spoilerText).toBe('cw label')
+  })
+
+  it('keeps the flag path working for sensitive posts without spoiler text', () => {
+    const out = processStatusContent({ ...base, sensitive: true }, instanceUrl)
+    expect(out.hasCw).toBe(false)
+    expect(out.sensitive).toBe(true)
+    expect(out.spoilerText).toBe('')
+  })
+
+  it('ignores whitespace-only spoiler text', () => {
+    const out = processStatusContent({ ...base, spoiler_text: '   ', sensitive: false }, instanceUrl)
+    expect(out.hasCw).toBe(false)
+    expect(out.sensitive).toBe(false)
+  })
+
+  it('labels quarantined-image recovery without implying a text CW', () => {
+    const out = processStatusContent({
+      content: '<p>look https://inst.example/media/pic.jpg</p>',
+      account: { acct: 'someone@remote.example' },
+    }, instanceUrl)
+    expect(out.hasCw).toBe(false)
+    expect(out.sensitive).toBe(true)
+    expect(out.spoilerText).toBe("Image hidden by this instance's media settings")
+  })
+})
+
+
 describe('privacy: self-mention masking in content', () => {
   const status = {
     id: 'st-1',

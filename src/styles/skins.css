@@ -628,6 +628,7 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
 
 /* Banners and the feed tab toggle: modest rectangles, not stadium pills */
 [data-skin="stealth-x"] .banner,
+[data-skin="stealth-x"] .post-cw-toggle,
 [data-skin="stealth-x"] .feed-toggle {
   border-radius: 8px;
 }

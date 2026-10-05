@@ -37,7 +37,7 @@ const SAME_INSTANCE_IMAGE = {
   meta: { mime_type: 'image/jpeg' },
 }
 
-function renderGrid(overrides = {}, attachments = [IMAGE]) {
+function renderGrid(overrides = {}, attachments = [IMAGE], props = {}) {
   const context = {
     fetchClientMedia: false,
     instanceUrl: 'https://x.example',
@@ -51,7 +51,7 @@ function renderGrid(overrides = {}, attachments = [IMAGE]) {
   }
   return render(
     <AppSettingsContext.Provider value={context}>
-      <MediaGrid attachments={attachments} onOpenLightbox={vi.fn()} />
+      <MediaGrid attachments={attachments} onOpenLightbox={vi.fn()} sensitive={false} {...props} />
     </AppSettingsContext.Provider>
   )
 }
@@ -111,5 +111,29 @@ describe('MediaGrid same-instance proxy', () => {
     const img = container.querySelector('img')
     expect(img).not.toBeNull()
     expect(img.src).toContain('blob:')
+  })
+})
+
+describe('MediaGrid CW reveal semantics', () => {
+  beforeEach(() => {
+    mocks.useClientMedia.mockReturnValue({ blobUrl: null, loading: false, error: false })
+  })
+
+  it('blurs sensitive media behind the overlay by default', () => {
+    const { container } = renderGrid({}, [IMAGE], { sensitive: true })
+    expect(container.querySelector('.media-grid').className).toContain('blurred')
+    expect(container.querySelector('.media-cw-overlay')).not.toBeNull()
+  })
+
+  it('shows sensitive media without an overlay when the post-level CW gate is open', () => {
+    const { container } = renderGrid({}, [IMAGE], { sensitive: true, cwRevealed: true })
+    expect(container.querySelector('.media-grid').className).not.toContain('blurred')
+    expect(container.querySelector('.media-cw-overlay')).toBeNull()
+  })
+
+  it('keeps the blur when the CW gate is open but always-sensitive is on', () => {
+    const { container } = renderGrid({ alwaysSensitive: true }, [IMAGE], { sensitive: true, cwRevealed: true })
+    expect(container.querySelector('.media-grid').className).toContain('blurred')
+    expect(container.querySelector('.media-cw-overlay')).not.toBeNull()
   })
 })

@@ -6,6 +6,26 @@ import { useMentionMaskId } from '../hooks'
 import { Avatar } from './Media.jsx'
 import { PostRow } from './Post.jsx'
 
+// Plain-text preview of the last message for the conversation row.
+// Mentions of the current user are masked to @you under privacy mode —
+// the row list has no linkify pass, so the handle substitution happens
+// here. Content-warned messages show their warning instead of the body:
+// the row snippet is exactly where a CW must not leak.
+export function conversationSnippet(conversation, mentionMaskId = null) {
+  const last = conversation.last_status
+  const cw = String(last?.spoiler_text || '').trim()
+  let text = cw ? `CW: ${cw}` : htmlToPlainText(last?.content || '')
+  if (mentionMaskId != null) {
+    for (const m of (last?.mentions || [])) {
+      if (m.id === mentionMaskId) {
+        if (m.acct) text = text.replaceAll(`@${m.acct}`, '@you')
+        if (m.username) text = text.replaceAll(`@${m.username}`, '@you')
+      }
+    }
+  }
+  return text.replace(/\s+/g, ' ').trim().slice(0, 120) || '(attachment)'
+}
+
 // Direct messages: two views behind chips — the per-conversation inbox
 // and a flat timeline of every direct post. Replies flow through the
 // regular composer with direct visibility.
@@ -130,20 +150,9 @@ export function ConversationsView({
   const mentionMaskId = useMentionMaskId()
 
   // Plain-text preview of the last message. Mentions of the current user
-  // are masked to @you under privacy mode — the row list has no linkify
-  // pass, so the handle substitution happens here.
-  function snippet(conversation) {
-    let text = htmlToPlainText(conversation.last_status.content || '')
-    if (mentionMaskId != null) {
-      for (const m of conversation.last_status.mentions || []) {
-        if (m.id === mentionMaskId) {
-          if (m.acct) text = text.replaceAll(`@${m.acct}`, '@you')
-          if (m.username) text = text.replaceAll(`@${m.username}`, '@you')
-        }
-      }
-    }
-    return text.replace(/\s+/g, ' ').trim().slice(0, 120) || '(attachment)'
-  }
+  // are masked to @you under privacy mode; content warnings replace the
+  // body so the row can't leak what the sender flagged.
+  const snippetOf = (conversation) => conversationSnippet(conversation, mentionMaskId)
 
   return (
     <div className="timeline-wrap">
@@ -201,7 +210,7 @@ export function ConversationsView({
                         <span className="dm-name">{names}</span>
                         {status && <span className="post-time">{formatRelativeTime(status.created_at)}</span>}
                       </div>
-                      <div className="dm-snippet">{snippet(conversation)}</div>
+                      <div className="dm-snippet">{snippetOf(conversation)}</div>
                     </div>
                   </button>
                 )

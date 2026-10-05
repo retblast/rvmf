@@ -8,8 +8,8 @@ import { formatRelativeTime, processStatusContentForDisplay, renderEmojiText } f
 import { Avatar, MediaGrid } from './Media.jsx'
 import { ReplyComposerFields } from './ReplyComposer.jsx'
 import {
-  buildReplyMentions, ReplyContextLine, useTranslation, TranslatedBody,
-  usePostActions, PostActions, ReactionChips, QuoteCard, PollCard,
+  buildReplyMentions, ReplyContextLine, PostTitle, ContentWarning, useCwReveal,
+  useTranslation, TranslatedBody, usePostActions, PostActions, ReactionChips, QuoteCard, PollCard,
 } from './postCore.jsx'
 // One reply, at any depth, with the exact same action row and interactivity
 // as a normal post row (reply/boost/favourite/monero/more, all functional)
@@ -58,6 +58,7 @@ export function ThreadReply({
   const name = renderEmojiText(rawName, account.emojis)
   const content = processStatusContentForDisplay(status, instanceUrl, mentionMaskId)
   const translation = useTranslation(status)
+  const [cwRevealed, toggleCwRevealed] = useCwReveal(status.id)
   const parentStatus = statusById?.get(status.in_reply_to_id) || null
   // Build the sorted mention list: reply target first, then other body mentions.
   const replyMentions = buildReplyMentions(status)
@@ -68,6 +69,32 @@ export function ThreadReply({
 
   const { busy, toggleBookmark, toggleReaction, toggleFavourite, toggleReblog } =
     usePostActions({ status, instanceUrl, token, onUpdate })
+
+  // Everything a CW collapses — same set PostRow gates, same reveal
+  // semantics (one click reveals text and media together).
+  const gatedContent = (<>
+    {translation.shown
+      ? <TranslatedBody status={status} t={translation} />
+      : <p className="post-text">{content.textNodes}</p>}
+    <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
+    {status.poll && (
+      <PollCard
+        poll={status.poll}
+        instanceUrl={instanceUrl}
+        token={token}
+        onUpdated={handlePollUpdated}
+        statusId={status.id}
+      />
+    )}
+    <MediaGrid
+      attachments={content.attachments}
+      sensitive={content.sensitive}
+      spoilerText={content.spoilerText}
+      onOpenLightbox={onOpenLightbox}
+      forceHidden={mediaHidden}
+      cwRevealed={cwRevealed}
+    />
+  </>)
 
   return (
     <>
@@ -121,26 +148,14 @@ export function ThreadReply({
             )}
           </div>
           <ReplyContextLine mentions={replyMentions} onOpenProfile={onOpenProfile} />
-          {translation.shown
-            ? <TranslatedBody status={status} t={translation} />
-            : <p className="post-text">{content.textNodes}</p>}
-          <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
-          {status.poll && (
-            <PollCard
-              poll={status.poll}
-              instanceUrl={instanceUrl}
-              token={token}
-              onUpdated={handlePollUpdated}
-              statusId={status.id}
-            />
-          )}
-          <MediaGrid
-            attachments={content.attachments}
-            sensitive={content.sensitive}
-            spoilerText={content.spoilerText}
-            onOpenLightbox={onOpenLightbox}
-            forceHidden={mediaHidden}
-          />
+          <PostTitle status={status} />
+          {content.hasCw
+            ? (
+              <ContentWarning spoilerText={content.spoilerText} revealed={cwRevealed} onToggle={toggleCwRevealed}>
+                {gatedContent}
+              </ContentWarning>
+              )
+            : gatedContent}
           <ReactionChips
             reactions={status.pleroma?.emoji_reactions}
             statusId={status.id}

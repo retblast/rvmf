@@ -2087,6 +2087,31 @@ button.mention-link {
   transform: scale(1.03);
 }
 
+/* Content-warning stand-in for a collapsed quoted post: the warning
+   label where the body would be, one click to reveal. */
+.quote-card-cw {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 2px 0 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--accent-bg-subtle);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.quote-card-cw:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
 /* ---- reactions ---- */
 
 .reaction-chips {

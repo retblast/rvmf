@@ -10,8 +10,8 @@ import { formatRelativeTime, processStatusContentForDisplay, renderEmojiText } f
 import { Avatar, MediaGrid } from './Media.jsx'
 import { ReplyComposerFields } from './ReplyComposer.jsx'
 import {
-  unwrapStatus, buildReplyMentions, ReplyContextLine, useTranslation,
-  TranslatedBody, usePostActions, PostActions, ReactionChips, QuoteCard, PollCard,
+  unwrapStatus, buildReplyMentions, ReplyContextLine, PostTitle, ContentWarning, useCwReveal,
+  useTranslation, TranslatedBody, usePostActions, PostActions, ReactionChips, QuoteCard, PollCard,
 } from './postCore.jsx'
 
 export { canBoostStatus, useTranslation } from './postCore.jsx'
@@ -35,6 +35,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
   const booster = isBoost ? mask(post.account) : null
   const content = processStatusContentForDisplay(status, instanceUrl, mentionMaskId)
   const translation = useTranslation(status)
+  const [cwRevealed, toggleCwRevealed] = useCwReveal(status.id)
   // Build the sorted mention list: reply target first, then other body mentions.
   const replyMentions = buildReplyMentions(status)
 
@@ -56,6 +57,34 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
 
   const { busy, toggleBookmark, toggleReaction, toggleFavourite, toggleReblog } =
     usePostActions({ status, instanceUrl, token, onUpdate: wrapUpdate })
+
+  // Everything a CW collapses: body text (or its translation), quote,
+  // poll, and media. Rendered bare when there's no warning; wrapped in
+  // the ContentWarning banner when there is. MediaGrid's cwRevealed
+  // consumes the media warning in the same reveal click.
+  const gatedContent = (<>
+    {translation.shown
+      ? <TranslatedBody status={status} t={translation} />
+      : <p className="post-text">{content.textNodes}</p>}
+    <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
+    {status.poll && (
+      <PollCard
+        poll={status.poll}
+        instanceUrl={instanceUrl}
+        token={token}
+        onUpdated={handlePollUpdated}
+        statusId={status.id}
+      />
+    )}
+    <MediaGrid
+      attachments={content.attachments}
+      sensitive={content.sensitive}
+      spoilerText={content.spoilerText}
+      onOpenLightbox={onOpenLightbox}
+      forceHidden={mediaHidden}
+      cwRevealed={cwRevealed}
+    />
+  </>)
 
   const postContent = isGhost ? (
     <div className="post-row-main">
@@ -92,26 +121,14 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
             )}
           </div>
           <ReplyContextLine mentions={replyMentions} onOpenProfile={onOpenProfile} />
-          {translation.shown
-            ? <TranslatedBody status={status} t={translation} />
-            : <p className="post-text">{content.textNodes}</p>}
-          <QuoteCard status={status.pleroma?.quote || status.quote?.quoted_status || status.quote} instanceUrl={instanceUrl} onOpenThread={onOpenThread} />
-          {status.poll && (
-            <PollCard
-              poll={status.poll}
-              instanceUrl={instanceUrl}
-              token={token}
-              onUpdated={handlePollUpdated}
-              statusId={status.id}
-            />
-          )}
-          <MediaGrid
-            attachments={content.attachments}
-            sensitive={content.sensitive}
-            spoilerText={content.spoilerText}
-            onOpenLightbox={onOpenLightbox}
-            forceHidden={mediaHidden}
-          />
+          <PostTitle status={status} />
+          {content.hasCw
+            ? (
+              <ContentWarning spoilerText={content.spoilerText} revealed={cwRevealed} onToggle={toggleCwRevealed}>
+                {gatedContent}
+              </ContentWarning>
+              )
+            : gatedContent}
           <ReactionChips
             reactions={status.pleroma?.emoji_reactions}
             statusId={status.id}

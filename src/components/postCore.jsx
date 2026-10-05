@@ -120,6 +120,52 @@ export function ReplyContextLine({ mentions, onOpenProfile }) {
   )
 }
 
+// Mitra posts carry an optional title — a subject line stored separately
+// from spoiler_text. Unlike a content warning it is public information:
+// it heads the post like an article headline and never gates anything.
+// The API declares it plain text, but it goes through renderEmojiText so
+// any emoji shortcodes that sneak in render consistently with the body.
+export function PostTitle({ status }) {
+  const title = String(status?.title || '').trim()
+  if (!title) return null
+  return <div className="post-title">{renderEmojiText(title, status.emojis)}</div>
+}
+
+// Per-post CW reveal state, shared by PostRow and ThreadReply. Collapsed
+// by default (fediverse standard); the expand-all setting flips the
+// default for people who don't want the ceremony. Resets when the row
+// switches to another status or when the setting changes mid-session —
+// the same contract MediaGrid applies to alwaysSensitive.
+export function useCwReveal(statusId) {
+  const { expandAllContentWarnings } = useContext(AppSettingsContext)
+  const [revealed, setRevealed] = useState(Boolean(expandAllContentWarnings))
+  useEffect(() => { setRevealed(Boolean(expandAllContentWarnings)) }, [statusId, expandAllContentWarnings])
+  const toggle = useCallback(() => setRevealed((v) => !v), [])
+  return [revealed, toggle]
+}
+
+// The content-warning gate. While collapsed, the banner is the only thing
+// shown: the spoiler text plus a show-more control. Revealing renders the
+// gated children (body text, quote, poll, media). The toggle stops
+// propagation because the surrounding post-body click opens threads —
+// a CW click must only ever toggle.
+export function ContentWarning({ spoilerText, revealed, onToggle, children }) {
+  return (
+    <div className="post-cw">
+      <button
+        type="button"
+        className="post-cw-toggle"
+        aria-expanded={revealed}
+        onClick={(e) => { e.stopPropagation(); onToggle() }}
+      >
+        <span className="post-cw-label">{spoilerText || 'Content warning'}</span>
+        <span className="post-cw-action">{revealed ? 'Show less' : 'Show more'}</span>
+      </button>
+      {revealed && children}
+    </div>
+  )
+}
+
 // Only public and unlisted posts can be reposted — servers reject boosts
 // of followers-only/direct/subscribers content, so don't offer the button.
 // Only public and unlisted posts can be reposted — servers reject boosts
@@ -712,17 +758,34 @@ export function BoostDropdown({ reblogged, reblogsCount, busy, onBoost, onQuote,
 export function QuoteCard({ status, instanceUrl, onOpenThread }) {
   // All hooks before the early return: a quote can flip null -> loaded
   // while this card stays mounted, and the hook count must not change.
-  const { alwaysSensitive } = useContext(AppSettingsContext)
+  // processStatusContent is WeakMap-cached per status object, so calling
+  // it before the null check stays cheap.
+  const { alwaysSensitive, expandAllContentWarnings } = useContext(AppSettingsContext)
   const mask = useMaskIdentity()
   const mentionMaskId = useMentionMaskId()
-  const effectiveSensitive = Boolean(status?.sensitive) || Boolean(alwaysSensitive)
-  const [revealed, setRevealed] = useState(!effectiveSensitive)
-  useEffect(() => { setRevealed(!effectiveSensitive) }, [effectiveSensitive])
+  const content = status ? processStatusContent(status, instanceUrl, mentionMaskId) : null
+  const hasCw = Boolean(content?.hasCw)
+  const [cwRevealed, setCwRevealed] = useState(Boolean(expandAllContentWarnings))
+  const [imageRevealed, setImageRevealed] = useState(false)
+  useEffect(() => { setCwRevealed(Boolean(expandAllContentWarnings)) }, [status?.id, expandAllContentWarnings])
+  // Re-blur the thumb when strict mode flips mid-session or the quote
+  // switches to another status.
+  useEffect(() => { setImageRevealed(false) }, [status?.id, alwaysSensitive])
   if (!status) return null
   const account = mask(status.account || {})
   const rawName = account.display_name || account.username || 'Unknown'
   const name = renderEmojiText(rawName, account.emojis)
-  const content = processStatusContent(status, instanceUrl, mentionMaskId)
+  // Image blur: an opened CW consumes the media warning — only strict
+  // mark-all-media-sensitive keeps its blur on top (MediaGrid's
+  // cwRevealed contract). Without a CW the sensitive flag blurs as before.
+  const imageBlur = (
+    (hasCw && cwRevealed)
+      ? Boolean(alwaysSensitive)
+      : (Boolean(status.sensitive) || Boolean(alwaysSensitive))
+  ) && !imageRevealed
+  const firstImage = content.attachments.length > 0 && content.attachments[0].type === 'image'
+    ? content.attachments[0]
+    : null
   return (
     <div className="quote-card" onClick={(e) => { e.stopPropagation(); onOpenThread(status) }}>
       <div className="quote-card-meta">
@@ -730,21 +793,35 @@ export function QuoteCard({ status, instanceUrl, onOpenThread }) {
         <span className="quote-card-name">{name}</span>
         <span className="quote-card-handle">@{account.acct || account.username}</span>
       </div>
-      <p className="quote-card-text">{content.textNodes}</p>
-      {content.attachments.length > 0 && content.attachments[0].type === 'image' && (
-        <div className={`quote-card-image-wrap${effectiveSensitive && !revealed ? ' blurred' : ''}`}>
-          <ProxiedImg className="quote-card-image" src={content.attachments[0].preview_url || content.attachments[0].url} alt="" />
-          {effectiveSensitive && !revealed && (
-            <button
-              type="button"
-              className="media-cw-overlay"
-              onClick={(e) => { e.stopPropagation(); setRevealed(true) }}
-            >
-              <Eye size={16} />
-              <span>Sensitive content — click to view</span>
-            </button>
+      <PostTitle status={status} />
+      {hasCw && !cwRevealed ? (
+        <button
+          type="button"
+          className="quote-card-cw"
+          onClick={(e) => { e.stopPropagation(); setCwRevealed(true) }}
+        >
+          <EyeOff size={13} />
+          <span>{content.spoilerText || 'Content warning'} — click to view</span>
+        </button>
+      ) : (
+        <>
+          <p className="quote-card-text">{content.textNodes}</p>
+          {firstImage && (
+            <div className={`quote-card-image-wrap${imageBlur ? ' blurred' : ''}`}>
+              <ProxiedImg className="quote-card-image" src={firstImage.preview_url || firstImage.url} alt="" />
+              {imageBlur && (
+                <button
+                  type="button"
+                  className="media-cw-overlay"
+                  onClick={(e) => { e.stopPropagation(); setImageRevealed(true) }}
+                >
+                  <Eye size={16} />
+                  <span>{content.spoilerText || 'Sensitive content'} — click to view</span>
+                </button>
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   )
