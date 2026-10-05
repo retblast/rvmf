@@ -30,8 +30,17 @@ const NAV = [
 // the avatar → settings menu (the skin declares them as menuViews).
 const TABS = NAV.filter(({ id }) => ['home', 'explore', 'notifications', 'messages'].includes(id))
 
+// Views reached from the settings menu (favourites, muted, account)
+// have no rail slot but still need an honest top-bar title — falling
+// back to the app name leaks the disguise.
+const MENU_VIEWS = {
+  favourites: 'Favourites',
+  muted: 'Muted Accounts',
+  account: 'Account',
+}
+
 function viewLabel(view) {
-  return NAV.find(({ id }) => id === view)?.label || 'rvmf'
+  return NAV.find(({ id }) => id === view)?.label || MENU_VIEWS[view] || 'rvmf'
 }
 
 function NavButton({ view, setView, notifUnread, item }) {

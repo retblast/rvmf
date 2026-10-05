@@ -56,7 +56,10 @@ test('boosting shows in the boost trigger state', async ({ page }) => {
       if (current === target) return
       await trigger.click() // opens (or closes) the dropdown
       const itemName = target === 'true' ? /^boost$/i : /^unboost$/i
-      const item = row.getByRole('button', { name: itemName })
+      // Menu items portal to <body> now (menus can't be clipped by the
+      // overflow-hidden timeline list), so the lookup is page-scoped.
+      // The ^boost$/unboost$ anchors keep it from matching the trigger.
+      const item = page.getByRole('button', { name: itemName })
       // A previous pass may have left the dropdown closed — reopen once.
       if (!(await item.isVisible().catch(() => false))) {
         await trigger.click()

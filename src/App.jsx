@@ -715,6 +715,9 @@ export default function App() {
   const SkinHeaderBar = appSettings.skin?.components?.HeaderBar || null
   const headerMe = appSettings.mask(session.account)
   const privacyMode = appSettings.privacyMode
+  // X-look: the wide tier's third column exists only while a thread is
+  // open — the default skin keeps its permanent placeholder pane.
+  const xSkin = appSettings.skinId === 'stealth-x'
   const headerProps = {
     session, tier, view, setView, notifUnread: notifs.notifUnread,
     handleRefresh, setComposing, logout, openSettingsFrom,
@@ -896,7 +899,14 @@ export default function App() {
 
       {tier === 'wide' ? (
         <div className="app-shell">
+          {(!xSkin || !sidePanel) && (
           <aside className="notif-column scrollbar-thin">
+            {xSkin && (
+              <button type="button" className="x-side-search" aria-label="Search" onClick={() => setView('search')}>
+                <Search size={16} />
+                <span>Search</span>
+              </button>
+            )}
             <div className="section-label-row">
             <div className="section-label">Notifications</div>
             {notifs.notifications.length > 0 && (
@@ -913,25 +923,31 @@ export default function App() {
           </div>
             <ErrorBoundary>{notificationsBody}</ErrorBoundary>
           </aside>
+          )}
           <div className="content-scroll scrollbar-thin" ref={setScrollEl}><ErrorBoundary>{timelineContent}</ErrorBoundary></div>
-          <aside className="thread-column">
-            {sidePanel ? (
-              <>
-                <ThreadPanelHeader {...threadPanelProps} />
-                <div className="thread-column-scroll scrollbar-thin">
-                  <ErrorBoundary><ThreadPanelContent {...threadPanelProps} /></ErrorBoundary>
+          {(!xSkin || sidePanel) && (
+            <aside className="thread-column">
+              {/* The pane takes the notifications column's slot under
+                  this skin, so the grid stays two columns wide and the
+                  feed never reflows. */}
+              {sidePanel ? (
+                <>
+                  <ThreadPanelHeader {...threadPanelProps} backLabel={xSkin ? 'Back to notifications' : undefined} />
+                  <div className="thread-column-scroll scrollbar-thin">
+                    <ErrorBoundary><ThreadPanelContent {...threadPanelProps} /></ErrorBoundary>
+                  </div>
+                </>
+              ) : (
+                  <div className="thread-column-empty">
+                  <StatusPage
+                    icon={MessageCircle}
+                    heading="No thread open"
+                    description="Select a post to view its replies."
+                  />
                 </div>
-              </>
-            ) : (
-                <div className="thread-column-empty">
-                <StatusPage
-                  icon={MessageCircle}
-                  heading="No thread open"
-                  description="Select a post to view its replies."
-                />
-              </div>
-            )}
-          </aside>
+              )}
+            </aside>
+          )}
         </div>
       ) : tier === 'medium' ? (
         <div className={`main-layout${sidePanel ? ' panel-open' : ''}`}>

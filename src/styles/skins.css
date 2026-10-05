@@ -570,13 +570,16 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
    the default Adwaita shell keeps its left column and DOM reading
    order. Grid `order` re-places the columns without touching markup. */
 [data-skin="stealth-x"] .app-shell {
-  grid-template-columns: minmax(480px, 2.2fr) minmax(260px, 1fr) minmax(320px, 1.3fr);
+  grid-template-columns: minmax(480px, 2.2fr) minmax(320px, 1.3fr);
 }
 
 [data-skin="stealth-x"] .app-shell > .content-scroll {
   order: 1;
 }
 
+/* The side slot holds either column — notifications while idle, the
+   thread pane while a thread is open — so opening a thread swaps the
+   slot's content without the grid (or the centered feed) moving. */
 [data-skin="stealth-x"] .app-shell > .notif-column {
   order: 2;
   border-right: none;
@@ -584,5 +587,190 @@ button, a, input[type="checkbox"], input[type="radio"], select, .action-btn, .ic
 }
 
 [data-skin="stealth-x"] .app-shell > .thread-column {
-  order: 3;
+  order: 2;
+}
+
+/* Stealth skin only: not everything is a pill. The skin's pill
+   --radius-control token is right for buttons, the search field, menu
+   rows, and hover circles — X pills exactly those — but inputs, selects,
+   preview panes, and media are rectangles in X. The blanket token was
+   turning text fields into capsules and photos into ovals. */
+
+/* Text inputs and selects: X's ~8px rectangles */
+[data-skin="stealth-x"] .compose-visibility-select,
+[data-skin="stealth-x"] .settings-text-input,
+[data-skin="stealth-x"] .compose-cw-input,
+[data-skin="stealth-x"] .poll-editor-input,
+[data-skin="stealth-x"] .lists-create-input,
+[data-skin="stealth-x"] .profile-edit-input {
+  border-radius: 8px;
+}
+
+/* Media and image containers: X rounds media ~16px, never to an oval */
+[data-skin="stealth-x"] .lightbox-image,
+[data-skin="stealth-x"] .quote-card-image,
+[data-skin="stealth-x"] .parent-preview-thumb,
+[data-skin="stealth-x"] .parent-preview-media.blurred,
+[data-skin="stealth-x"] .upload-thumb-media,
+[data-skin="stealth-x"] .media-unknown {
+  border-radius: 16px;
+}
+
+/* Panels and preview panes: rectangles like X's quote/compose surfaces */
+[data-skin="stealth-x"] .emoji-dropdown,
+[data-skin="stealth-x"] .emoji-picker,
+[data-skin="stealth-x"] .compose-quote-preview,
+[data-skin="stealth-x"] .compose-reply-preview,
+[data-skin="stealth-x"] .compose-preview,
+[data-skin="stealth-x"] .group-create {
+  border-radius: 16px;
+}
+
+/* Banners and the feed tab toggle: modest rectangles, not stadium pills */
+[data-skin="stealth-x"] .banner,
+[data-skin="stealth-x"] .feed-toggle {
+  border-radius: 8px;
+}
+
+/* Stealth skin: threads are flat. Adwaita shades reply rows by depth —
+   a GNOME tree affordance X doesn't have; under this skin rows sit on
+   the bare background like X's, with the highlighted reply getting a
+   subtle active wash instead of a deeper tint. Ghost rows keep their
+   accent wash — they're a placeholder, not a depth cue. */
+[data-skin="stealth-x"] .reply-row,
+[data-skin="stealth-x"] .post-row {
+  background-color: transparent;
+}
+
+[data-skin="stealth-x"] .reply-row.highlighted,
+[data-skin="stealth-x"] .post-row.highlighted {
+  background-color: var(--active-overlay);
+}
+
+/* Feed media rounds to X's 16px, not the popover token's 12px */
+[data-skin="stealth-x"] .media-grid {
+  border-radius: 16px;
+}
+
+/* Stealth skin: X-style notification rows — compact, icon-forward, no
+   avatars (the bolded name carries the who; the status preview below
+   keeps the what). The category icon tints like X: blue for replies,
+   mentions, and polls, pink for likes, green for boosts and follows. */
+[data-skin="stealth-x"] .notif-row {
+  padding: 8px 12px;
+}
+
+[data-skin="stealth-x"] .notif-header .avatar-img {
+  display: none;
+}
+
+[data-skin="stealth-x"] .notif-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  margin-left: -6px;
+}
+
+[data-skin="stealth-x"] .notif-row[data-type="favourite"] .notif-icon { color: #f91880; }
+[data-skin="stealth-x"] .notif-row[data-type="pleroma:emoji_reaction"] .notif-icon { color: #f91880; }
+[data-skin="stealth-x"] .notif-row[data-type="reblog"] .notif-icon { color: #00ba7c; }
+[data-skin="stealth-x"] .notif-row[data-type="follow"] .notif-icon { color: #1d9bf0; }
+[data-skin="stealth-x"] .notif-row[data-type="follow_request"] .notif-icon { color: #1d9bf0; }
+[data-skin="stealth-x"] .notif-row[data-type="mention"] .notif-icon { color: #1d9bf0; }
+[data-skin="stealth-x"] .notif-row[data-type="quote"] .notif-icon { color: #1d9bf0; }
+[data-skin="stealth-x"] .notif-row[data-type="status"] .notif-icon { color: #1d9bf0; }
+[data-skin="stealth-x"] .notif-row[data-type="poll"] .notif-icon { color: #1d9bf0; }
+[data-skin="stealth-x"] .notif-row[data-type="update"] .notif-icon { color: #1d9bf0; }
+
+/* Stealth skin: the right sidebar leads with X's search capsule. It
+   jumps to the real search view — the styling is the silhouette, the
+   full query field lives where it always has. */
+.x-side-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 40px;
+  padding: 0 16px;
+  margin: 4px 0 12px;
+  border: none;
+  border-radius: 9999px;
+  background: var(--hover-overlay);
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  cursor: pointer;
+}
+
+.x-side-search:hover {
+  background: var(--active-overlay);
+  color: var(--text-primary);
+}
+
+/* Stealth skin: the logged-out page. The default login is a GNOME card
+   with the app's own favicon and branding — a double leak for a stealth
+   skin: the name shows and the layout doesn't read as X. Under this
+   skin the page becomes X's logged-out look: the giant glyph instead of
+   the logo, a heavy headline, left-hairline form rows (already
+   borderless via the feed restyle), and the inverted CTA the skin's
+   pill token already provides. */
+[data-skin="stealth-x"] .login-screen .headerbar-brand {
+  font-size: 0;
+}
+
+[data-skin="stealth-x"] .login-screen .headerbar-brand svg,
+[data-skin="stealth-x"] .login-icon svg {
+  display: none;
+}
+
+[data-skin="stealth-x"] .login-screen .headerbar-brand::before {
+  content: 'X';
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+[data-skin="stealth-x"] .login-icon {
+  width: auto;
+  height: auto;
+  background: transparent;
+  margin: 0 auto 24px;
+}
+
+[data-skin="stealth-x"] .login-icon::before {
+  content: 'X';
+  display: block;
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+[data-skin="stealth-x"] .login-title {
+  font-size: 2.25rem;
+  font-weight: 800;
+  line-height: 1.15;
+  margin-bottom: 16px;
+}
+
+[data-skin="stealth-x"] .login-subtitle {
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+[data-skin="stealth-x"] .login-wrap {
+  max-width: 440px;
+}
+
+[data-skin="stealth-x"] .login-recognized {
+  display: inline-block;
+  border-radius: 9999px;
+  padding: 4px 12px;
+  margin-bottom: 8px;
+}
+
+[data-skin="stealth-x"] .login-hint {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
 }
