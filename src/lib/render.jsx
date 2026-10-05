@@ -533,14 +533,20 @@ function processStatusContentUncached(status, instanceUrl, stripMentions = false
   })
 
   const hasQuarantined = quarantinedAttachments.length > 0
-  const sensitive = status.sensitive || hasQuarantined
-  const spoilerText = status.sensitive
+  // A real spoiler_text means the whole post is content-warned. Some
+  // remote servers serialize the warning without flipping `sensitive`,
+  // so the text itself is the trigger, not the flag.
+  const hasCw = Boolean(String(status.spoiler_text || '').trim())
+  const sensitive = status.sensitive || hasCw || hasQuarantined
+  // Label for the media blur: the post's own warning when present, the
+  // moderation notice for recovered quarantined images, empty otherwise.
+  const spoilerText = hasCw
     ? status.spoiler_text
     : hasQuarantined
       ? "Image hidden by this instance's media settings"
-      : status.spoiler_text
+      : ''
 
-  return { textNodes, attachments, sensitive, spoilerText }
+  return { textNodes, attachments, sensitive, spoilerText, hasCw }
 }
 
 // Renders a block of plain text — e.g. a machine-translated post, which has
