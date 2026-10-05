@@ -120,6 +120,17 @@ export function ReplyContextLine({ mentions, onOpenProfile }) {
   )
 }
 
+// Mitra posts carry an optional title — a subject line stored separately
+// from spoiler_text. Unlike a content warning it is public information:
+// it heads the post like an article headline and never gates anything.
+// The API declares it plain text, but it goes through renderEmojiText so
+// any emoji shortcodes that sneak in render consistently with the body.
+export function PostTitle({ status }) {
+  const title = String(status?.title || '').trim()
+  if (!title) return null
+  return <div className="post-title">{renderEmojiText(title, status.emojis)}</div>
+}
+
 // Only public and unlisted posts can be reposted — servers reject boosts
 // of followers-only/direct/subscribers content, so don't offer the button.
 // Only public and unlisted posts can be reposted — servers reject boosts
@@ -730,6 +741,7 @@ export function QuoteCard({ status, instanceUrl, onOpenThread }) {
         <span className="quote-card-name">{name}</span>
         <span className="quote-card-handle">@{account.acct || account.username}</span>
       </div>
+      <PostTitle status={status} />
       <p className="quote-card-text">{content.textNodes}</p>
       {content.attachments.length > 0 && content.attachments[0].type === 'image' && (
         <div className={`quote-card-image-wrap${effectiveSensitive && !revealed ? ' blurred' : ''}`}>

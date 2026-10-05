@@ -8,7 +8,7 @@ import { formatRelativeTime, processStatusContentForDisplay, renderEmojiText } f
 import { Avatar, MediaGrid } from './Media.jsx'
 import { ReplyComposerFields } from './ReplyComposer.jsx'
 import {
-  buildReplyMentions, ReplyContextLine, useTranslation, TranslatedBody,
+  buildReplyMentions, ReplyContextLine, PostTitle, useTranslation, TranslatedBody,
   usePostActions, PostActions, ReactionChips, QuoteCard, PollCard,
 } from './postCore.jsx'
 // One reply, at any depth, with the exact same action row and interactivity
@@ -121,6 +121,7 @@ export function ThreadReply({
             )}
           </div>
           <ReplyContextLine mentions={replyMentions} onOpenProfile={onOpenProfile} />
+          <PostTitle status={status} />
           {translation.shown
             ? <TranslatedBody status={status} t={translation} />
             : <p className="post-text">{content.textNodes}</p>}

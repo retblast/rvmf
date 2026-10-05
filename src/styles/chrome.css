@@ -386,3 +386,21 @@
   white-space: pre-wrap;
 }
 
+/* Subject line (Mitra's status.title): heads the post like a headline.
+   Public information — unlike a content warning it never hides content,
+   so it stays outside any CW gate. */
+.post-title {
+  margin: 4px 0 0;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+/* The compact quote card keeps its title on the smaller chrome scale. */
+.quote-card .post-title {
+  font-size: 0.875rem;
+  margin: 2px 0 0;
+}
+
+

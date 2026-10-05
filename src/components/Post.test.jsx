@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AppSettingsContext, GhostContext } from '../hooks'
 import { maskAccount } from '../lib/privacy.js'
-import { useTranslation, PostRow } from './Post.jsx'
+import { useTranslation, PostRow, QuoteCard } from './Post.jsx'
 
 // The real translate module lazily pulls in Transformers.js (multi-GB model,
 // WebGPU) — mock it so the hook's orchestration can be tested without that.
@@ -291,6 +291,43 @@ describe('PostRow reply context line', () => {
     expect(screen.getByText(/In reply to/)).toBeTruthy()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Subject titles — status.title heads the post, always visible
+// ---------------------------------------------------------------------------
+
+describe('PostRow subject titles', () => {
+  it('renders a post title above the body', () => {
+    renderPlainRow({ ...ghostPost, title: 'Big news' })
+    const title = document.querySelector('.post-title')
+    expect(title).not.toBeNull()
+    expect(title.textContent).toBe('Big news')
+  })
+
+  it('renders nothing when the post has no title', () => {
+    renderPlainRow(ghostPost)
+    expect(document.querySelector('.post-title')).toBeNull()
+  })
+
+  it('ignores whitespace-only titles', () => {
+    renderPlainRow({ ...ghostPost, title: '   ' })
+    expect(document.querySelector('.post-title')).toBeNull()
+  })
+})
+
+describe('QuoteCard subject titles', () => {
+  it('renders the quoted post title above its text', () => {
+    render(
+      <Provider>
+        <QuoteCard status={{ ...ghostPost, title: 'Quoted headline' }} instanceUrl="http://test.example.com" onOpenThread={() => {}} />
+      </Provider>
+    )
+    const title = document.querySelector('.quote-card .post-title')
+    expect(title).not.toBeNull()
+    expect(title.textContent).toBe('Quoted headline')
+  })
+})
+
 
 describe('PostRow privacy masking', () => {
   const realMask = (account) => maskAccount(account, 'u1', true)

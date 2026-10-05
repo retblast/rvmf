@@ -10,7 +10,7 @@ import { formatRelativeTime, processStatusContentForDisplay, renderEmojiText } f
 import { Avatar, MediaGrid } from './Media.jsx'
 import { ReplyComposerFields } from './ReplyComposer.jsx'
 import {
-  unwrapStatus, buildReplyMentions, ReplyContextLine, useTranslation,
+  unwrapStatus, buildReplyMentions, ReplyContextLine, PostTitle, useTranslation,
   TranslatedBody, usePostActions, PostActions, ReactionChips, QuoteCard, PollCard,
 } from './postCore.jsx'
 
@@ -92,6 +92,7 @@ export const PostRow = memo(function PostRow({ post, instanceUrl, token, onUpdat
             )}
           </div>
           <ReplyContextLine mentions={replyMentions} onOpenProfile={onOpenProfile} />
+          <PostTitle status={status} />
           {translation.shown
             ? <TranslatedBody status={status} t={translation} />
             : <p className="post-text">{content.textNodes}</p>}
