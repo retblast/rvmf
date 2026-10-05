@@ -99,6 +99,10 @@ export function SettingsMenu({ open, anchor, settings, onClose, onNavigate, onLo
                   <Switch checked={settings.peekSpoilerMedia} onChange={settings.togglePeekSpoilerMedia} label="Reveal Media on Hover (Peek)" />
                 </label>
               )}
+              <label className="settings-menu-row">
+                <span>Expand All Content Warnings</span>
+                <Switch checked={settings.expandAllContentWarnings} onChange={settings.toggleExpandAllContentWarnings} label="Expand All Content Warnings" />
+              </label>
             </div>
 
             <div className="settings-group">

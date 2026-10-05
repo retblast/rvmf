@@ -56,6 +56,11 @@ export function useAppSettings(session, { onClientNameChange, extraSynced = {} }
   // hover previews to peek at unrevealed media.
   const [peekSpoilerMedia, togglePeekSpoilerMedia, setPeekSpoilerMedia] = usePersistedFlag('peek-spoiler', storageGet('peek-spoiler') === 'true')
 
+  // Content-warned posts render expanded, with the warning text shown as
+  // a small label instead of a collapse gate — for people who don't care
+  // about the ceremony but still want to see why a post was flagged.
+  const [expandAllContentWarnings, toggleExpandAllContentWarnings, setExpandAllContentWarnings] = usePersistedFlag('expand-all-cw', storageGet('expand-all-cw') === 'true')
+
   const [fetchClientMedia, toggleFetchClientMedia, setFetchClientMedia] = usePersistedFlag('fetch-client-media', storageGet('fetch-client-media') !== 'false')
 
   // On-device translation is off by default and opt-in behind a confirm:
@@ -227,12 +232,13 @@ export function useAppSettings(session, { onClientNameChange, extraSynced = {} }
           applyOsAccent(enabled)
           storageSet('use-os-accent', String(enabled))
         }
-        for (const key of ['always-sensitive', 'peek-spoiler', 'fetch-client-media']) {
+        for (const key of ['always-sensitive', 'peek-spoiler', 'fetch-client-media', 'expand-all-cw']) {
           if (storageGet(key) === null && typeof cfg[key] === 'boolean') {
             storageSet(key, String(cfg[key]))
             if (key === 'always-sensitive') setAlwaysSensitive(Boolean(cfg[key]))
             if (key === 'peek-spoiler') setPeekSpoilerMedia(Boolean(cfg[key]))
             if (key === 'fetch-client-media') setFetchClientMedia(Boolean(cfg[key]))
+            if (key === 'expand-all-cw') setExpandAllContentWarnings(Boolean(cfg[key]))
           }
         }
         // Keys owned by other modules but riding the same client_config sync
@@ -263,11 +269,12 @@ export function useAppSettings(session, { onClientNameChange, extraSynced = {} }
         'always-sensitive': alwaysSensitive,
         'peek-spoiler': peekSpoilerMedia,
         'fetch-client-media': fetchClientMedia,
+        'expand-all-cw': expandAllContentWarnings,
         ...Object.fromEntries(Object.entries(extraSynced).map(([k, [v]]) => [k, v])),
       }).catch(() => {})
     }, 2000)
     return () => clearTimeout(timer)
-  }, [session, themeMode, skinId, useOsAccent, alwaysSensitive, peekSpoilerMedia, fetchClientMedia, configSyncReady,
+  }, [session, themeMode, skinId, useOsAccent, alwaysSensitive, peekSpoilerMedia, fetchClientMedia, expandAllContentWarnings, configSyncReady,
     ...Object.values(extraSynced).map(([v]) => v)])
 
   const selfId = session?.account?.id
@@ -277,7 +284,7 @@ export function useAppSettings(session, { onClientNameChange, extraSynced = {} }
     // Bundled for AppSettingsContext.Provider; re-created per render, same
     // as the previous inline object.
     contextValue: {
-      fetchClientMedia, alwaysSensitive, peekSpoilerMedia,
+      fetchClientMedia, alwaysSensitive, peekSpoilerMedia, expandAllContentWarnings,
       translationEnabled, translationProvider, defaultVisibility,
       gifConversionEnabled, gifIncludeLarge, gifHoverAnimate,
       privacyMode, mask, selfId,
@@ -290,6 +297,7 @@ export function useAppSettings(session, { onClientNameChange, extraSynced = {} }
     fetchClientMedia, toggleFetchClientMedia,
     alwaysSensitive, toggleAlwaysSensitive,
     peekSpoilerMedia, togglePeekSpoilerMedia,
+    expandAllContentWarnings, toggleExpandAllContentWarnings,
     translationEnabled, translationProvider,
     handleToggleTranslation, confirmingTranslation, setConfirmingTranslation,
     confirmTranslation, handleTranslationProvider,
