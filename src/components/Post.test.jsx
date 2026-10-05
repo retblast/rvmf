@@ -328,6 +328,50 @@ describe('QuoteCard subject titles', () => {
   })
 })
 
+describe('QuoteCard content warnings', () => {
+  const quotedCw = {
+    ...ghostPost,
+    spoiler_text: 'quoted spoiler warning',
+    sensitive: true,
+  }
+
+  function renderQuote(status) {
+    return render(
+      <Provider>
+        <QuoteCard status={status} instanceUrl="http://test.example.com" onOpenThread={() => {}} />
+      </Provider>
+    )
+  }
+
+  it('shows the warning label and hides the quoted body while collapsed', () => {
+    renderQuote(quotedCw)
+    expect(screen.getByText(/quoted spoiler warning/)).toBeTruthy()
+    expect(screen.queryByText('ghost test post')).toBeNull()
+  })
+
+  it('reveals the quoted body on click', async () => {
+    const user = userEvent.setup()
+    renderQuote(quotedCw)
+    await user.click(screen.getByRole('button', { name: /quoted spoiler warning/ }))
+    expect(screen.getByText('ghost test post')).toBeTruthy()
+  })
+
+  it('keeps plain sensitive quotes blur-gated but their text visible', () => {
+    renderQuote({ ...ghostPost, sensitive: true })
+    expect(screen.getByText('ghost test post')).toBeTruthy()
+    expect(document.querySelector('.quote-card-cw')).toBeNull()
+  })
+
+  it('starts expanded when expand-all is enabled', () => {
+    render(
+      <AppSettingsContext.Provider value={{ alwaysSensitive: false, expandAllContentWarnings: true }}>
+        <QuoteCard status={quotedCw} instanceUrl="http://test.example.com" onOpenThread={() => {}} />
+      </AppSettingsContext.Provider>
+    )
+    expect(screen.getByText('ghost test post')).toBeTruthy()
+  })
+})
+
 
 // ---------------------------------------------------------------------------
 // Content warnings — spoiler_text collapses the post behind a banner
