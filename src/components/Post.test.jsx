@@ -329,6 +329,69 @@ describe('QuoteCard subject titles', () => {
 })
 
 
+// ---------------------------------------------------------------------------
+// Content warnings — spoiler_text collapses the post behind a banner
+// ---------------------------------------------------------------------------
+
+describe('PostRow content warnings', () => {
+  const cwPost = {
+    ...ghostPost,
+    spoiler_text: 'spoilers for the ending',
+    sensitive: true,
+  }
+
+  it('shows the banner with the spoiler text and hides the body while collapsed', () => {
+    renderPlainRow(cwPost)
+    expect(screen.getByText(/spoilers for the ending/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Show more/ })).toBeTruthy()
+    expect(screen.queryByText('ghost test post')).toBeNull()
+    expect(document.querySelector('.media-grid')).toBeNull()
+  })
+
+  it('reveals the body and media on click, offering Show less', async () => {
+    const user = userEvent.setup()
+    renderPlainRow({ ...cwPost, media_attachments: [] })
+    await user.click(screen.getByRole('button', { name: /Show more/ }))
+    expect(screen.getByText('ghost test post')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Show less/ })).toBeTruthy()
+  })
+
+  it('re-hides the body on a second click', async () => {
+    const user = userEvent.setup()
+    renderPlainRow(cwPost)
+    await user.click(screen.getByRole('button', { name: /Show more/ }))
+    await user.click(screen.getByRole('button', { name: /Show less/ }))
+    expect(screen.queryByText('ghost test post')).toBeNull()
+  })
+
+  it('renders no banner for posts without a content warning', () => {
+    renderPlainRow(ghostPost)
+    expect(document.querySelector('.post-cw')).toBeNull()
+    expect(screen.getByText('ghost test post')).toBeTruthy()
+  })
+
+  it('starts expanded when expand-all is enabled', () => {
+    render(
+      <AppSettingsContext.Provider value={{ translationEnabled: true, translationProvider: 'qwen-cpu', expandAllContentWarnings: true }}>
+        <PostRow
+          post={cwPost}
+          instanceUrl="http://test.example.com"
+          token="tk"
+          onUpdate={() => {}}
+          onOpenThread={() => {}}
+          onComposeReply={() => {}}
+          onOpenLightbox={() => {}}
+          onOpenProfile={() => {}}
+          onQuote={() => {}}
+          currentAccountId="u1"
+        />
+      </AppSettingsContext.Provider>
+    )
+    expect(screen.getByText('ghost test post')).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Show less/ })).toBeTruthy()
+  })
+})
+
 describe('PostRow privacy masking', () => {
   const realMask = (account) => maskAccount(account, 'u1', true)
 

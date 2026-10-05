@@ -403,4 +403,46 @@
   margin: 2px 0 0;
 }
 
+/* Content-warning banner: heads a collapsed post. The spoiler text is
+   the label, "Show more" the action. Token-styled so each skin keeps
+   its own look; the stealth skin overrides the radius like its other
+   banners. */
+.post-cw-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  margin: 4px 0 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--accent-bg-subtle);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.post-cw-toggle:hover {
+  border-color: var(--accent);
+}
+
+.post-cw-label {
+  overflow-wrap: anywhere;
+}
+
+.post-cw-action {
+  margin-left: auto;
+  color: var(--accent);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+/* Gated content sits tight under the open banner. */
+.post-cw .post-text {
+  margin-top: 4px;
+}
+
 

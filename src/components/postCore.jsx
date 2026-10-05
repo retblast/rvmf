@@ -131,6 +131,41 @@ export function PostTitle({ status }) {
   return <div className="post-title">{renderEmojiText(title, status.emojis)}</div>
 }
 
+// Per-post CW reveal state, shared by PostRow and ThreadReply. Collapsed
+// by default (fediverse standard); the expand-all setting flips the
+// default for people who don't want the ceremony. Resets when the row
+// switches to another status or when the setting changes mid-session —
+// the same contract MediaGrid applies to alwaysSensitive.
+export function useCwReveal(statusId) {
+  const { expandAllContentWarnings } = useContext(AppSettingsContext)
+  const [revealed, setRevealed] = useState(Boolean(expandAllContentWarnings))
+  useEffect(() => { setRevealed(Boolean(expandAllContentWarnings)) }, [statusId, expandAllContentWarnings])
+  const toggle = useCallback(() => setRevealed((v) => !v), [])
+  return [revealed, toggle]
+}
+
+// The content-warning gate. While collapsed, the banner is the only thing
+// shown: the spoiler text plus a show-more control. Revealing renders the
+// gated children (body text, quote, poll, media). The toggle stops
+// propagation because the surrounding post-body click opens threads —
+// a CW click must only ever toggle.
+export function ContentWarning({ spoilerText, revealed, onToggle, children }) {
+  return (
+    <div className="post-cw">
+      <button
+        type="button"
+        className="post-cw-toggle"
+        aria-expanded={revealed}
+        onClick={(e) => { e.stopPropagation(); onToggle() }}
+      >
+        <span className="post-cw-label">{spoilerText || 'Content warning'}</span>
+        <span className="post-cw-action">{revealed ? 'Show less' : 'Show more'}</span>
+      </button>
+      {revealed && children}
+    </div>
+  )
+}
+
 // Only public and unlisted posts can be reposted — servers reject boosts
 // of followers-only/direct/subscribers content, so don't offer the button.
 // Only public and unlisted posts can be reposted — servers reject boosts

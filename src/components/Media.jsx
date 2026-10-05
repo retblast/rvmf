@@ -518,10 +518,16 @@ function MediaItem({ attachment, onOpenLightbox }) {
   )
 }
 
-export function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox, forceHidden }) {
+export function MediaGrid({ attachments, sensitive, spoilerText, onOpenLightbox, forceHidden, cwRevealed = false }) {
   const { alwaysSensitive, peekSpoilerMedia } = useContext(AppSettingsContext)
   const { pos, track, clear } = useCursorPreview()
-  const effectiveSensitive = Boolean(sensitive) || Boolean(alwaysSensitive)
+  // An open post-level CW gate counts as the media warning consumed —
+  // revealing a content warning shows text and media together (Mastodon
+  // semantics). Only the strict "mark all media as sensitive" setting
+  // keeps its blur on top of that.
+  const effectiveSensitive = cwRevealed
+    ? Boolean(alwaysSensitive)
+    : (Boolean(sensitive) || Boolean(alwaysSensitive))
   const [userRevealed, setUserRevealed] = useState(!effectiveSensitive)
   const revealed = !forceHidden && userRevealed
 
